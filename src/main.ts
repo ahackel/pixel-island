@@ -5,6 +5,8 @@ import { defaultState, lookOf } from '@pixel/engine/character/character.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
+import { flashAt, overcast } from '@pixel/engine/world/weather.ts';
+import { foggy, KINDS, kindOf, weatherAt, type Kind } from './weather.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import { levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing } from '@pixel/engine/world/world.ts';
@@ -63,8 +65,8 @@ const dry = (p: { i: number; j: number }) =>
 
 /** What the sea brings in the morning: fixed things on fixed days. */
 const WASH_UPS: Record<number, PlacedItem['item']> = { 2: 'crate' };
-function washUp(g: Game): boolean {
-  const item = WASH_UPS[g.day];
+function washUp(g: Game, extra?: PlacedItem['item']): boolean {
+  const item = extra ?? WASH_UPS[g.day];
   if (!item) return false;
   const beach: { i: number; j: number }[] = [];
   for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) if (surfaceAt(world.map, i, j) === 'beach') beach.push({ i: i + 0.5, j: j + 0.5 });
@@ -151,6 +153,7 @@ function think(key: Key): void {
 }
 
 const veil = el('div', 'veil');
+const flash = el('div', 'flash');
 let veilDay = 0;
 function startNew(): void {
   clearGame();
@@ -197,11 +200,13 @@ function showMenu(): void {
   );
 }
 
-app.append(hudBox, buttons, bag, bubble, veil, menuBox);
+app.append(hudBox, buttons, bag, bubble, flash, veil, menuBox);
 showBag();
 
 // ?cheats: a row of orange buttons to get somewhere quickly while developing.
 let fast = 1;
+/** A weather the cheat button forces, instead of the day's own. */
+let weatherCheat: Kind | undefined;
 if (params.has('cheats')) {
   const row = el('div', 'cheats');
   const cheat = (words: string, on: () => void) => pixelButton(words, { words, cheat: true }, on);
@@ -217,6 +222,10 @@ if (params.has('cheats')) {
     cheat('NIGHT', () => (time = DAY_S + DUSK_S)),
     cheat('MORNING', () => sleep(false, true)),
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
+    cheat('WEATHER', () => {
+      weatherCheat = KINDS[(KINDS.indexOf(weatherCheat ?? kindOf(game.day)) + 1) % KINDS.length];
+      think(`think.${weatherCheat === 'sunny' ? 'morning' : weatherCheat}`);
+    }),
   );
   app.append(row);
 }
@@ -294,9 +303,13 @@ function morning(fainted: boolean): void {
   if (!dry(actor)) Object.assign(actor, world.nearestLand(actor.i, actor.j));
   game.at = { i: actor.i, j: actor.j };
   dropCoconuts(game);
-  const washed = washUp(game);
+  // Wind shakes more coconuts down; a storm leaves something on the beach.
+  const kind = kindOf(game.day);
+  if (kind === 'windy' || kind === 'storm') dropCoconuts(game);
+  const washed = washUp(game) || (kindOf(game.day - 1) === 'storm' && washUp(game, 'crate'));
   saveGame(game);
-  setTimeout(() => think(washed ? 'think.washed' : 'think.morning'), FADE.hold + FADE.in);
+  const mood: Key = foggy(game.day) ? 'think.fog' : kind === 'sunny' ? 'think.morning' : `think.${kind}`;
+  setTimeout(() => think(washed ? 'think.washed' : mood), FADE.hold + FADE.in);
 }
 
 /** How dark the fade is now, and runs the morning at its darkest. */
@@ -384,9 +397,14 @@ function frame(ms: number): void {
   if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
 
   swim(world.fish, world.floor, dt, fishRandom);
+  const weather = weatherAt(game.day, time, weatherCheat);
+  world.setWeather(weather);
   const things: Thing[] = [...world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES), ...world.itemThings(), ...game.coconuts.map(coconutThing), actor.thing(world, ms), ...actor.dropThings()];
   const image = world.compose(view.rect(), things, undefined, false, ms);
+  light(image, overcast(weather));
   light(image, tintAt(time), fade);
+  flash.style.opacity = String(0.7 * flashAt(ms, weather) * (1 - fade));
+  warnOnce('think.rainStarts', weather.rain > 0.4 && kindOf(game.day) !== 'rain' && kindOf(game.day) !== 'storm' && !weatherCheat);
   view.show(image);
 
   // The page around the picture.

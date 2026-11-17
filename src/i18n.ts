@@ -22,6 +22,12 @@ const en = {
   'think.wet': 'I can’t sleep in the water.',
   'think.faint': 'Everything goes black…',
   'think.yum': 'Mmm, coconut.',
+  'think.cloudy': 'Grey skies today.',
+  'think.windy': 'What a wind! The palms are shaking.',
+  'think.rain': 'Rain… I’m getting soaked.',
+  'think.storm': 'A storm! I should stay away from the water.',
+  'think.fog': 'Fog everywhere. I can hardly see the sea.',
+  'think.rainStarts': 'Here comes the rain.',
 };
 const de: typeof en = {
   day: 'Tag {n}',
@@ -45,6 +51,12 @@ const de: typeof en = {
   'think.wet': 'Im Wasser kann ich nicht schlafen.',
   'think.faint': 'Mir wird schwarz vor Augen…',
   'think.yum': 'Mmm, Kokosnuss.',
+  'think.cloudy': 'Heute ist es grau.',
+  'think.windy': 'So ein Wind! Die Palmen wackeln.',
+  'think.rain': 'Regen… Ich werde klatschnass.',
+  'think.storm': 'Ein Sturm! Ich bleibe lieber weg vom Wasser.',
+  'think.fog': 'Überall Nebel. Ich sehe kaum das Meer.',
+  'think.rainStarts': 'Jetzt kommt der Regen.',
 };
 
 export type Key = keyof typeof en;

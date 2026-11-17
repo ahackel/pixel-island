@@ -24,3 +24,4 @@ canvas { image-rendering: pixelated; }
 [hidden] { display: none !important; }
 /* The menu stays laid out while hidden, so it can fade in and out. */
 .menu[hidden] { display: grid !important; opacity: 0; visibility: hidden; pointer-events: none; }
+.flash { position: absolute; inset: 0; background: #fff; pointer-events: none; opacity: 0; }
