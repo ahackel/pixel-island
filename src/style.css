@@ -1,0 +1,22 @@
+/* The interface is pixel art drawn into canvases (src/ui.ts); this only places it. */
+:root { --sea: #1d5f86; --gap: 12px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--sea); overflow: hidden; overscroll-behavior: none; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#app { position: fixed; inset: 0; }
+canvas { image-rendering: pixelated; }
+
+.pbtn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
+.pbtn:disabled { cursor: default; }
+/* Pressed: the colours turned round, as in Lop Hop. */
+.pbtn:not(:disabled):active canvas { filter: invert(1) hue-rotate(180deg); }
+
+.hud { position: absolute; top: max(var(--gap), env(safe-area-inset-top)); left: var(--gap); }
+.buttons { position: absolute; top: max(var(--gap), env(safe-area-inset-top)); right: var(--gap); display: flex; gap: 8px; }
+.bag { position: absolute; left: 50%; bottom: max(var(--gap), env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 4px; }
+.cheats { position: absolute; left: 50%; bottom: calc(max(var(--gap), env(safe-area-inset-bottom)) + 64px); transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; width: max-content; max-width: calc(100% - 2 * var(--gap)); }
+
+.bubble { position: absolute; left: 0; top: 0; pointer-events: none; }
+.veil { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; pointer-events: none; }
+.paused { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; background: #0009; }
+[hidden] { display: none !important; }

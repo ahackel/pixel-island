@@ -1,0 +1,51 @@
+import { currentLang, fill } from '@pixel/shared/lang.ts';
+
+const en = {
+  day: 'Day {n}',
+  hunger: 'Hunger',
+  energy: 'Energy',
+  sleep: 'Sleep',
+  pause: 'Pause',
+  paused: 'Paused — tap to go on',
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  bag: 'Bag',
+  eat: 'Eat the coconut',
+  newGame: 'New game',
+  'think.first': 'Where am I…? At least there are palms.',
+  'think.morning': 'A new morning.',
+  'think.washed': 'Something washed up on the beach!',
+  'think.crate': 'A crate from the ship. Nailed shut — I need a tool.',
+  'think.full': 'My bag is full.',
+  'think.hungry': 'I’m hungry…',
+  'think.tired': 'I’m so tired… I should sleep.',
+  'think.wet': 'I can’t sleep in the water.',
+  'think.faint': 'Everything goes black…',
+  'think.yum': 'Mmm, coconut.',
+};
+const de: typeof en = {
+  day: 'Tag {n}',
+  hunger: 'Hunger',
+  energy: 'Kraft',
+  sleep: 'Schlafen',
+  pause: 'Pause',
+  paused: 'Pause — tippen zum Weiterspielen',
+  zoomIn: 'Näher',
+  zoomOut: 'Weiter weg',
+  bag: 'Beutel',
+  eat: 'Kokosnuss essen',
+  newGame: 'Neues Spiel',
+  'think.first': 'Wo bin ich…? Immerhin gibt es Palmen.',
+  'think.morning': 'Ein neuer Morgen.',
+  'think.washed': 'Da ist etwas an den Strand gespült!',
+  'think.crate': 'Eine Kiste vom Schiff. Zugenagelt — ich brauche Werkzeug.',
+  'think.full': 'Mein Beutel ist voll.',
+  'think.hungry': 'Ich habe Hunger…',
+  'think.tired': 'Ich bin so müde… Ich sollte schlafen.',
+  'think.wet': 'Im Wasser kann ich nicht schlafen.',
+  'think.faint': 'Mir wird schwarz vor Augen…',
+  'think.yum': 'Mmm, Kokosnuss.',
+};
+
+export type Key = keyof typeof en;
+export const t = (key: Key, values?: Record<string, string | number>) => fill({ en, de }[currentLang()][key], values);
