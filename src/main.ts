@@ -11,6 +11,8 @@ import { World, type Thing } from '@pixel/engine/world/world.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
+import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
+import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
 import { C, hud, pixelButton, S, slot } from './ui.ts';
 import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
@@ -30,6 +32,8 @@ const FADE = { out: 1200, hold: 1000, in: 1200 };
 
 const scene = firstIsland();
 const world = new World(scene);
+const fishRandom = rng(Date.now());
+world.fish = spawnFish(world.floor, 7, fishRandom);
 const palms = scene.plants;
 
 function newGame(): Game {
@@ -375,6 +379,7 @@ function frame(ms: number): void {
   // A target that cannot be reached is given up rather than walked against forever.
   if (target && before[0] === actor.i && before[1] === actor.j && !paused) target = null;
 
+  swim(world.fish, world.floor, dt, fishRandom);
   const things: Thing[] = [...world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES), ...world.itemThings(), ...game.coconuts.map(coconutThing), actor.thing(world, ms), ...actor.dropThings()];
   const image = world.compose(view.rect(), things, undefined, false, ms);
   light(image, tintAt(time), fade);

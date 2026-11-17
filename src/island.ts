@@ -1,6 +1,7 @@
 // The first island: a low patch of sand in the sea with a few palms, the same every time from a seed.
 import { createScene, type PlacedPlant, type Scene } from '@pixel/engine/world/scene.ts';
-import { generateIsland, levelAt, SEA_LEVEL } from '@pixel/engine/world/terrain.ts';
+import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
+import { generateIsland, levelAt, SEA_LEVEL, surfaceAt, type HeightMap } from '@pixel/engine/world/terrain.ts';
 import { grows } from '@pixel/engine/world/world.ts';
 import { rng } from '@pixel/shared/random.ts';
 
@@ -8,6 +9,12 @@ const SIZE = 16;
 const SEED = 7;
 /** The palm recipes in the flora catalogue: leaning, bushy, sapling. */
 const PALMS = ['plant-palms-0', 'plant-palms-1', 'plant-palms-0', 'plant-palms-2'];
+/** Things lying about, by where they go: the beach, the sand above it, the shallows. */
+const DECOR: [string[], (map: HeightMap, i: number, j: number) => boolean][] = [
+  [['starfish-orange', 'starfish-pink', 'shell-spiral', 'shell-scallop', 'shell-spiral', 'driftwood', 'driftwood'], (m, i, j) => surfaceAt(m, i, j) === 'beach'],
+  [['pebbles-grey', 'pebbles-brown', 'shell-scallop'], (m, i, j) => levelAt(m, i, j) > SEA_LEVEL],
+  [['coral', 'coral', 'coral', 'starfish-orange', 'pebbles-grey'], (m, i, j) => levelAt(m, i, j) === SEA_LEVEL - 1],
+];
 
 export function firstIsland(): Scene {
   const scene = createScene('Island', SIZE, SIZE, false, SEED);
@@ -24,6 +31,16 @@ export function firstIsland(): Scene {
     plants.push({ plant, i, j, seed: plants.length % 4, size: 1, turn: Math.floor(random() * 8) });
   }
   scene.plants = plants;
+  const decor: PlacedDecor[] = [];
+  for (const [kinds, fits] of DECOR) {
+    for (let tries = 0, n = 0; n < kinds.length && tries < 500; tries++) {
+      const i = 0.5 + random() * (SIZE - 1);
+      const j = 0.5 + random() * (SIZE - 1);
+      if (!fits(map, Math.floor(i), Math.floor(j)) || [...decor, ...plants].some((p) => Math.hypot(p.i - i, p.j - j) < 1)) continue;
+      decor.push({ decor: kinds[n++], i, j });
+    }
+  }
+  scene.decor = decor;
   // The survivor wakes on dry land nearest the middle.
   let best = { i: SIZE / 2, j: SIZE / 2 };
   let bestD = Infinity;
