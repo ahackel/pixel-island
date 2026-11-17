@@ -17,6 +17,7 @@ import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { firstIsland } from './island.ts';
 import { BAG_SLOTS, clearGame, loadGame, saveGame, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
+import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
@@ -68,8 +69,8 @@ function washUp(g: Game): boolean {
   return true;
 }
 
-let game = loadGame(scene.w) ?? newGame();
-if (params.has('new')) game = newGame();
+const saved = params.has('new') ? null : loadGame(scene.w);
+let game = saved ?? newGame();
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
 world.loose = game.items;
@@ -111,7 +112,7 @@ const sleepButton = pixelButton(t('sleep'), { icon: 'moon', words: t('sleep'), d
 buttons.append(
   pixelButton(t('zoomIn'), { icon: 'zoomIn' }, () => view.step(1)),
   pixelButton(t('zoomOut'), { icon: 'zoomOut' }, () => view.step(-1)),
-  pixelButton(t('pause'), { icon: 'pause' }, () => setPaused(true)),
+  pixelButton(t('menu'), { icon: 'menu' }, () => setPaused(true)),
   sleepButton,
 );
 
@@ -143,22 +144,52 @@ function think(key: Key): void {
 
 const veil = el('div', 'veil');
 let veilDay = 0;
-const pausedBox = el('div', 'paused');
-pausedBox.append(label(t('paused'), C.white, S), pixelButton(t('newGame'), { words: t('newGame') }, () => {
+function startNew(): void {
   clearGame();
   game = newGame();
   world.loose = game.items;
   Object.assign(actor, game.at);
+  centerOn(actor);
   time = 0;
   saveGame(game);
   showBag();
-  setPaused(false);
-  think('think.first');
-}));
-pausedBox.hidden = true;
-pausedBox.addEventListener('click', () => setPaused(false));
+}
 
-app.append(hudBox, buttons, bag, bubble, veil, pausedBox);
+// The menu, which is also the pause: the name, play on or start over, and before the first step the language.
+const menuBox = el('div', 'menu');
+/** Whether the player has played since the page loaded. */
+let started = false;
+function play(fresh: boolean): void {
+  if (fresh) startNew();
+  setPaused(false);
+  if (fresh || (!started && game.day === 1)) think('think.first');
+  started = true;
+}
+/** A flag for each language, the one in use bright. */
+function flags(): HTMLElement {
+  const row = el('div', 'langs');
+  row.append(...LANGS.map((l) => {
+    const b = pixelButton(l.name, { icon: l.id }, () => {
+      if (l.id === currentLang()) return;
+      setLang(l.id);
+      location.reload();
+    });
+    if (l.id !== currentLang()) b.classList.add('off');
+    return b;
+  }));
+  return row;
+}
+function showMenu(): void {
+  menuBox.replaceChildren(
+    label('PIXEL ISLAND', C.paper, S * 3),
+    ...(saved || started ? [pixelButton(t('continue'), { words: t('continue') }, () => play(false))] : []),
+    pixelButton(t('newGame'), { words: t('newGame') }, () => play(true)),
+    // The page is built in one language, so a change reloads it; offered only before playing, when that loses nothing.
+    ...(started ? [] : [flags()]),
+  );
+}
+
+app.append(hudBox, buttons, bag, bubble, veil, menuBox);
 showBag();
 
 // ?cheats: a row of orange buttons to get somewhere quickly while developing.
@@ -184,11 +215,13 @@ if (params.has('cheats')) {
 
 // ------------------------------------------------------------------ acting
 
-let paused = false;
+let paused = true;
 function setPaused(on: boolean): void {
   paused = on;
-  pausedBox.hidden = !on;
+  if (on) showMenu();
+  menuBox.hidden = !on;
 }
+setPaused(true);
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
 /** The sleep (or faint) under way: when it began, and whether it was a faint. */
@@ -298,7 +331,6 @@ function centerOn(at: { i: number; j: number }): void {
   view.cam.y = p.y - 16;
 }
 centerOn(actor);
-if (game.day === 1 && !params.has('new')) think('think.first');
 
 let last = performance.now();
 function frame(ms: number): void {

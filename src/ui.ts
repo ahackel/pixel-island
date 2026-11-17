@@ -12,15 +12,18 @@ export const C = {
 
 /** Icons, 9 by 9: each character a colour of `PAINT`, '.' nothing. */
 const PAINT: Record<string, string> = {
-  x: C.ink, g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
+  x: C.ink, k: '#1f1f1f', r: '#d9412b', b: '#2f3b6e', g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
 };
 export const ICONS = {
   zoomIn: ['..xxx....', '.xgggx...', 'xggxggx..', 'xgxxxgx..', 'xggxggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
   zoomOut: ['..xxx....', '.xgggx...', 'xgggggx..', 'xgxxxgx..', 'xgggggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
-  pause: ['.........', '..xx.xx..', '..xx.xx..', '..xx.xx..', '..xx.xx..', '..xx.xx..', '..xx.xx..', '..xx.xx..', '.........'],
+  menu: ['.........', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.........'],
   sun: ['....y....', '.y.....y.', '...ooo...', '..oyyyo..', 'y.oyyyo.y', '..oyyyo..', '...ooo...', '.y.....y.', '....y....'],
   dusk: ['.........', '.y..y..y.', '.........', '...ooo...', '..oyyyo..', '.oyyyyyo.', 'wwwwwwwww', '.........', '..ww.ww..'],
   moon: ['..mmmm...', '.mmms..t.', 'mmms.....', 'mmms.....', 'mmms..t..', 'mmms.....', '.mmms....', '..mmmm...', '.........'],
+  // Flags for the language, a flag's shape inside the square.
+  en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'ttttttttt', 'rrrrrrrrr', '.........', '.........'],
+  de: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', 'rrrrrrrrr', 'rrrrrrrrr', 'yyyyyyyyy', 'yyyyyyyyy', '.........', '.........'],
 } as const;
 export type Icon = keyof typeof ICONS;
 
