@@ -1,0 +1,53 @@
+# Publishes the game with GitHub Pages: andreashackel.de/pixel-island/.
+# The engine is read from the sibling folder ../pixel-art/pixel-art (the @pixel alias), so both repositories are
+# checked out side by side as on a laptop, the engine at its main branch.
+# shortcut: an engine push does not republish the game; run this by hand (Actions → Publish game → Run workflow) or push the game.
+name: Publish game
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pixel-island
+      - uses: actions/checkout@v4
+        with:
+          repository: ahackel/pixel-art
+          path: pixel-art/pixel-art
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pixel-island/package-lock.json
+      - run: npm ci
+        working-directory: pixel-island
+      - run: npm run build
+        working-directory: pixel-island
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pixel-island/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

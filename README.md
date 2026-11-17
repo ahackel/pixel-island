@@ -24,3 +24,7 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 - `src/save.ts` — the saved game, written on waking and checked when read back.
 - `src/ui.ts` — the interface as pixel art (HUD, buttons, bag slots), on the engine's `shared/pixel-font.ts` and `shared/pixel-ui.ts`.
 - `src/i18n.ts` — English and German text.
+
+## Publishing
+
+`.github/workflows/pages.yml` builds the game with GitHub Pages on every push to `main`, checking out pixel-art beside it. It appears at `andreashackel.de/pixel-island/`. A change to the engine alone does not republish the game: run the workflow by hand (Actions → Publish game → Run workflow).
