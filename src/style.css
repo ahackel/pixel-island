@@ -20,5 +20,7 @@ canvas { image-rendering: pixelated; }
 .veil { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; pointer-events: none; }
 .menu .langs { display: flex; gap: 8px; }
 .menu .off { opacity: 0.5; }
-.menu { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; background: #0009; }
+.menu { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; background: #0009; transition: opacity 0.25s, visibility 0.25s; }
 [hidden] { display: none !important; }
+/* The menu stays laid out while hidden, so it can fade in and out. */
+.menu[hidden] { display: grid !important; opacity: 0; visibility: hidden; pointer-events: none; }

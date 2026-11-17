@@ -381,7 +381,7 @@ function frame(ms: number): void {
   // shortcut: slowness scales the step, so the walk cycle plays at full rate; add a speed to Actor if it reads as sliding.
   actor.update(world, paused ? 0 : dt * speedOf(game), di, dj, run, ms);
   // A target that cannot be reached is given up rather than walked against forever.
-  if (target && before[0] === actor.i && before[1] === actor.j && !paused) target = null;
+  if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
 
   swim(world.fish, world.floor, dt, fishRandom);
   const things: Thing[] = [...world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES), ...world.itemThings(), ...game.coconuts.map(coconutThing), actor.thing(world, ms), ...actor.dropThings()];
