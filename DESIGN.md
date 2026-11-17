@@ -6,7 +6,7 @@ A shipwreck survivor stranded on a tiny sand island with a few palms. Each day s
 
 - Runs in the browser, on desktop and iPad. Tap or click to walk there. Pinch or the wheel zooms, with a limited zoom-out. Two fingers pan.
 - Rotation (the scene editor's quarter turns) may come later; it is not in v1.
-- Sound and music: waves, ambience, simple effects.
+- Sound and music, later: waves, ambience, simple effects.
 - Text in English and German, following the tools' `i18n.ts` convention.
 
 ## Repos and the split
