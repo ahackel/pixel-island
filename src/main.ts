@@ -79,6 +79,8 @@ let game = saved ?? newGame();
 let time = 0;
 world.loose = game.items;
 const actor = new Actor(lookOf(defaultState()), game.at);
+/** A minute with nothing to do and the survivor sits down; any tap gets them up. */
+actor.sitAfter = 60_000;
 
 // ------------------------------------------------------------------ pictures
 
@@ -95,6 +97,7 @@ function coconutThing(c: { i: number; j: number }): Thing {
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Object.assign(document.createElement(tag), { className: cls });
 const app = document.getElementById('app')!;
+app.addEventListener('pointerdown', () => actor.rouse(performance.now()), { capture: true });
 
 type Pick = { coconut: { i: number; j: number } } | { item: PlacedItem };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
@@ -144,6 +147,7 @@ function think(key: Key): void {
   bubble.setAttribute('aria-label', t(key));
   bubble.hidden = false;
   bubbleUntil = performance.now() + 4000;
+  actor.talkUntil = bubbleUntil;
 }
 
 const veil = el('div', 'veil');
