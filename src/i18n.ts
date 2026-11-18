@@ -28,6 +28,15 @@ const en = {
   'think.storm': 'A storm! I should stay away from the water.',
   'think.fog': 'Fog everywhere. I can hardly see the sea.',
   'think.rainStarts': 'Here comes the rain.',
+  wood: 'Dry wood',
+  fire: 'Fire',
+  'think.wood': 'Dry driftwood. It would burn well.',
+  'think.woodFire': 'A dry stick. I could light it at the burning palm.',
+  'think.struck': 'Lightning hit the palm! It’s burning!',
+  'think.gotFire': 'A torch! Now to light some dry wood…',
+  'think.haveFire': 'My torch is already burning.',
+  'think.needStick': 'I need a stick in my hand to take the fire.',
+  'think.campfire': 'A campfire! Warm and bright.',
 };
 const de: typeof en = {
   day: 'Tag {n}',
@@ -57,6 +66,15 @@ const de: typeof en = {
   'think.storm': 'Ein Sturm! Ich bleibe lieber weg vom Wasser.',
   'think.fog': 'Überall Nebel. Ich sehe kaum das Meer.',
   'think.rainStarts': 'Jetzt kommt der Regen.',
+  wood: 'Trockenes Holz',
+  fire: 'Feuer',
+  'think.wood': 'Trockenes Treibholz. Das würde gut brennen.',
+  'think.woodFire': 'Ein trockener Stock. Den könnte ich an der brennenden Palme anzünden.',
+  'think.struck': 'Der Blitz hat in die Palme eingeschlagen! Sie brennt!',
+  'think.gotFire': 'Eine Fackel! Jetzt noch trockenes Holz anzünden…',
+  'think.haveFire': 'Meine Fackel brennt schon.',
+  'think.needStick': 'Ich brauche einen Stock in der Hand, um das Feuer zu nehmen.',
+  'think.campfire': 'Ein Lagerfeuer! Warm und hell.',
 };
 
 export type Key = keyof typeof en;

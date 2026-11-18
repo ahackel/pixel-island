@@ -10,6 +10,8 @@ canvas { image-rendering: pixelated; }
 .pbtn:disabled { cursor: default; }
 /* Pressed: the colours turned round, as in Lop Hop. */
 .pbtn:not(:disabled):active canvas { filter: invert(1) hue-rotate(180deg); }
+/* The bag slot whose thing is in the survivor's hands sits raised. */
+.bag .pbtn.held { transform: translateY(-12px); }
 
 .hud { position: absolute; top: max(var(--gap), env(safe-area-inset-top)); left: var(--gap); }
 .buttons { position: absolute; top: max(var(--gap), env(safe-area-inset-top)); right: var(--gap); display: flex; gap: 8px; }

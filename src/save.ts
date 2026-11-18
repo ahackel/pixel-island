@@ -5,7 +5,8 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
 
 export const BAG_SLOTS = 6;
-export type BagItem = 'coconut';
+export const BAG_ITEMS = ['coconut', 'wood', 'fire'] as const;
+export type BagItem = (typeof BAG_ITEMS)[number];
 
 export interface Game {
   day: number;
@@ -14,8 +15,14 @@ export interface Game {
   bag: BagItem[];
   /** Coconuts lying on the ground, in scene metres. */
   coconuts: { i: number; j: number }[];
+  /** Dry driftwood lying on the beach. */
+  wood: { i: number; j: number }[];
   /** Washed-up things, crates for now. */
   items: PlacedItem[];
+  /** The palm (index in the scene's plants) lightning burnt down to a stump, or null before the first storm. */
+  struck: number | null;
+  /** Campfires burning, in scene metres. */
+  fires: { i: number; j: number }[];
   at: { i: number; j: number };
 }
 
@@ -23,8 +30,10 @@ const KEY = 'pixel-island-save';
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);
+const spots = (v: unknown, size: number) => (Array.isArray(v) ? v.filter((c) => spot(c, size)).map((c) => ({ i: c.i, j: c.j })) : []);
 
-export function loadGame(size: number): Game | null {
+/** Reads the saved game; fields older saves lack start empty. */
+export function loadGame(size: number, palms: number): Game | null {
   const g = readStore<any>(KEY, null);
   if (!g || g.v !== 1 || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.coconuts) || !Array.isArray(g.items)) return null;
@@ -32,8 +41,11 @@ export function loadGame(size: number): Game | null {
     day: Math.floor(g.day),
     hunger: g.hunger,
     energy: g.energy,
-    bag: g.bag.filter((b: unknown) => b === 'coconut').slice(0, BAG_SLOTS),
-    coconuts: g.coconuts.filter((c: unknown) => spot(c, size)).map((c: any) => ({ i: c.i, j: c.j })),
+    bag: g.bag.filter((b: unknown) => BAG_ITEMS.includes(b as BagItem)).slice(0, BAG_SLOTS),
+    coconuts: spots(g.coconuts, size),
+    wood: spots(g.wood, size),
+    struck: Number.isInteger(g.struck) && num(g.struck, 0, palms - 1) ? g.struck : null,
+    fires: spots(g.fires, size),
     items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
     at: { i: g.at.i, j: g.at.j },
   };

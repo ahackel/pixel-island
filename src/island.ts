@@ -1,4 +1,5 @@
 // The first island: a low patch of sand in the sea with a few palms, the same every time from a seed.
+// Driftwood is the game's own, to pick up (see fire.ts), so it is not among the decorations.
 import { createScene, type PlacedPlant, type Scene } from '@pixel/engine/world/scene.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { generateIsland, levelAt, SEA_LEVEL, surfaceAt, type HeightMap } from '@pixel/engine/world/terrain.ts';
@@ -11,7 +12,7 @@ const SEED = 7;
 const PALMS = ['plant-palms-0', 'plant-palms-1', 'plant-palms-0', 'plant-palms-2'];
 /** Things lying about, by where they go: the beach, the sand above it, the shallows. */
 const DECOR: [string[], (map: HeightMap, i: number, j: number) => boolean][] = [
-  [['starfish-orange', 'starfish-pink', 'shell-spiral', 'shell-scallop', 'shell-spiral', 'driftwood', 'driftwood'], (m, i, j) => surfaceAt(m, i, j) === 'beach'],
+  [['starfish-orange', 'starfish-pink', 'shell-spiral', 'shell-scallop', 'shell-spiral'], (m, i, j) => surfaceAt(m, i, j) === 'beach'],
   [['pebbles-grey', 'pebbles-brown', 'shell-scallop'], (m, i, j) => levelAt(m, i, j) > SEA_LEVEL],
   [['coral', 'coral', 'coral', 'starfish-orange', 'pebbles-grey'], (m, i, j) => levelAt(m, i, j) === SEA_LEVEL - 1],
 ];
