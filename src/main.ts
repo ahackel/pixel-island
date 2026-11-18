@@ -6,7 +6,7 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
-import { flashAt, overcast } from '@pixel/engine/world/weather.ts';
+import { flashAt, lightning, overcast } from '@pixel/engine/world/weather.ts';
 import { foggy, KINDS, kindOf, weatherAt, type Forced } from './weather.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import { levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
@@ -167,7 +167,6 @@ function think(key: Key): void {
 }
 
 const veil = el('div', 'veil');
-const flash = el('div', 'flash');
 let veilDay = 0;
 function startNew(): void {
   clearGame();
@@ -214,7 +213,7 @@ function showMenu(): void {
   );
 }
 
-app.append(hudBox, buttons, bag, bubble, flash, veil, menuBox);
+app.append(hudBox, buttons, bag, bubble, veil, menuBox);
 showBag();
 
 // ?cheats: an orange button in the corner opens a drawer of buttons to get somewhere quickly while developing.
@@ -238,13 +237,10 @@ if (params.has('cheats')) {
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
     {
       words: 'WEATHER',
-      more: [
-        cheat('AUTO', () => (weatherCheat = undefined)),
-        ...[...KINDS, 'fog' as const].map((k) => cheat(k.toUpperCase(), () => {
-          weatherCheat = k;
-          think(`think.${k === 'sunny' ? 'morning' : k}`);
-        })),
-      ],
+      more: [...KINDS, 'fog' as const].map((k) => cheat(k.toUpperCase(), () => {
+        weatherCheat = k;
+        think(`think.${k === 'sunny' ? 'morning' : k}`);
+      })),
     },
   ], S, menuBox);
 }
@@ -423,7 +419,7 @@ function frame(ms: number): void {
   const image = world.compose(view.rect(), things, undefined, false, ms);
   light(image, overcast(weather));
   light(image, tintAt(time), fade);
-  flash.style.opacity = String(0.7 * flashAt(ms, weather) * (1 - fade));
+  lightning(image, flashAt(ms, weather) * (1 - fade));
   warnOnce('think.rainStarts', weather.rain > 0.4 && kindOf(game.day) !== 'rain' && kindOf(game.day) !== 'storm' && !weatherCheat);
   view.show(image);
 
