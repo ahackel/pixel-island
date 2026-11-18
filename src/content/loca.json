@@ -1,0 +1,190 @@
+{
+ "day": {
+  "en": "Day {n}",
+  "de": "Tag {n}"
+ },
+ "hunger": {
+  "en": "Hunger",
+  "de": "Hunger"
+ },
+ "energy": {
+  "en": "Energy",
+  "de": "Kraft"
+ },
+ "sleep": {
+  "en": "Sleep",
+  "de": "Schlafen"
+ },
+ "menu": {
+  "en": "Menu",
+  "de": "Menü"
+ },
+ "zoomIn": {
+  "en": "Zoom in",
+  "de": "Näher"
+ },
+ "zoomOut": {
+  "en": "Zoom out",
+  "de": "Weiter weg"
+ },
+ "bag": {
+  "en": "Bag",
+  "de": "Beutel"
+ },
+ "eat": {
+  "en": "Eat the coconut",
+  "de": "Kokosnuss essen"
+ },
+ "newGame": {
+  "en": "New game",
+  "de": "Neues Spiel"
+ },
+ "continue": {
+  "en": "Continue",
+  "de": "Weiterspielen"
+ },
+ "think.first": {
+  "en": "Where am I…? At least there are palms.",
+  "de": "Wo bin ich…? Immerhin gibt es Palmen."
+ },
+ "think.morning": {
+  "en": "A new morning.",
+  "de": "Ein neuer Morgen."
+ },
+ "think.washed": {
+  "en": "Something washed up on the beach!",
+  "de": "Da ist etwas an den Strand gespült!"
+ },
+ "think.crate": {
+  "en": "A crate from the ship. Nailed shut — I need a tool.",
+  "de": "Eine Kiste vom Schiff. Zugenagelt — ich brauche Werkzeug."
+ },
+ "think.full": {
+  "en": "My bag is full.",
+  "de": "Mein Beutel ist voll."
+ },
+ "think.hungry": {
+  "en": "I’m hungry…",
+  "de": "Ich habe Hunger…"
+ },
+ "think.tired": {
+  "en": "I’m so tired… I should sleep.",
+  "de": "Ich bin so müde… Ich sollte schlafen."
+ },
+ "think.wet": {
+  "en": "I can’t sleep in the water.",
+  "de": "Im Wasser kann ich nicht schlafen."
+ },
+ "think.faint": {
+  "en": "Everything goes black…",
+  "de": "Mir wird schwarz vor Augen…"
+ },
+ "think.yum": {
+  "en": "Mmm, coconut.",
+  "de": "Mmm, Kokosnuss."
+ },
+ "think.cloudy": {
+  "en": "Grey skies today.",
+  "de": "Heute ist es grau."
+ },
+ "think.windy": {
+  "en": "What a wind! The palms are shaking.",
+  "de": "So ein Wind! Die Palmen wackeln."
+ },
+ "think.rain": {
+  "en": "Rain… I’m getting soaked.",
+  "de": "Regen… Ich werde klatschnass."
+ },
+ "think.storm": {
+  "en": "A storm! I should stay away from the water.",
+  "de": "Ein Sturm! Ich bleibe lieber weg vom Wasser."
+ },
+ "think.fog": {
+  "en": "Fog everywhere. I can hardly see the sea.",
+  "de": "Überall Nebel. Ich sehe kaum das Meer."
+ },
+ "think.rainStarts": {
+  "en": "Here comes the rain.",
+  "de": "Jetzt kommt der Regen."
+ },
+ "wood": {
+  "en": "Dry wood",
+  "de": "Trockenes Holz"
+ },
+ "fire": {
+  "en": "Fire",
+  "de": "Feuer"
+ },
+ "think.wood": {
+  "en": "Dry driftwood. It would burn well.",
+  "de": "Trockenes Treibholz. Das würde gut brennen."
+ },
+ "think.woodFire": {
+  "en": "A dry stick. I could light it at the burning palm.",
+  "de": "Ein trockener Stock. Den könnte ich an der brennenden Palme anzünden."
+ },
+ "think.struck": {
+  "en": "Lightning hit the palm! It’s burning!",
+  "de": "Der Blitz hat in die Palme eingeschlagen! Sie brennt!"
+ },
+ "think.gotFire": {
+  "en": "A torch! Now to light some dry wood…",
+  "de": "Eine Fackel! Jetzt noch trockenes Holz anzünden…"
+ },
+ "think.haveFire": {
+  "en": "My torch is already burning.",
+  "de": "Meine Fackel brennt schon."
+ },
+ "think.needStick": {
+  "en": "I need a stick in my hand to take the fire.",
+  "de": "Ich brauche einen Stock in der Hand, um das Feuer zu nehmen."
+ },
+ "think.campfire": {
+  "en": "A campfire! Warm and bright.",
+  "de": "Ein Lagerfeuer! Warm und hell."
+ },
+ "stone": {
+  "en": "Stone",
+  "de": "Stein"
+ },
+ "spear": {
+  "en": "Spear",
+  "de": "Speer"
+ },
+ "eatFish": {
+  "en": "Eat the fish",
+  "de": "Fisch essen"
+ },
+ "think.stone": {
+  "en": "A sharp stone. With a stick it would make a spear.",
+  "de": "Ein spitzer Stein. Mit einem Stock wird daraus ein Speer."
+ },
+ "think.spear": {
+  "en": "A spear! Now I can catch fish.",
+  "de": "Ein Speer! Jetzt kann ich Fische fangen."
+ },
+ "think.caught": {
+  "en": "Got one!",
+  "de": "Erwischt!"
+ },
+ "think.missed": {
+  "en": "Too far away. I have to get closer.",
+  "de": "Zu weit weg. Ich muss näher ran."
+ },
+ "think.yumFish": {
+  "en": "Mmm, fish.",
+  "de": "Mmm, Fisch."
+ },
+ "eatCrab": {
+  "en": "Eat the crab",
+  "de": "Die Krabbe essen"
+ },
+ "think.pinched": {
+  "en": "Ouch! It pinched me and ran off.",
+  "de": "Autsch! Sie hat mich gezwickt und ist weg."
+ },
+ "think.yumCrab": {
+  "en": "Mmm, crab.",
+  "de": "Mmm, Krabbe."
+ }
+}

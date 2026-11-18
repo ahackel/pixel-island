@@ -93,5 +93,5 @@ Engine work this needs: the time-of-day tint, the touch camera and the fade. Eve
 - Sunset: for now the last minute of the 10-minute day, then 30 s of dusk (`src/clock.ts`).
 - How fast hunger and energy drain, and how many coconuts a day.
 - The exact size of the bag.
-- Which item is the day-1 wash-up, and the full 15-day key-item schedule.
+- Which item is the day-1 wash-up, and the full 15-day key-item schedule. (Set in the day editor, `/editor/`.)
 - What the night creatures do for the game (food? materials?).

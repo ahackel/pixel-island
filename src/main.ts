@@ -11,7 +11,7 @@ import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
 import { flashAt, lightning, overcast } from '@pixel/engine/world/weather.ts';
-import { foggy, KINDS, kindOf, weatherAt, type Forced } from './weather.ts';
+import { KINDS, kindOf, weatherAt, type Forced } from './weather.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import { levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing } from '@pixel/engine/world/world.ts';
@@ -27,6 +27,7 @@ import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { firstIsland } from './island.ts';
 import { BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
+import { dayPlan, type DayEvent } from './days.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
@@ -35,6 +36,9 @@ import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TO
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
 const SPEED = Math.max(0.1, Number(params.get('speed')) || 1);
+/** Debug, from the day editor: `?day=5` plays a new game from day 5 and never saves, so the real save is kept. */
+const TRYOUT = params.has('day');
+const START_DAY = Math.min(999, Math.max(1, Math.floor(Number(params.get('day'))) || 1));
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -61,11 +65,12 @@ let crabs: Crab[] = [];
 let crabsOut = 0;
 
 function newGame(): Game {
-  const g: Game = { day: 1, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], at: { ...scene.spawn } };
-  // The island starts with two coconuts lying about.
-  for (let n = 0; n < 2; n++) dropCoconuts(g);
+  const g: Game = { day: START_DAY, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], at: { ...scene.spawn } };
+  // The island starts with two coconuts lying about, unless the day's plan says otherwise.
+  for (let n = 0; n < (dayPlan(g.day).coconuts ?? 2); n++) dropCoconuts(g);
   washWood(g);
   for (let n = 0; n < 3; n++) layStone(g);
+  washUp(g);
   return g;
 }
 
@@ -96,8 +101,6 @@ function spotNear(p: { i: number; j: number }, r: number, span: number): { i: nu
 const dry = (p: { i: number; j: number }) =>
   p.i >= 0 && p.j >= 0 && p.i < scene.w && p.j < scene.h && levelAt(world.map, Math.floor(p.i), Math.floor(p.j)) >= SEA_LEVEL;
 
-/** What the sea brings in the morning: fixed things on fixed days. */
-const WASH_UPS: Record<number, PlacedItem['item']> = { 2: 'crate' };
 const beach: { i: number; j: number }[] = [];
 for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) if (surfaceAt(world.map, i, j) === 'beach') beach.push({ i: i + 0.5, j: j + 0.5 });
 /** Somewhere on the beach, anywhere in its tile. */
@@ -105,18 +108,18 @@ const onBeach = () => {
   const b = beach[Math.floor(Math.random() * beach.length)];
   return { i: b.i - 0.3 + Math.random() * 0.6, j: b.j - 0.3 + Math.random() * 0.6 };
 };
-function washUp(g: Game, extra?: PlacedItem['item']): boolean {
-  const item = extra ?? WASH_UPS[g.day];
-  if (!item || !beach.length) return false;
-  g.items.push({ item, ...onBeach() });
-  return true;
+/** What the sea brings: the day's planned wash-ups (days.json), or the items given. Whether anything came. */
+function washUp(g: Game, items: PlacedItem['item'][] = dayPlan(g.day).washUps ?? []): boolean {
+  if (!beach.length) return false;
+  for (const item of items) g.items.push({ item, ...onBeach() });
+  return items.length > 0;
 }
-/** Each morning the sea leaves a piece or two of driftwood, dry by the time it is found. */
+/** Each morning the sea leaves a piece or two of driftwood (or as planned), dry by the time it is found. */
 function washWood(g: Game): void {
-  for (let n = 0; n < 2 && g.wood.length < WOOD_LYING && beach.length; n++) g.wood.push(onBeach());
+  for (let n = 0; n < (dayPlan(g.day).wood ?? 2) && g.wood.length < WOOD_LYING && beach.length; n++) g.wood.push(onBeach());
 }
 
-const saved = params.has('new') ? null : loadGame(scene.w, palms.length);
+const saved = params.has('new') || TRYOUT ? null : loadGame(scene.w, palms.length);
 let game = saved ?? newGame();
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
@@ -252,7 +255,7 @@ function makeSpear(): void {
 const bubble = el('div', 'bubble');
 bubble.hidden = true;
 let bubbleUntil = 0;
-function think(key: Key): void {
+function think(key: string): void {
   bubble.replaceChildren(speechBubble(t(key), C, S));
   bubble.setAttribute('aria-label', t(key));
   bubble.hidden = false;
@@ -263,13 +266,14 @@ function think(key: Key): void {
 const veil = el('div', 'veil');
 let veilDay = 0;
 function startNew(): void {
-  clearGame();
+  if (!TRYOUT) clearGame();
   game = newGame();
   world.loose = game.items;
   Object.assign(actor, game.at);
   centerOn(actor);
   time = 0;
-  saveGame(game);
+  done.clear();
+  if (!TRYOUT) saveGame(game);
   hold(null);
 }
 
@@ -280,7 +284,7 @@ let started = false;
 function play(fresh: boolean): void {
   if (fresh) startNew();
   setPaused(false);
-  if (fresh || (!started && game.day === 1)) think('think.first');
+  if (fresh || (!started && game.day === 1)) think(morningThought(game.items.length > 0));
   started = true;
 }
 /** A flag for each language, the one in use bright. */
@@ -339,7 +343,7 @@ if (params.has('cheats')) {
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
     {
       words: 'WEATHER',
-      more: [...KINDS, 'fog' as const].map((k) => cheat(k.toUpperCase(), () => {
+      more: KINDS.map((k) => cheat(k.toUpperCase(), () => {
         weatherCheat = k;
         think(`think.${k === 'sunny' ? 'morning' : k}`);
       })),
@@ -534,12 +538,27 @@ function morning(fainted: boolean): void {
   world.fish.push(...spawnFish(world.floor, FISH_COUNT - world.fish.length, fishRandom));
   crabs = [];
   crabsOut = 0;
+  done.clear();
   // A storm leaves something on the beach.
+  const washed = washUp(game) || (kindOf(game.day - 1) === 'storm' && washUp(game, ['crate']));
+  if (!TRYOUT) saveGame(game);
+  setTimeout(() => think(morningThought(washed)), FADE.hold + FADE.in);
+}
+
+/** The morning's thought: the day's planned one, else what washed up, else the weather. */
+function morningThought(washed: boolean): string {
   const kind = kindOf(game.day);
-  const washed = washUp(game) || (kindOf(game.day - 1) === 'storm' && washUp(game, 'crate'));
-  saveGame(game);
-  const mood: Key = foggy(game.day) ? 'think.fog' : kind === 'sunny' ? 'think.morning' : `think.${kind}`;
-  setTimeout(() => think(washed ? 'think.washed' : mood), FADE.hold + FADE.in);
+  return dayPlan(game.day).thought ?? (washed ? 'think.washed' : kind === 'sunny' ? 'think.morning' : `think.${kind}`);
+}
+
+/** The day's planned events (days.json) that have happened, by index; none yet each morning. */
+const done = new Set<number>();
+/** A planned lightning strike, waiting for the next frame to draw it. */
+let strikeNow = false;
+function happen(e: DayEvent): void {
+  if (e.do === 'thought') think(e.text);
+  else if (e.do === 'washUp') washUp(game, [e.item]) && think('think.washed');
+  else strikeNow = true;
 }
 
 /** How dark the fade is now, and runs the morning at its darkest. */
@@ -598,6 +617,9 @@ function frame(ms: number): void {
     Object.assign(game, drain(game, dt * SPEED * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
+    dayPlan(game.day).events?.forEach((e, n) => {
+      if (time >= e.at * 60 && !done.has(n)) done.add(n), happen(e);
+    });
     if (faints(game)) {
       think('think.faint');
       sleep(true);
@@ -645,7 +667,10 @@ function frame(ms: number): void {
   world.setWeather(weather);
   // The storm's first bright flash is the one that strikes: a bolt into the palm, its crown bursting.
   const flashNow = flashAt(ms, weather);
-  const striking = game.struck === null && !paused && !sleeping && weather.storm > 0.9 && flashNow >= 1;
+  // A planned strike (days.json) comes in any weather, with a flash of its own.
+  const planned = strikeNow;
+  strikeNow = false;
+  const striking = game.struck === null && !paused && !sleeping && (planned || (weather.storm > 0.9 && flashNow >= 1));
   if (striking) strike();
   const plants = world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES);
   if (striking && game.struck !== null) {
@@ -665,7 +690,7 @@ function frame(ms: number): void {
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
   light(image, overcast(weather));
   // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
-  const flash = flashNow * (1 - fade);
+  const flash = (striking ? 1 : flashNow) * (1 - fade);
   const tint = tintAt(time);
   light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade);
   lightning(image, flash);
