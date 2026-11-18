@@ -3,6 +3,7 @@
 import { readStore, writeStore } from '@pixel/shared/files.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
+import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BAG_ITEMS, BUILDS, BUILD_KINDS, HUT_AT, type BagItem, type Build } from './crafts.ts';
 
 export const BAG_SLOTS = 6;
@@ -32,6 +33,8 @@ export interface Game {
   /** The hut and raft, as far as they are built. */
   builds: Build[];
   at: { i: number; j: number };
+  /** The survivor as made in the character editor. */
+  who: State;
 }
 
 const KEY = 'pixel-island-save';
@@ -68,6 +71,7 @@ export function loadGame(size: number, palms: number): Game | null {
       : [],
     items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
     at: { i: g.at.i, j: g.at.j },
+    who: cleanState(g.who),
   };
 }
 

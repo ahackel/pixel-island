@@ -6,7 +6,8 @@
 // needs a campfire. A vine makes an axe, which opens the crate and fells palms; logs, rope and the
 // cloth make a raft, and setting sail ends the game.
 import './style.css';
-import { defaultState, lookOf } from '@pixel/engine/character/character.ts';
+import { defaultState, lookOf, type State } from '@pixel/engine/character/character.ts';
+import { characterEditor } from './character.ts';
 import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
@@ -78,8 +79,19 @@ let crabsOut = 0;
 /** When the survivor set sail, which ends the game. */
 let ended: number | null = null;
 
-function newGame(): Game {
-  const g: Game = { day: START_DAY, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at: { ...scene.spawn } };
+/** The survivor as the editor first shows them: the default, with no spear, which they must make. */
+const firstWho = (): State => {
+  const who = defaultState();
+  who.worn.tool = null;
+  return who;
+};
+
+function newGame(who = firstWho()): Game {
+  // The survivor wakes washed ashore: on the beach by the water, nearest the island's middle.
+  const wet = (b: { i: number; j: number }) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([di, dj]) => !dry({ i: b.i + di, j: b.j + dj }));
+  const far = (b: { i: number; j: number }) => Math.hypot(b.i - scene.spawn.i, b.j - scene.spawn.j);
+  const shore = beach.filter(wet).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
+  const g: Game = { day: START_DAY, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at: { ...shore }, who };
   // The island starts with two coconuts lying about, unless the day's plan says otherwise.
   for (let n = 0; n < (dayPlan(g.day).coconuts ?? 2); n++) dropCoconuts(g);
   washWood(g);
@@ -144,7 +156,9 @@ let game = saved ?? newGame();
 let time = 0;
 world.loose = game.items;
 keepStanding();
-const actor = new Actor(lookOf(defaultState()), game.at);
+const actor = new Actor(lookOf(game.who), game.at);
+/** Whether the survivor is on the island: not before the first character is made. */
+let present = !!saved;
 /** How happy the survivor is, 0 to 1: fed and rested. Their face shows it. */
 const happiness = () => game.hunger * game.energy;
 const moodOf = (h: number): Mood => (h >= 0.75 ? 'happy' : h >= 0.5 ? 'smile' : h >= 0.25 ? 'neutral' : 'sad');
@@ -171,7 +185,7 @@ function dress(): void {
   if (!byMood) looks.set(held, (byMood = new Map()));
   let look = byMood.get(m);
   if (!look) {
-    look = lookOf({ ...defaultState(), mood: m });
+    look = lookOf({ ...game.who, mood: m });
     look.items = [...look.items.filter((it) => it.slot !== 'tool'), ...(held ? [held] : [])];
     byMood.set(m, look);
   }
@@ -490,9 +504,14 @@ function storyBox(words: string): HTMLCanvasElement {
 
 const veil = el('div', 'veil');
 let veilDay = 0;
-function startNew(): void {
+function startNew(who: State): void {
   if (!TRYOUT) clearGame();
-  game = newGame();
+  game = newGame(who);
+  present = true;
+  veilDay = 0;
+  looks.clear();
+  mood = null;
+  feel();
   world.loose = game.items;
   Object.assign(actor, game.at);
   keepStanding();
@@ -509,11 +528,25 @@ function startNew(): void {
 const menuBox = el('div', 'menu');
 /** Whether the player has played since the page loaded. */
 let started = false;
-function play(fresh: boolean): void {
-  if (fresh) startNew();
+function play(): void {
   setPaused(false);
-  if (fresh || (!started && game.day === 1)) tell(morningThought(game.items.length > 0));
+  if (!started && game.day === 1) tell(morningThought(game.items.length > 0));
   started = true;
+}
+/** The character editor, over the menu; once confirmed the screen goes dark and the survivor wakes on the beach. */
+function makeCharacter(): void {
+  const editor = characterEditor(present ? game.who : firstWho(), (who) => {
+    editor.remove();
+    setPaused(false);
+    forget();
+    started = true;
+    sleeping = { start: performance.now(), fainted: false, woken: false, wakes: false, intro: who };
+  }, () => {
+    editor.remove();
+    menuBox.hidden = false;
+  });
+  menuBox.hidden = true;
+  app.append(editor);
 }
 /** A flag for each language, the one in use bright. */
 function flags(): HTMLElement {
@@ -532,8 +565,8 @@ function flags(): HTMLElement {
 function showMenu(): void {
   menuBox.replaceChildren(
     label('PIXEL ISLAND', C.paper, S * 3),
-    ...((saved || started) && !ended ? [pixelButton(t('continue'), { words: t('continue') }, () => play(false))] : []),
-    pixelButton(t('newGame'), { words: t('newGame') }, () => play(true)),
+    ...(present && !ended ? [pixelButton(t('continue'), { words: t('continue') }, play)] : []),
+    pixelButton(present ? t('newGame') : t('createCharacter'), { words: present ? t('newGame') : t('createCharacter') }, makeCharacter),
     // The page is built in one language, so a change reloads it; offered only before playing, when that loses nothing.
     ...(started ? [] : [flags()]),
   );
@@ -593,7 +626,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) setPa
 const LIE_MS = 1100;
 const WAKE_MS = 1400;
 /** The sleep (or faint) under way: when the fade began, and whether it was a faint. */
-let sleeping: { start: number; fainted: boolean; woken: boolean; wakes: boolean } | null = null;
+/** `intro`: not a night but the start, with the survivor made in the editor washed up on the beach. */
+let sleeping: { start: number; fainted: boolean; woken: boolean; wakes: boolean; intro?: State } | null = null;
 
 /** Whether the press under way began on the survivor: then moving it walks nowhere. */
 let onSelf = false;
@@ -915,8 +949,13 @@ function fadeAt(ms: number): number {
   if (e < FADE.out) return Math.max(0, e) / FADE.out;
   if (!sleeping.woken) {
     sleeping.woken = true;
+    if (sleeping.intro) {
+      startNew(sleeping.intro);
+      centerOn(actor);
+      actor.lieDown(ms, true);
+    }
     // Thunder: awake again in the same night, and the lightning strikes soon after.
-    if (sleeping.wakes) {
+    else if (sleeping.wakes) {
       stormWoken = true;
       setTimeout(() => tell('think.thunder'), FADE.hold + FADE.in);
       setTimeout(() => (strikeNow = true), FADE.hold + FADE.in + 2500);
@@ -924,10 +963,13 @@ function fadeAt(ms: number): number {
   }
   if (e < FADE.out + FADE.hold) return 1;
   if (e < FADE.out + FADE.hold + FADE.in) return 1 - (e - FADE.out - FADE.hold) / FADE.in;
+  const intro = !!sleeping.intro;
   sleeping = null;
   // Morning: lying there, the survivor opens their eyes, and a moment later gets up.
   actor.asleep = false;
-  setTimeout(() => actor.rouse(performance.now()), WAKE_MS);
+  // At the start they wonder first, and get up at the tap that puts the thought away.
+  if (intro) setTimeout(() => (tell('think.howHere'), tell(morningThought(game.items.length > 0))), WAKE_MS);
+  else setTimeout(() => actor.rouse(performance.now()), WAKE_MS);
   return 0;
 }
 
@@ -1046,7 +1088,7 @@ function frame(ms: number): void {
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     ...game.lying.map((l) => LYING[l.item](at(l))), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
-    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), actor.thing(world, ms), ...actor.dropThings(),
+    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...(present ? [actor.thing(world, ms), ...actor.dropThings()] : []),
   ];
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);

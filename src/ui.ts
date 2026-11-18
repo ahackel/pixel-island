@@ -21,8 +21,11 @@ export const ICONS = {
   sun: ['....y....', '.y.....y.', '...ooo...', '..oyyyo..', 'y.oyyyo.y', '..oyyyo..', '...ooo...', '.y.....y.', '....y....'],
   dusk: ['.........', '.y..y..y.', '.........', '...ooo...', '..oyyyo..', '.oyyyyyo.', 'wwwwwwwww', '.........', '..ww.ww..'],
   moon: ['..mmmm...', '.mmms..t.', 'mmms.....', 'mmms.....', 'mmms..t..', 'mmms.....', '.mmms....', '..mmmm...', '.........'],
+  left: ['.........', '.....x...', '....xx...', '...xxx...', '..xxxx...', '...xxx...', '....xx...', '.....x...', '.........'],
+  right: ['.........', '...x.....', '...xx....', '...xxx...', '...xxxx..', '...xxx...', '...xx....', '...x.....', '.........'],
+  dice: ['.xxxxxxx.', 'x.......x', 'x.x...x.x', 'x.......x', 'x...x...x', 'x.......x', 'x.x...x.x', 'x.......x', '.xxxxxxx.'],
   // Flags for the language, a flag's shape inside the square.
-  en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'ttttttttt', 'rrrrrrrrr', '.........', '.........'],
+  en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'rrrrrrrrr', 'ttttttttt', '.........', '.........'],
   de: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', 'rrrrrrrrr', 'rrrrrrrrr', 'yyyyyyyyy', 'yyyyyyyyy', '.........', '.........'],
 } as const;
 export type Icon = keyof typeof ICONS;

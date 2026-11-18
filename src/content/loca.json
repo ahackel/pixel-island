@@ -332,8 +332,8 @@
   "de": "Der Wind treibt Krabben den Strand hinauf!"
  },
  "think.day3.morning": {
-  "en": "Rain clouds… I need a roof. Driftwood for a frame, palm leaves on top.",
-  "de": "Regenwolken… Ich brauche ein Dach. Treibholz fürs Gerüst, Palmblätter obendrauf."
+  "en": "Rain clouds… I need shelter. Driftwood for walls, palm leaves for a roof.",
+  "de": "Regenwolken… Ich brauche einen Unterschlupf. Treibholz für Wände, Palmblätter fürs Dach."
  },
  "think.day4.night": {
   "en": "What a storm. I hope I can sleep tonight…",
@@ -350,5 +350,121 @@
  "think.day7.morning": {
   "en": "Logs, rope, cloth. Time to build a raft and leave!",
   "de": "Stämme, Seil, Tuch. Zeit, ein Floß zu bauen und aufzubrechen!"
+ },
+ "createCharacter": {
+  "en": "Create character",
+  "de": "Figur erstellen"
+ },
+ "think.howHere": {
+  "en": "How did I get here?",
+  "de": "Wie bin ich hierhergekommen?"
+ },
+ "char.body": {
+  "en": "Body",
+  "de": "Körper"
+ },
+ "char.face": {
+  "en": "Face",
+  "de": "Gesicht"
+ },
+ "char.hair": {
+  "en": "Hair",
+  "de": "Haare"
+ },
+ "char.clothes": {
+  "en": "Clothes",
+  "de": "Kleidung"
+ },
+ "char.skin": {
+  "en": "Skin",
+  "de": "Haut"
+ },
+ "char.figure": {
+  "en": "Figure",
+  "de": "Figur"
+ },
+ "char.build": {
+  "en": "Build",
+  "de": "Statur"
+ },
+ "char.head": {
+  "en": "Head",
+  "de": "Kopf"
+ },
+ "char.eyes": {
+  "en": "Eyes",
+  "de": "Augen"
+ },
+ "char.brows": {
+  "en": "Brows",
+  "de": "Brauen"
+ },
+ "char.freckles": {
+  "en": "Freckles",
+  "de": "Sommersprossen"
+ },
+ "char.glasses": {
+  "en": "Glasses",
+  "de": "Brille"
+ },
+ "char.hairStyle": {
+  "en": "Style",
+  "de": "Frisur"
+ },
+ "char.color": {
+  "en": "Colour",
+  "de": "Farbe"
+ },
+ "char.beard": {
+  "en": "Beard",
+  "de": "Bart"
+ },
+ "char.top": {
+  "en": "Top",
+  "de": "Oberteil"
+ },
+ "char.bottom": {
+  "en": "Bottom",
+  "de": "Unterteil"
+ },
+ "char.hat": {
+  "en": "Hat",
+  "de": "Hut"
+ },
+ "char.none": {
+  "en": "None",
+  "de": "Keine"
+ },
+ "char.yes": {
+  "en": "Yes",
+  "de": "Ja"
+ },
+ "char.no": {
+  "en": "No",
+  "de": "Nein"
+ },
+ "char.prev": {
+  "en": "Previous",
+  "de": "Vorige"
+ },
+ "char.next": {
+  "en": "Next",
+  "de": "Nächste"
+ },
+ "char.back": {
+  "en": "Back",
+  "de": "Zurück"
+ },
+ "char.random": {
+  "en": "Random",
+  "de": "Zufall"
+ },
+ "char.start": {
+  "en": "Start",
+  "de": "Los"
+ },
+ "char.own": {
+  "en": "Original",
+  "de": "Original"
  }
 }

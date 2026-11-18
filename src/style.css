@@ -42,3 +42,10 @@ canvas { image-rendering: pixelated; }
 .bag .pbtn.dim { opacity: 0.4; }
 /* An action that can't be done here, like sleeping out in the rain, shows faded. */
 .actions .pbtn[aria-disabled='true'] { opacity: 0.45; }
+/* The character editor, over the menu: the survivor turning, tabs, a row per choice. */
+.editor { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: #000b; padding: 16px; overflow-y: auto; }
+.editor .tabs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.editor .tabs .off { opacity: 0.5; }
+.editor .rows { display: flex; flex-direction: column; gap: 6px; }
+.editor .row { display: flex; gap: 4px; align-items: center; }
+.editor .value { display: block; line-height: 0; }
