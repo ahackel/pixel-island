@@ -37,6 +37,14 @@ const en = {
   'think.haveFire': 'My torch is already burning.',
   'think.needStick': 'I need a stick in my hand to take the fire.',
   'think.campfire': 'A campfire! Warm and bright.',
+  stone: 'Stone',
+  spear: 'Spear',
+  eatFish: 'Eat the fish',
+  'think.stone': 'A sharp stone. With a stick it would make a spear.',
+  'think.spear': 'A spear! Now I can catch fish.',
+  'think.caught': 'Got one!',
+  'think.missed': 'Too far away. I have to get closer.',
+  'think.yumFish': 'Mmm, fish.',
 };
 const de: typeof en = {
   day: 'Tag {n}',
@@ -75,6 +83,14 @@ const de: typeof en = {
   'think.haveFire': 'Meine Fackel brennt schon.',
   'think.needStick': 'Ich brauche einen Stock in der Hand, um das Feuer zu nehmen.',
   'think.campfire': 'Ein Lagerfeuer! Warm und hell.',
+  stone: 'Stein',
+  spear: 'Speer',
+  eatFish: 'Fisch essen',
+  'think.stone': 'Ein spitzer Stein. Mit einem Stock wird daraus ein Speer.',
+  'think.spear': 'Ein Speer! Jetzt kann ich Fische fangen.',
+  'think.caught': 'Erwischt!',
+  'think.missed': 'Zu weit weg. Ich muss näher ran.',
+  'think.yumFish': 'Mmm, Fisch.',
 };
 
 export type Key = keyof typeof en;

@@ -5,7 +5,7 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
 
 export const BAG_SLOTS = 6;
-export const BAG_ITEMS = ['coconut', 'wood', 'fire'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 
 export interface Game {
@@ -17,6 +17,8 @@ export interface Game {
   coconuts: { i: number; j: number }[];
   /** Dry driftwood lying on the beach. */
   wood: { i: number; j: number }[];
+  /** Stones lying about, for a spear's point. */
+  stones: { i: number; j: number }[];
   /** Washed-up things, crates for now. */
   items: PlacedItem[];
   /** The palm (index in the scene's plants) lightning burnt down to a stump, or null before the first storm. */
@@ -44,6 +46,7 @@ export function loadGame(size: number, palms: number): Game | null {
     bag: g.bag.filter((b: unknown) => BAG_ITEMS.includes(b as BagItem)).slice(0, BAG_SLOTS),
     coconuts: spots(g.coconuts, size),
     wood: spots(g.wood, size),
+    stones: spots(g.stones, size),
     struck: Number.isInteger(g.struck) && num(g.struck, 0, palms - 1) ? g.struck : null,
     fires: spots(g.fires, size),
     items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),

@@ -14,6 +14,8 @@ export const ENERGY_S = 1200;
 export const LOW = 0.25;
 export const SLOW = 0.5;
 export const COCONUT = 0.35;
+/** How much a fish fills. */
+export const FISH = 0.5;
 
 export type Phase = 'day' | 'sunset' | 'dusk' | 'night';
 
