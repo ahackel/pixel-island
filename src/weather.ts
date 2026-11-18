@@ -1,7 +1,7 @@
 // Which weather each day has. Picked from the day number, so nothing needs saving: day 1 is
 // sunny, the next two stay gentle, then a weighted pick that often keeps yesterday's weather and
 // gets better or worse a step at a time. Through the afternoon the
-// sky turns toward tomorrow's weather, so the night already brings it; fog does not: a foggy day is
+// sky turns toward tomorrow's weather (clouds and wind; rain only falls on a rain or storm day); fog does not: a foggy day is
 // fog from morning to night, and the fog comes and goes only overnight. A day's plan (days.json) can
 // set its weather; the days after it follow on from what it set.
 import { CLEAR, mixWeather, type Weather } from '@pixel/engine/world/weather.ts';
@@ -64,5 +64,6 @@ export function weatherAt(day: number, t: number, forced?: Forced): Weather {
   const tomorrow = forced ?? kindOf(day + 1);
   if (today === 'fog' || tomorrow === 'fog') return { ...LOOKS[today] };
   const k = Math.min(1, Math.max(0, (t - 0.6 * DAY_S) / (0.4 * DAY_S + DUSK_S)));
-  return mixWeather(LOOKS[today], LOOKS[tomorrow], k * k * (3 - 2 * k));
+  // Rain and storm stay the day's own: only a rain or storm day has them, also in its evening.
+  return { ...mixWeather(LOOKS[today], LOOKS[tomorrow], k * k * (3 - 2 * k)), rain: LOOKS[today].rain, storm: LOOKS[today].storm };
 }

@@ -9,7 +9,7 @@ canvas { image-rendering: pixelated; }
 .pbtn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
 .pbtn:disabled { cursor: default; }
 /* Pressed: the colours turned round, as in Lop Hop. */
-.pbtn:not(:disabled):active canvas { filter: invert(1) hue-rotate(180deg); }
+.pbtn:not(:disabled):not([aria-disabled='true']):active canvas { filter: invert(1) hue-rotate(180deg); }
 /* The bag slot whose thing is in the survivor's hands sits raised. */
 .bag .pbtn.held { transform: translateY(-12px); }
 
@@ -40,3 +40,5 @@ canvas { image-rendering: pixelated; }
 .bag .pbtn { transition: opacity 0.12s, transform 0.12s; }
 .bag .pbtn.fits { transform: translateY(-4px); filter: drop-shadow(0 0 3px #fff6c8); }
 .bag .pbtn.dim { opacity: 0.4; }
+/* An action that can't be done here, like sleeping out in the rain, shows faded. */
+.actions .pbtn[aria-disabled='true'] { opacity: 0.45; }
