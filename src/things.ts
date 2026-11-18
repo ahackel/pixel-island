@@ -1,15 +1,19 @@
 // Small hand-drawn pictures for the week's new things: palm leaves, the vine, the stone axe, what the
-// crate held, logs, and the hut and raft at each stage of building.
+// crate held, logs, the raft at each stage of building; and the hut, laid from the engine's building pieces.
 import { PALETTE } from '@pixel/engine/core/palette.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { tool } from './fire.ts';
 import { STONE } from './fishing.ts';
-import type { BuildKind, Loose } from './crafts.ts';
+import { HUT_AT, HUT_PLAN } from './crafts.ts';
+import { cellKey, edgeKey, emptyBuilding, type Building, type PieceKind } from '@pixel/engine/world/building/building.ts';
+import { plankWall } from '@pixel/engine/world/building/pieces/plank-wall.ts';
+import { thatchRoof } from '@pixel/engine/world/building/pieces/thatch-roof.ts';
 
 type Rows = { rows: string[]; colors: Record<string, string> };
 const picture = ({ rows, colors }: Rows): Picture => ({ get: (x, y) => colors[rows[y]?.[x]] ?? null });
-const thing = (r: Rows) => {
+/** A thing standing on the ground from rows, its foot the middle of the bottom row. */
+export const thing = (r: Rows) => {
   const p = picture(r);
   const w = Math.max(...r.rows.map((row) => row.length)), h = r.rows.length;
   return (spot: Thing['spot']): Thing => ({ spot, picture: p, w, h, foot: { x: Math.floor(w / 2), y: h - 1 } });
@@ -32,28 +36,33 @@ export const AXE_IN_BAG: Rows = {
 /** The axe held upright in one hand, its stone head on top. */
 export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({ length: 11 }, (_, y) => (y === 10 ? '...w...' : '...W...'))], { S: 'stone' });
 
-const LOOSE_THINGS: Record<Loose, (spot: Thing['spot']) => Thing> = { vine: thing(VINE), rope: thing(ROPE), cloth: thing(CLOTH), log: thing(LOG) };
-export const looseThing = (kind: Loose, spot: Thing['spot']) => LOOSE_THINGS[kind](spot);
 
 // ------------------------------------------------------------------ the hut
 
-/** The hut, an A-frame about the survivor's height seen from the front: after stage 1 only its poles, after stage 2 a roof of leaves. */
-function hutRows(roofed: boolean): Rows {
-  const H = 30, W = 2 * H - 1, mid = H - 1;
-  const rows = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => {
-    const d = Math.abs(x - mid);
-    if (d > y + 1) return '.';
-    // Two poles leaning together, crossed at the top, and a third standing in the middle.
-    if (d >= y - 1) return d === y + 1 ? 'w' : 'W';
-    if (!roofed) return d === 0 ? 'W' : y === H - 1 ? '.' : '.';
-    // The doorway: a dark arch in the lower half.
-    if (y > H * 0.45 && d < (y - H * 0.45) * 0.55 + 1) return 'd';
-    // Leaves in overlapping rows, a darker edge under each.
-    return y % 4 === 3 ? 'g' : (x + Math.floor(y / 4)) % 5 === 0 ? 'g' : 'G';
-  }).join(''));
-  return { rows, colors: { ...WOOD, ...GREEN, d: '#2a2118' } };
+/** How the hut's pieces look: driftwood planks and a hipped roof of palm thatch. */
+export const PIECE_KINDS: Record<string, PieceKind> = {
+  plank: plankWall({ overhang: 3, top: 'slope', seed: 1 }),
+  thatch: thatchRoof({ rise: 3, eaves: 0.3, seed: 1 }),
+};
+/** Wall height, in levels: about the survivor's height. */
+const HUT_HEIGHT = 4;
+
+/** The hut as laid in its first `stage` stages, on the map. */
+export function hutBuilding(stage: number): Building {
+  const b = emptyBuilding(HUT_HEIGHT);
+  const i0 = HUT_AT.i - 1, j0 = HUT_AT.j - 1;
+  for (const s of HUT_PLAN.slice(0, stage)) {
+    if (s === 'roof') {
+      for (let j = j0; j < j0 + 2; j++) for (let i = i0; i < i0 + 2; i++) b.cells.set(cellKey(i, j), { kind: 'thatch', i, j });
+    } else {
+      for (const w of s) {
+        const edge = { axis: w.axis, i: i0 + w.i, j: j0 + w.j };
+        b.edges.set(edgeKey(edge), { kind: 'plank', edge });
+      }
+    }
+  }
+  return b;
 }
-const HUT = [thing(hutRows(false)), thing(hutRows(true))];
 
 // ------------------------------------------------------------------ the raft
 
@@ -78,8 +87,5 @@ function raftRows(stage: number): Rows {
 }
 const RAFT = [1, 2, 3].map((s) => thing(raftRows(s)));
 
-/** A structure as built so far (at least one stage). */
-export function buildThing(kind: BuildKind, stage: number, spot: Thing['spot']): Thing {
-  const pics = kind === 'hut' ? HUT : RAFT;
-  return pics[Math.min(pics.length, stage) - 1](spot);
-}
+/** The raft as built so far (at least one stage). */
+export const raftThing = (stage: number, spot: Thing['spot']): Thing => RAFT[Math.min(RAFT.length, stage) - 1](spot);

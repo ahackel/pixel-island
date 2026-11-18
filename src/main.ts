@@ -29,14 +29,14 @@ import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
 import { SHADOW } from '@pixel/engine/core/palette.ts';
 import { firstIsland } from './island.ts';
-import { BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
+import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { dayPlan, type DayEvent } from './days.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
-import { CRAB_IN_BAG, FISH_IN_BAG, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
-import { BUILD_KINDS, BUILDS, finished, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, buildThing, CLOTH, LEAF, LOG, looseThing, ROPE, VINE } from './things.ts';
+import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
+import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
+import { AXE, AXE_IN_BAG, CLOTH, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -48,8 +48,6 @@ const START_DAY = Math.min(999, Math.max(1, Math.floor(Number(params.get('day'))
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
-/** The most energy a poor night's rest gives back. */
-const POOR_REST = 0.6;
 /** How many pieces of driftwood the sea leaves lying on the beach at most. */
 const WOOD_LYING = 4;
 /** How many fish swim round the island; the ones caught are back by the next morning. */
@@ -65,6 +63,7 @@ const GRAB_LUCK = 0.25;
 
 const scene = firstIsland();
 const world = new World(scene);
+world.pieceKinds = PIECE_KINDS;
 const fishRandom = rng(Date.now());
 world.fish = spawnFish(world.floor, FISH_COUNT, fishRandom);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
@@ -237,15 +236,19 @@ function hold(item: BagItem | null): void {
 }
 const BAG_PICTURES = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
-  stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG, crab: CRAB_IN_BAG,
+  stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG[0], wrasse: FISH_IN_BAG[1], snapper: FISH_IN_BAG[2], crab: CRAB_IN_BAG,
   leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG,
 };
 /** What is eaten from the bag, and how much it fills. */
 const FOOD: Partial<Record<BagItem, { fills: number; label: Key; yum: Key }>> = {
   coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
   fish: { fills: FISH, label: 'eatFish', yum: 'think.yumFish' },
+  wrasse: { fills: FISH, label: 'eatFish', yum: 'think.yumFish' },
+  snapper: { fills: FISH, label: 'eatFish', yum: 'think.yumFish' },
   crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
 };
+/** Bag things put down on the ground, in the bag's pictures. */
+const LYING = Object.fromEntries(BAG_ITEMS.map((k) => [k, thing(BAG_PICTURES[k])])) as Record<BagItem, ReturnType<typeof thing>>;
 const bag = el('div', 'bag');
 bag.setAttribute('aria-label', t('bag'));
 function showBag(): void {
@@ -255,15 +258,14 @@ function showBag(): void {
     b.append(slot(item ? BAG_PICTURES[item] : null));
     // The first of the kind in hand is shown lifted.
     if (item && item === hand && game.bag.indexOf(item) === n) b.classList.add('held');
+    if (item) b.addEventListener('pointerdown', (e) => { if (!paused && !sleeping) dragging = { n, x: e.clientX, y: e.clientY, ghost: null }; });
     if (item) {
-      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'fish' | 'crab'>));
+      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'crab' | (typeof FISH_ITEMS)[number]>));
       b.setAttribute('aria-label', words);
       b.title = words;
       b.addEventListener('click', () => {
         if (paused || sleeping) return;
         if (FOOD[item]) return eat(n);
-        const recipe = recipeFor(hand, item, game.bag);
-        if (recipe) return make(recipe);
         hold(item === hand ? null : item);
       });
     } else b.disabled = true;
@@ -271,7 +273,87 @@ function showBag(): void {
   }));
 }
 
-/** Things tied together, one in hand and another tapped in the bag: a stick and a stone a spear, with a vine an axe. */
+/**
+ * A bag slot being dragged. Dropped on another slot, the two are tied together if they make
+ * something (with whatever else the recipe needs from the bag); dropped over the island, the
+ * thing is put down at the survivor's feet. While dragging, the slots it goes with light up.
+ */
+let dragging: { n: number; x: number; y: number; ghost: HTMLElement | null } | null = null;
+const slots = () => [...bag.children] as HTMLElement[];
+/** The bag slot under a point, or -1. */
+const slotAt = (x: number, y: number) => slots().findIndex((b) => { const r = b.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
+/** What dragging slot `n` onto slot `m` makes, if anything. */
+const recipeOnto = (n: number, m: number) => (m < 0 || m === n || !game.bag[m] ? null : recipeFor(game.bag[n], game.bag[m], game.bag));
+/** Lights the slots the dragged thing goes with, and under the finger the other parts it would use. */
+function markSlots(n: number | null, over = -1): void {
+  const recipe = n === null ? null : recipeOnto(n, over);
+  // The other parts: the first of each further thing the recipe needs, besides the two being tied.
+  const parts = new Set<number>();
+  if (recipe && n !== null) {
+    const left = game.bag.map((it, k) => (k === n || k === over ? null : it));
+    for (const need of takeOut(recipe.needs, [game.bag[n], game.bag[over]])) {
+      const k = left.indexOf(need);
+      if (k >= 0) { parts.add(k); left[k] = null; }
+    }
+  }
+  slots().forEach((b, m) => {
+    const fits = n !== null && !!recipeOnto(n, m);
+    b.classList.toggle('fits', fits || parts.has(m));
+    b.classList.toggle('dim', n !== null && m !== n && !fits && !parts.has(m));
+  });
+}
+/** `needs` without one of each of `used`. */
+function takeOut(needs: readonly BagItem[], used: BagItem[]): BagItem[] {
+  const out = [...needs];
+  for (const u of used) { const k = out.indexOf(u); if (k >= 0) out.splice(k, 1); }
+  return out;
+}
+window.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  if (!dragging.ghost && Math.hypot(e.clientX - dragging.x, e.clientY - dragging.y) > 12) {
+    dragging.ghost = el('div', 'ghost');
+    dragging.ghost.append(slot(BAG_PICTURES[game.bag[dragging.n]]));
+    app.append(dragging.ghost);
+  }
+  if (!dragging.ghost) return;
+  dragging.ghost.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+  markSlots(dragging.n, slotAt(e.clientX, e.clientY));
+});
+const endDrag = (e: PointerEvent) => {
+  const d = dragging;
+  dragging = null;
+  if (!d?.ghost) return;
+  d.ghost.remove();
+  markSlots(null);
+  if (e.type !== 'pointerup' || paused || sleeping) return;
+  const over = slotAt(e.clientX, e.clientY);
+  if (over >= 0) {
+    if (over === d.n) return;
+    const recipe = recipeOnto(d.n, over);
+    return recipe ? make(recipe) : game.bag[over] ? think('think.noMatch') : undefined;
+  }
+  const r = bag.getBoundingClientRect();
+  const overBag = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top - 16 && e.clientY <= r.bottom;
+  if (!overBag) putDown(d.n);
+};
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+
+/** Puts a thing from the bag down at the survivor's feet, where it can be picked up again; the torch is kept. */
+function putDown(n: number): void {
+  const item = game.bag[n];
+  if (!item || item === 'fire' || paused || sleeping) return;
+  game.bag.splice(n, 1);
+  const at = { i: actor.i, j: actor.j };
+  if (item === 'wood') game.wood.push(at);
+  else if (item === 'coconut') game.coconuts.push(at);
+  else if (item === 'stone') game.stones.push(at);
+  else game.lying.push({ item, ...at });
+  actor.emote('use', performance.now());
+  hold(hand && game.bag.includes(hand) ? hand : null);
+}
+
+/** Things tied together, one dragged onto another in the bag: a stick and a stone a spear, with a vine an axe. */
 function make(recipe: ReturnType<typeof recipeFor> & {}): void {
   takeFrom(game.bag, recipe.needs);
   game.bag.push(recipe.makes);
@@ -472,7 +554,7 @@ setPaused(true);
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
 /** The sleep (or faint) under way: when it began, and whether it was a faint. */
-let sleeping: { start: number; fainted: boolean; woken: boolean; wakes: boolean; poor: boolean } | null = null;
+let sleeping: { start: number; fainted: boolean; woken: boolean; wakes: boolean } | null = null;
 
 function press(p: { x: number; y: number }, start: boolean): void {
   if (paused || sleeping || ended) return;
@@ -563,7 +645,9 @@ function arrive(pick: Pick): void {
     game.lying = game.lying.filter((l) => l !== pick.loose);
     game.bag.push(pick.loose.item);
     showBag();
-    return think(`think.${pick.loose.item}`);
+    // Only what the sea or the crate brought is new enough to think about.
+    if (isLoose(pick.loose.item)) think(`think.${pick.loose.item}`);
+    return;
   }
   if ('coconut' in pick) {
     game.coconuts = game.coconuts.filter((c) => c !== pick.coconut);
@@ -589,7 +673,7 @@ function spear(fish: (typeof world.fish)[number]): void {
   actor.emote('use', performance.now());
   if (game.bag.length >= BAG_SLOTS) return think('think.full');
   world.fish.splice(world.fish.indexOf(fish), 1);
-  game.bag.push('fish');
+  game.bag.push(FISH_ITEMS[fish.kind % FISH_ITEMS.length]);
   showBag();
   think('think.caught');
 }
@@ -633,10 +717,13 @@ function fell(k: number): void {
   think('think.felled');
 }
 
-/** The hut or raft that could be built (or built further) right here with what is in the bag. */
+/** How near the hut's middle the survivor builds it, in metres: inside it or just outside its walls. */
+const HUT_REACH = 2.2;
+/** The hut (at its fixed place) or raft that could be built (or built further) right here with what is in the bag. */
 function buildable(kind: BuildKind): Build | 'new' | null {
   const b = game.builds.find((b) => b.kind === kind);
   if (finished(b) || lacking(kind, b?.stage ?? 0, game.bag).length) return null;
+  if (kind === 'hut') return Math.hypot(HUT_AT.i - actor.i, HUT_AT.j - actor.j) <= HUT_REACH ? b ?? 'new' : null;
   if (b) return Math.hypot(b.i - actor.i, b.j - actor.j) <= 1.5 ? b : null;
   const surface = surfaceAt(world.map, Math.floor(actor.i), Math.floor(actor.j));
   const fits = BUILDS[kind].on === 'beach' ? surface === 'beach' : dry(actor) && surface !== 'beach';
@@ -648,8 +735,8 @@ function build(kind: BuildKind): void {
   if (!b || paused || sleeping || ended) return;
   const stage = b === 'new' ? 0 : b.stage;
   takeFrom(game.bag, BUILDS[kind].stages[stage]);
-  // Set just behind the survivor, so they stand in front of it (in the hut's doorway).
-  if (b === 'new') game.builds.push({ kind, i: actor.i - 0.35, j: actor.j - 0.35, stage: 1 });
+  // The raft is set just behind the survivor, so they stand in front of it.
+  if (b === 'new') game.builds.push({ kind, ...(kind === 'hut' ? HUT_AT : { i: actor.i - 0.35, j: actor.j - 0.35 }), stage: 1 });
   else b.stage++;
   if (hand && !game.bag.includes(hand)) hand = null;
   target = null;
@@ -659,8 +746,8 @@ function build(kind: BuildKind): void {
   think(`think.${kind}${stage + 1}`);
 }
 const hut = () => game.builds.find((b) => b.kind === 'hut' && finished(b));
-/** Under the finished hut's roof. */
-const sheltered = () => { const h = hut(); return !!h && Math.hypot(h.i - actor.i, h.j - actor.j) <= 1.2; };
+/** Under the finished hut's roof: on one of its 2×2 cells. */
+const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
 /** By a burning campfire (the stump is too wild a fire to sleep by). */
 const byFire = () => game.fires.some((f) => Math.hypot(f.i - actor.i, f.j - actor.j) <= 2.5);
 /** The day's weather, or the one the cheat forces. */
@@ -719,20 +806,19 @@ function sleep(fainted: boolean, anywhere = false): void {
   if (sleeping || ended) return;
   const chosen = !fainted && !anywhere;
   if (chosen && !dry(actor)) return think('think.wet');
+  // In the rain the survivor sleeps only under the hut's roof.
+  if (chosen && weatherAt(game.day, time, weatherCheat).rain > 0.4 && !sheltered()) return think('think.rainSleep');
   // In a storm, sleep without a fire is broken by thunder, and then does not come back.
   const wakes = chosen && kindNow() === 'storm' && !byFire();
   if (wakes && stormWoken) return think('think.scared');
-  // Out in the rain, neither in the hut nor by a fire, the rest is poor.
-  const poor = chosen && (kindNow() === 'rain' || kindNow() === 'storm') && !sheltered() && !byFire();
   target = null;
   forget();
-  sleeping = { start: performance.now(), fainted, woken: false, wakes, poor };
+  sleeping = { start: performance.now(), fainted, woken: false, wakes };
 }
 
 /** The night is over: a new morning, rested, with what the palms dropped and the sea brought. Saved. */
-function morning(fainted: boolean, poor: boolean): void {
+function morning(fainted: boolean): void {
   Object.assign(game, wake(game, fainted));
-  if (poor) game.energy = Math.min(game.energy, POOR_REST);
   stormWoken = false;
   game.day++;
   time = 0;
@@ -751,7 +837,6 @@ function morning(fainted: boolean, poor: boolean): void {
   if (!TRYOUT) saveGame(game);
   const after = FADE.hold + FADE.in;
   setTimeout(() => {
-    if (poor) tell('think.badSleep');
     tell(morningThought(washed));
   }, after);
 }
@@ -784,7 +869,7 @@ function fadeAt(ms: number): number {
       stormWoken = true;
       setTimeout(() => tell('think.thunder'), FADE.hold + FADE.in);
       setTimeout(() => (strikeNow = true), FADE.hold + FADE.in + 2500);
-    } else morning(sleeping.fainted, sleeping.poor);
+    } else morning(sleeping.fainted);
   }
   if (e < FADE.out + FADE.hold) return 1;
   if (e < FADE.out + FADE.hold + FADE.in) return 1 - (e - FADE.out - FADE.hold) / FADE.in;
@@ -901,9 +986,11 @@ function frame(ms: number): void {
   }
   if (struckAt >= 0) plants.splice(struckAt, 1, ...stumpThings(plants[struckAt], ms));
   const at = (p: { i: number; j: number }) => ({ i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) });
+  const hutBuild = game.builds.find((b) => b.kind === 'hut');
+  world.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
-    ...game.lying.map((l) => looseThing(l.item, at(l))), ...game.builds.map((b) => buildThing(b.kind, b.stage, at(b))),
+    ...game.lying.map((l) => LYING[l.item](at(l))), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
     ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), actor.thing(world, ms), ...actor.dropThings(),
   ];
   const rect = view.rect();

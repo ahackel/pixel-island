@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lacking, recipeFor, takeFrom, type BagItem } from './crafts.ts';
+import { BUILDS, HUT_PLAN, lacking, recipeFor, takeFrom, type BagItem } from './crafts.ts';
 
 test('stick and stone make a spear, with a vine in hand an axe', () => {
   assert.equal(recipeFor('wood', 'stone', ['wood', 'stone', 'vine'])?.makes, 'spear');
@@ -10,11 +10,17 @@ test('stick and stone make a spear, with a vine in hand an axe', () => {
 });
 
 test('a build stage takes exactly what it needs', () => {
-  const bag: BagItem[] = ['wood', 'leaf', 'wood', 'axe'];
+  const bag: BagItem[] = ['leaf', 'leaf', 'axe'];
   assert.deepEqual(lacking('hut', 0, bag), ['wood']);
-  bag.push('wood');
-  assert.deepEqual(lacking('hut', 0, bag), []);
-  takeFrom(bag, ['wood', 'wood', 'wood']);
-  assert.deepEqual(bag, ['leaf', 'axe']);
+  assert.deepEqual(lacking('hut', 4, bag), ['leaf']);
+  bag.push('leaf');
+  assert.deepEqual(lacking('hut', 4, bag), []);
+  takeFrom(bag, ['leaf', 'leaf', 'leaf']);
+  assert.deepEqual(bag, ['axe']);
   assert.deepEqual(lacking('raft', 1, ['log', 'rope']), ['log']);
+});
+
+test('the hut plan has a stage for every cost', () => {
+  assert.equal(HUT_PLAN.length, BUILDS.hut.stages.length);
+  assert.equal(HUT_PLAN.at(-1), 'roof');
 });

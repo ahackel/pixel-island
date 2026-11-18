@@ -32,3 +32,11 @@ canvas { image-rendering: pixelated; }
 /* The menu stays laid out while hidden, so it can fade in and out. */
 .menu[hidden] { display: grid !important; opacity: 0; visibility: hidden; pointer-events: none; }
 .dialog[hidden] { display: none; }
+/* A bag slot is dragged out to put its thing down, so a drag must not scroll the page. */
+.bag .pbtn { touch-action: none; }
+/* The thing being dragged out of the bag, under the finger. */
+.ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 10; opacity: 0.85; }
+/* While a bag thing is dragged: the slots it can be tied with (and the other parts it would use) lift a little, the rest fade. */
+.bag .pbtn { transition: opacity 0.12s, transform 0.12s; }
+.bag .pbtn.fits { transform: translateY(-4px); filter: drop-shadow(0 0 3px #fff6c8); }
+.bag .pbtn.dim { opacity: 0.4; }

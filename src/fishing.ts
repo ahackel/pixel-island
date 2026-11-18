@@ -28,7 +28,9 @@ function rowsOf(px: Pixel[]): Rows {
   return { rows: grid.map((r) => r.join('')), colors: Object.fromEntries(letters.map((c, n) => [String.fromCharCode(48 + n), c])) };
 }
 
-/** A caught fish in the bag: the one swimming in the sea, seen from above. */
-export const FISH_IN_BAG = rowsOf(fishPixels(0, 0));
+/** The bag items for each kind of fish in the sea (fish.ts KINDS): a mackerel, a wrasse, a snapper. */
+export const FISH_ITEMS = ['fish', 'wrasse', 'snapper'] as const;
+/** A caught fish in the bag, by kind: the one swimming in the sea, in its colours. */
+export const FISH_IN_BAG = FISH_ITEMS.map((_, k) => rowsOf(fishPixels(0, 0, k)));
 /** A caught crab in the bag, looking out. */
 export const CRAB_IN_BAG = rowsOf(crabPixels(1));

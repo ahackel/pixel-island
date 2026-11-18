@@ -268,10 +268,22 @@
   "de": "Ein schwerer Stamm. Der schwimmt bestimmt."
  },
  "think.hut1": {
-  "en": "The frame stands. Now a roof — palm leaves!",
-  "de": "Das Gerüst steht. Jetzt ein Dach — Palmblätter!"
+  "en": "The back wall stands. Now the sides.",
+  "de": "Die Rückwand steht. Jetzt die Seiten."
  },
  "think.hut2": {
+  "en": "One side done.",
+  "de": "Eine Seite fertig."
+ },
+ "think.hut3": {
+  "en": "Both sides. Now the front, with a doorway.",
+  "de": "Beide Seiten. Jetzt die Front, mit Eingang."
+ },
+ "think.hut4": {
+  "en": "The walls stand. Now a roof — palm leaves!",
+  "de": "Die Wände stehen. Jetzt ein Dach — Palmblätter!"
+ },
+ "think.hut5": {
   "en": "A hut! Dry at last.",
   "de": "Eine Hütte! Endlich trocken."
  },
@@ -287,9 +299,13 @@
   "en": "The raft is ready. I can set sail!",
   "de": "Das Floß ist fertig. Ich kann lossegeln!"
  },
- "think.badSleep": {
-  "en": "I barely slept, soaked through… I need a roof.",
-  "de": "Kaum geschlafen, völlig durchnässt… Ich brauche ein Dach."
+ "think.noMatch": {
+  "en": "Those two don’t go together.",
+  "de": "Die beiden passen nicht zusammen."
+ },
+ "think.rainSleep": {
+  "en": "Too wet to sleep out here. I need a roof over me.",
+  "de": "Zu nass, um hier draußen zu schlafen. Ich brauche ein Dach über mir."
  },
  "think.thunder": {
   "en": "Thunder! I can’t sleep like this… I need a fire.",
