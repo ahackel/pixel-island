@@ -5,7 +5,7 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
 
 export const BAG_SLOTS = 6;
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'crab'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 
 export interface Game {

@@ -1,7 +1,8 @@
 // Fishing: a stone lying about, tied to a stick it makes a spear, and with the spear a fish
-// swimming near is caught. Small hand-drawn pictures, for the ground and the bag.
+// swimming near is caught, or a crab. Small pictures, for the ground and the bag.
 import { PALETTE } from '@pixel/engine/core/palette.ts';
-import { fishPixels } from '@pixel/engine/world/fish.ts';
+import { crabPixels } from '@pixel/engine/world/crab.ts';
+import { fishPixels, type Pixel } from '@pixel/engine/world/fish.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 
 type Rows = { rows: string[]; colors: Record<string, string> };
@@ -17,13 +18,17 @@ export const SPEAR_IN_BAG: Rows = {
   colors: { ...STONE.colors, W: PALETTE.wood.base, w: PALETTE.wood.shade, c: PALETTE.straw.base },
 };
 
-/** A caught fish in the bag: the one swimming in the sea, seen from above. */
-export const FISH_IN_BAG: Rows = (() => {
-  const px = fishPixels(0, 0);
+/** Rows for the bag from a model's pixels. */
+function rowsOf(px: Pixel[]): Rows {
   const x0 = Math.min(...px.map((p) => p.x)), y0 = Math.min(...px.map((p) => p.y));
   const w = Math.max(...px.map((p) => p.x)) - x0 + 1, h = Math.max(...px.map((p) => p.y)) - y0 + 1;
   const letters = [...new Set(px.map((p) => p.color))];
   const grid = Array.from({ length: h }, () => Array<string>(w).fill('.'));
-  for (const p of px) grid[p.y - y0][p.x - x0] = String(letters.indexOf(p.color));
-  return { rows: grid.map((r) => r.join('')), colors: Object.fromEntries(letters.map((c, n) => [String(n), c])) };
-})();
+  for (const p of px) grid[p.y - y0][p.x - x0] = String.fromCharCode(48 + letters.indexOf(p.color));
+  return { rows: grid.map((r) => r.join('')), colors: Object.fromEntries(letters.map((c, n) => [String.fromCharCode(48 + n), c])) };
+}
+
+/** A caught fish in the bag: the one swimming in the sea, seen from above. */
+export const FISH_IN_BAG = rowsOf(fishPixels(0, 0));
+/** A caught crab in the bag, looking out. */
+export const CRAB_IN_BAG = rowsOf(crabPixels(1));

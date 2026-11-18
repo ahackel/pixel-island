@@ -45,6 +45,9 @@ const en = {
   'think.caught': 'Got one!',
   'think.missed': 'Too far away. I have to get closer.',
   'think.yumFish': 'Mmm, fish.',
+  eatCrab: 'Eat the crab',
+  'think.pinched': 'Ouch! It pinched me and ran off.',
+  'think.yumCrab': 'Mmm, crab.',
 };
 const de: typeof en = {
   day: 'Tag {n}',
@@ -91,6 +94,9 @@ const de: typeof en = {
   'think.caught': 'Erwischt!',
   'think.missed': 'Zu weit weg. Ich muss näher ran.',
   'think.yumFish': 'Mmm, Fisch.',
+  eatCrab: 'Die Krabbe essen',
+  'think.pinched': 'Autsch! Sie hat mich gezwickt und ist weg.',
+  'think.yumCrab': 'Mmm, Krabbe.',
 };
 
 export type Key = keyof typeof en;

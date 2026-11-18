@@ -1,7 +1,8 @@
 // Pixel Island, milestone 1: one day on the island. Tap to walk, pick up coconuts and eat them,
 // watch the sun set, get tired, sleep, wake to what the sea brought. Pick up driftwood; once a storm
 // has burnt a palm, hold a stick to its fire for a torch, and with the torch light dry wood: a campfire.
-// Tie a stone to a stick for a spear, and spear the fish that swim near.
+// Tie a stone to a stick for a spear, and spear the fish that swim near. At night crabs come out
+// on the beach: speared, or grabbed by hand if lucky.
 import './style.css';
 import { defaultState, lookOf } from '@pixel/engine/character/character.ts';
 import type { Mood } from '@pixel/engine/character/base.ts';
@@ -18,6 +19,7 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
+import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
 import { C, hud, pixelButton, S, slot } from './ui.ts';
@@ -27,7 +29,7 @@ import { BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } fro
 import { t, type Key } from './i18n.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
-import { FISH_IN_BAG, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
+import { CRAB_IN_BAG, FISH_IN_BAG, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -42,6 +44,10 @@ const WOOD_LYING = 4;
 const FISH_COUNT = 7;
 /** How near a fish must swim to be speared, in metres. */
 const SPEAR_REACH = 1.8;
+/** How many crabs come out each night; how near one must be to grab it by hand, and how often that works. */
+const CRAB_NIGHT = 5;
+const GRAB_REACH = 1.4;
+const GRAB_LUCK = 0.25;
 
 // ------------------------------------------------------------------ the world
 
@@ -50,9 +56,13 @@ const world = new World(scene);
 const fishRandom = rng(Date.now());
 world.fish = spawnFish(world.floor, FISH_COUNT, fishRandom);
 const palms = scene.plants;
+/** The crabs out tonight, and how many have come out so far; all gone by morning. */
+let crabs: Crab[] = [];
+let crabsOut = 0;
 
 function newGame(): Game {
   const g: Game = { day: 1, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], at: { ...scene.spawn } };
+  // The island starts with two coconuts lying about.
   for (let n = 0; n < 2; n++) dropCoconuts(g);
   washWood(g);
   for (let n = 0; n < 3; n++) layStone(g);
@@ -64,18 +74,14 @@ function layStone(g: Game): void {
   if (beach.length) g.stones.push(onBeach());
 }
 
-/** Each palm drops a coconut near its foot, up to three lying under it; a burnt one has none left. */
+/** One coconut a day falls from a palm, near its foot, never more than three under one; a burnt palm has none left. */
 function dropCoconuts(g: Game): void {
-  for (const [k, p] of palms.entries()) {
-    if (k === g.struck) continue;
-    if (g.coconuts.filter((c) => Math.hypot(c.i - p.i, c.j - p.j) < 1.8).length >= 3) continue;
-    for (let tries = 0; tries < 20; tries++) {
-      const c = spotNear(p, 0.7, 0.6);
-      if (c) {
-        g.coconuts.push(c);
-        break;
-      }
-    }
+  const bearing = palms.filter((p, k) => k !== g.struck && g.coconuts.filter((c) => Math.hypot(c.i - p.i, c.j - p.j) < 1.8).length < 3);
+  if (!bearing.length) return;
+  const p = bearing[Math.floor(Math.random() * bearing.length)];
+  for (let tries = 0; tries < 20; tries++) {
+    const c = spotNear(p, 0.7, 0.6);
+    if (c) return void g.coconuts.push(c);
   }
 }
 
@@ -170,7 +176,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Objec
 const app = document.getElementById('app')!;
 app.addEventListener('pointerdown', () => actor.rouse(performance.now()), { capture: true });
 
-type Pick = { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true };
+type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -201,12 +207,13 @@ function hold(item: BagItem | null): void {
 }
 const BAG_PICTURES = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
-  stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG,
+  stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG, crab: CRAB_IN_BAG,
 };
 /** What is eaten from the bag, and how much it fills. */
 const FOOD: Partial<Record<BagItem, { fills: number; label: Key; yum: Key }>> = {
   coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
   fish: { fills: FISH, label: 'eatFish', yum: 'think.yumFish' },
+  crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
 };
 const bag = el('div', 'bag');
 bag.setAttribute('aria-label', t('bag'));
@@ -218,7 +225,7 @@ function showBag(): void {
     // The first of the kind in hand is shown lifted.
     if (item && item === hand && game.bag.indexOf(item) === n) b.classList.add('held');
     if (item) {
-      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'fish'>));
+      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'fish' | 'crab'>));
       b.setAttribute('aria-label', words);
       b.title = words;
       b.addEventListener('click', () => {
@@ -357,6 +364,14 @@ let sleeping: { start: number; fainted: boolean; woken: boolean } | null = null;
 function press(p: { x: number; y: number }, start: boolean): void {
   if (paused || sleeping) return;
   if (start) {
+    // A crab: grabbed or speared if near enough, else walked up to, stopping just near enough.
+    const crab = crabAt(world, crabs, p, 7);
+    if (crab) {
+      const reach = crabReach();
+      if (Math.hypot(crab.i - actor.i, crab.j - actor.j) <= reach) return catchCrab(crab);
+      const d = Math.hypot(actor.i - crab.i, actor.j - crab.j);
+      return goTo({ i: crab.i + ((actor.i - crab.i) / d) * reach * 0.8, j: crab.j + ((actor.j - crab.j) / d) * reach * 0.8 }, false, { crab });
+    }
     // With the spear in hand, a tap on a fish swimming near spears it.
     const fish = hand === 'spear' ? world.fishAt(p, 8) : null;
     if (fish) {
@@ -396,6 +411,11 @@ function near(p: { x: number; y: number }, at: { i: number; j: number }, r: numb
 }
 
 function arrive(pick: Pick): void {
+  if ('crab' in pick) {
+    const c = pick.crab;
+    if (crabs.includes(c) && Math.hypot(c.i - actor.i, c.j - actor.j) <= crabReach() + 0.2) return catchCrab(c);
+    return think('think.missed');
+  }
   if ('item' in pick) return think('think.crate');
   // A stick in hand held to the burning stump catches: a torch.
   if ('stump' in pick) {
@@ -439,6 +459,24 @@ function spear(fish: (typeof world.fish)[number]): void {
   if (game.bag.length >= BAG_SLOTS) return think('think.full');
   world.fish.splice(world.fish.indexOf(fish), 1);
   game.bag.push('fish');
+  showBag();
+  think('think.caught');
+}
+
+const crabReach = () => (hand === 'spear' ? SPEAR_REACH : GRAB_REACH);
+
+/** A crab near enough: speared, or grabbed by hand, which mostly ends in a pinch and the crab running off. */
+function catchCrab(crab: Crab): void {
+  target = null;
+  actor.lookAt(crab.i - actor.i, crab.j - actor.j);
+  actor.emote('use', performance.now());
+  if (game.bag.length >= BAG_SLOTS) return think('think.full');
+  if (hand !== 'spear' && Math.random() >= GRAB_LUCK) {
+    scare(crab, actor);
+    return think('think.pinched');
+  }
+  crabs.splice(crabs.indexOf(crab), 1);
+  game.bag.push('crab');
   showBag();
   think('think.caught');
 }
@@ -494,9 +532,10 @@ function morning(fainted: boolean): void {
   washWood(game);
   if (!game.stones.length && !game.bag.some((b) => b === 'stone' || b === 'spear')) layStone(game);
   world.fish.push(...spawnFish(world.floor, FISH_COUNT - world.fish.length, fishRandom));
-  // Wind shakes more coconuts down; a storm leaves something on the beach.
+  crabs = [];
+  crabsOut = 0;
+  // A storm leaves something on the beach.
   const kind = kindOf(game.day);
-  if (kind === 'windy' || kind === 'storm') dropCoconuts(game);
   const washed = washUp(game) || (kindOf(game.day - 1) === 'storm' && washUp(game, 'crate'));
   saveGame(game);
   const mood: Key = foggy(game.day) ? 'think.fog' : kind === 'sunny' ? 'think.morning' : `think.${kind}`;
@@ -578,7 +617,8 @@ function frame(ms: number): void {
     di = next.i - actor.i;
     dj = next.j - actor.j;
     run = target.run;
-    if (target.pick && Math.hypot(goal.i - actor.i, goal.j - actor.j) < REACH) {
+    // A crab is walked right up to the spot just near enough, not within the usual reach of it.
+    if (target.pick && Math.hypot(goal.i - actor.i, goal.j - actor.j) < ('crab' in target.pick ? 0.12 : REACH)) {
       arrive(target.pick);
       target = null;
       di = dj = 0;
@@ -594,6 +634,13 @@ function frame(ms: number): void {
   if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
 
   swim(world.fish, world.floor, dt, fishRandom);
+  // After sunset the crabs come out of the sand, one every few seconds.
+  if (!paused && !sleeping && (phaseAt(time).phase === 'dusk' || phaseAt(time).phase === 'night') && crabsOut < CRAB_NIGHT && fishRandom() < dt / 3) {
+    const c = spawnCrab(world, fishRandom);
+    if (c) crabs.push(c);
+    crabsOut++;
+  }
+  scuttle(crabs, world, paused ? 0 : dt, fishRandom, sleeping ? null : actor);
   const weather = weatherAt(game.day, time, weatherCheat);
   world.setWeather(weather);
   // The storm's first bright flash is the one that strikes: a bolt into the palm, its crown bursting.
@@ -611,7 +658,7 @@ function frame(ms: number): void {
   const at = (p: { i: number; j: number }) => ({ i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) });
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
-    ...game.fires.map((f) => campfireThing(at(f), ms)), actor.thing(world, ms), ...actor.dropThings(),
+    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), actor.thing(world, ms), ...actor.dropThings(),
   ];
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);
