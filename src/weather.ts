@@ -58,10 +58,14 @@ export function kindOf(day: number): Kind {
 /** Whether a day's morning starts in fog: never on day 1, nor in a storm. */
 export const foggy = (day: number) => day > 1 && kindOf(day) !== 'storm' && roll(day, 4) < FOGGY;
 
-/** The weather `t` game seconds into a day, `kind` overriding the day's own (for the cheat). */
-export function weatherAt(day: number, t: number, kind?: Kind): Weather {
-  const today = LOOKS[kind ?? kindOf(day)];
-  const tomorrow = LOOKS[kind ?? kindOf(day + 1)];
+/** What the cheat can force instead of the day's own weather: a kind, or a still, foggy day. */
+export type Forced = Kind | 'fog';
+
+/** The weather `t` game seconds into a day, `forced` overriding the day's own (for the cheat). */
+export function weatherAt(day: number, t: number, forced?: Forced): Weather {
+  if (forced === 'fog') return { ...CLEAR, fog: 1 };
+  const today = LOOKS[forced ?? kindOf(day)];
+  const tomorrow = LOOKS[forced ?? kindOf(day + 1)];
   const k = Math.min(1, Math.max(0, (t - 0.6 * DAY_S) / (0.4 * DAY_S + DUSK_S)));
   const w = mixWeather(today, tomorrow, k * k * (3 - 2 * k));
   if (foggy(day)) w.fog = Math.max(w.fog, Math.max(0, 1 - t / FOG_S));

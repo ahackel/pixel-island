@@ -7,7 +7,7 @@ import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
 import { flashAt, overcast } from '@pixel/engine/world/weather.ts';
-import { foggy, KINDS, kindOf, weatherAt, type Kind } from './weather.ts';
+import { foggy, KINDS, kindOf, weatherAt, type Forced } from './weather.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import { levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing } from '@pixel/engine/world/world.ts';
@@ -219,8 +219,8 @@ showBag();
 
 // ?cheats: an orange button in the corner opens a drawer of buttons to get somewhere quickly while developing.
 let fast = 1;
-/** A weather the cheat button forces, instead of the day's own. */
-let weatherCheat: Kind | undefined;
+/** A weather the cheat forces, instead of the day's own. */
+let weatherCheat: Forced | undefined;
 if (params.has('cheats')) {
   const cheat = (words: string, on: () => void) => ({ words, on });
   // Under the menu, so it does not show over it.
@@ -236,10 +236,16 @@ if (params.has('cheats')) {
     cheat('NIGHT', () => (time = DAY_S + DUSK_S)),
     cheat('MORNING', () => sleep(false, true)),
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
-    cheat('WEATHER', () => {
-      weatherCheat = KINDS[(KINDS.indexOf(weatherCheat ?? kindOf(game.day)) + 1) % KINDS.length];
-      think(`think.${weatherCheat === 'sunny' ? 'morning' : weatherCheat}`);
-    }),
+    {
+      words: 'WEATHER',
+      more: [
+        cheat('AUTO', () => (weatherCheat = undefined)),
+        ...[...KINDS, 'fog' as const].map((k) => cheat(k.toUpperCase(), () => {
+          weatherCheat = k;
+          think(`think.${k === 'sunny' ? 'morning' : k}`);
+        })),
+      ],
+    },
   ], S, menuBox);
 }
 
