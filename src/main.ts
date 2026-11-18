@@ -22,6 +22,7 @@ import { firstIsland } from './island.ts';
 import { BAG_SLOTS, clearGame, loadGame, saveGame, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
+import { cheatDrawer } from '@pixel/shared/cheats.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
@@ -208,15 +209,9 @@ let fast = 1;
 /** A weather the cheat button forces, instead of the day's own. */
 let weatherCheat: Kind | undefined;
 if (params.has('cheats')) {
-  const drawer = el('div', 'cheats');
-  const panel = el('div', 'panel');
-  drawer.append(panel);
-  const open = (on: boolean) => drawer.classList.toggle('open', on);
-  // Tapping beside the panel closes it; taps on the panel stay there.
-  drawer.addEventListener('click', () => open(false));
-  panel.addEventListener('click', (e) => e.stopPropagation());
-  const cheat = (words: string, on: () => void) => pixelButton(words, { words, cheat: true }, on);
-  panel.append(
+  const cheat = (words: string, on: () => void) => ({ words, on });
+  // Under the menu, so it does not show over it.
+  cheatDrawer(app, [
     cheat('FULL', () => Object.assign(game, { hunger: 1, energy: 1 })),
     cheat('HUNGRY', () => (game.hunger = LOW - 0.01)),
     cheat('TIRED', () => (game.energy = LOW - 0.01)),
@@ -232,11 +227,7 @@ if (params.has('cheats')) {
       weatherCheat = KINDS[(KINDS.indexOf(weatherCheat ?? kindOf(game.day)) + 1) % KINDS.length];
       think(`think.${weatherCheat === 'sunny' ? 'morning' : weatherCheat}`);
     }),
-  );
-  const button = pixelButton('Cheats', { icon: 'cheat', cheat: true }, () => open(true));
-  button.classList.add('cheat-open');
-  // Under the menu, so it does not show over it.
-  menuBox.before(button, drawer);
+  ], S, menuBox);
 }
 
 // ------------------------------------------------------------------ acting
