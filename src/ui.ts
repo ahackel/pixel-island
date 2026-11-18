@@ -18,6 +18,7 @@ export const ICONS = {
   zoomIn: ['..xxx....', '.xgggx...', 'xggxggx..', 'xgxxxgx..', 'xggxggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
   zoomOut: ['..xxx....', '.xgggx...', 'xgggggx..', 'xgxxxgx..', 'xgggggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
   menu: ['.........', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.........'],
+  cheat: ['.....tt..', '....tt...', '...tt....', '..tttttt.', '.....tt..', '....tt...', '...tt....', '..t......', '.........'],
   sun: ['....y....', '.y.....y.', '...ooo...', '..oyyyo..', 'y.oyyyo.y', '..oyyyo..', '...ooo...', '.y.....y.', '....y....'],
   dusk: ['.........', '.y..y..y.', '.........', '...ooo...', '..oyyyo..', '.oyyyyyo.', 'wwwwwwwww', '.........', '..ww.ww..'],
   moon: ['..mmmm...', '.mmms..t.', 'mmms.....', 'mmms.....', 'mmms..t..', 'mmms.....', '.mmms....', '..mmmm...', '.........'],

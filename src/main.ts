@@ -203,14 +203,20 @@ function showMenu(): void {
 app.append(hudBox, buttons, bag, bubble, flash, veil, menuBox);
 showBag();
 
-// ?cheats: a row of orange buttons to get somewhere quickly while developing.
+// ?cheats: an orange button in the corner opens a drawer of buttons to get somewhere quickly while developing.
 let fast = 1;
 /** A weather the cheat button forces, instead of the day's own. */
 let weatherCheat: Kind | undefined;
 if (params.has('cheats')) {
-  const row = el('div', 'cheats');
+  const drawer = el('div', 'cheats');
+  const panel = el('div', 'panel');
+  drawer.append(panel);
+  const open = (on: boolean) => drawer.classList.toggle('open', on);
+  // Tapping beside the panel closes it; taps on the panel stay there.
+  drawer.addEventListener('click', () => open(false));
+  panel.addEventListener('click', (e) => e.stopPropagation());
   const cheat = (words: string, on: () => void) => pixelButton(words, { words, cheat: true }, on);
-  row.append(
+  panel.append(
     cheat('FULL', () => Object.assign(game, { hunger: 1, energy: 1 })),
     cheat('HUNGRY', () => (game.hunger = LOW - 0.01)),
     cheat('TIRED', () => (game.energy = LOW - 0.01)),
@@ -227,7 +233,10 @@ if (params.has('cheats')) {
       think(`think.${weatherCheat === 'sunny' ? 'morning' : weatherCheat}`);
     }),
   );
-  app.append(row);
+  const button = pixelButton('Cheats', { icon: 'cheat', cheat: true }, () => open(true));
+  button.classList.add('cheat-open');
+  // Under the menu, so it does not show over it.
+  menuBox.before(button, drawer);
 }
 
 // ------------------------------------------------------------------ acting
