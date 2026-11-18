@@ -2,6 +2,7 @@
 // watch the sun set, get tired, sleep, wake to what the sea brought.
 import './style.css';
 import { defaultState, lookOf } from '@pixel/engine/character/character.ts';
+import type { Mood } from '@pixel/engine/character/base.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
@@ -82,6 +83,18 @@ let game = saved ?? newGame();
 let time = 0;
 world.loose = game.items;
 const actor = new Actor(lookOf(defaultState()), game.at);
+/** How happy the survivor is, 0 to 1: fed and rested. Their face shows it. */
+const happiness = () => game.hunger * game.energy;
+const moodOf = (h: number): Mood => (h >= 0.75 ? 'happy' : h >= 0.5 ? 'smile' : h >= 0.25 ? 'neutral' : 'sad');
+let mood: Mood | null = null;
+/** Draws the survivor with the face their happiness gives, when it changes. */
+function feel(): void {
+  const next = moodOf(happiness());
+  if (next === mood) return;
+  mood = next;
+  actor.setLook(lookOf({ ...defaultState(), mood }));
+}
+feel();
 /** A minute with nothing to do and the survivor sits down; any tap gets them up. */
 actor.sitAfter = 60_000;
 
@@ -370,6 +383,7 @@ function frame(ms: number): void {
       sleep(true);
     }
   }
+  feel();
 
   let di = 0;
   let dj = 0;
