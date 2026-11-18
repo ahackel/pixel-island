@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
 import { checkContent, DAYS } from './days.ts';
+import { LOOSE } from './crafts.ts';
 
 test('the shipped days and texts are valid', () => {
-  assert.deepEqual(checkContent(DAYS, loca, ['crate']), []);
+  assert.deepEqual(checkContent(DAYS, loca, ['crate', ...LOOSE]), []);
 });
 
 test('bad days and texts are caught', () => {

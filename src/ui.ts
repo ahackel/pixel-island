@@ -1,5 +1,5 @@
 // The game's interface pieces, drawn as flat pixel art with the engine's pixel font and panels.
-import { LINE_H, text, textWidth } from '@pixel/shared/pixel-font.ts';
+import { LINE_STEP, text, textWidth } from '@pixel/shared/pixel-font.ts';
 import { drawRows, panel, pixelCanvas, rounded } from '@pixel/shared/pixel-ui.ts';
 
 /** How many screen pixels one interface pixel takes: big enough to tap on an iPad. */
@@ -29,18 +29,22 @@ export type Icon = keyof typeof ICONS;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Object.assign(document.createElement(tag), { className: cls });
 
+/** Everything the game writes is in capitals, as in Lop Hop: menus, buttons, the bars and thoughts. */
+export const caps = (s: string) => s.toUpperCase();
+
 /**
- * A flat button with an icon, words, or an icon then words. `dark` for the night's own button.
+ * A flat button with an icon, words, or an icon then words, in capitals. `dark` for the night's own button.
  */
 export function pixelButton(label: string, face: { icon?: Icon; words?: string; dark?: boolean }, on: () => void): HTMLButtonElement {
   const iconW = face.icon ? 9 : 0;
-  const wordsW = face.words ? textWidth(face.words) : 0;
-  const w = face.words ? 4 + iconW + (face.icon ? 3 : 0) + wordsW + 4 : 13;
+  const words = face.words && caps(face.words);
+  const wordsW = words ? textWidth(words) : 0;
+  const w = words ? 4 + iconW + (face.icon ? 3 : 0) + wordsW + 4 : 13;
   const h = 13;
   const { canvas, ctx } = pixelCanvas(w, h + 1, S);
   panel(ctx, 0, 0, w, h, face.dark ? C.night : C.paper, C.shadow);
-  if (face.icon) drawRows(ctx, ICONS[face.icon], face.words ? 4 : 2, 2, PAINT);
-  if (face.words) text(ctx, face.words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
+  if (face.icon) drawRows(ctx, ICONS[face.icon], words ? 4 : 2, 2, PAINT);
+  if (words) text(ctx, words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
   const b = el('button', 'pbtn');
   b.setAttribute('aria-label', label);
   b.title = label;
@@ -53,7 +57,8 @@ export function pixelButton(label: string, face: { icon?: Icon; words?: string; 
 }
 
 /** The day and the two bars, redrawn into one canvas. */
-export function hud(labels: { hunger: string; energy: string }): { canvas: HTMLCanvasElement; draw: (day: string, icon: Icon, hunger: number, energy: number, low: number) => void } {
+export function hud(names: { hunger: string; energy: string }): { canvas: HTMLCanvasElement; draw: (day: string, icon: Icon, hunger: number, energy: number, low: number) => void } {
+  const labels = { hunger: caps(names.hunger), energy: caps(names.energy) };
   const lw = Math.max(textWidth(labels.hunger), textWidth(labels.energy));
   const barW = 32;
   const w = 5 + lw + 4 + barW + 5;
@@ -68,7 +73,7 @@ export function hud(labels: { hunger: string; energy: string }): { canvas: HTMLC
     ctx.clearRect(0, 0, w, h + 1);
     panel(ctx, 0, 0, w, h, C.paper, C.shadow);
     drawRows(ctx, ICONS[icon], 4, 3, PAINT);
-    text(ctx, day, 16, 5, C.ink);
+    text(ctx, caps(day), 16, 5, C.ink);
     const bar = (y: number, name: string, n: number, color: string) => {
       text(ctx, name, 5, y, C.ink);
       const x = 5 + lw + 4;
@@ -77,7 +82,7 @@ export function hud(labels: { hunger: string; energy: string }): { canvas: HTMLC
       if (f >= 2) rounded(ctx, x, y, f, 5, n < low ? C.low : color);
     };
     bar(15, labels.hunger, hunger, C.hunger);
-    bar(15 + LINE_H, labels.energy, energy, C.energy);
+    bar(15 + LINE_STEP, labels.energy, energy, C.energy);
   };
   return { canvas, draw };
 }

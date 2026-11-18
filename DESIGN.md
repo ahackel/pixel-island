@@ -1,6 +1,6 @@
 # Pixel Island — design
 
-A shipwreck survivor stranded on a tiny sand island with a few palms. Each day something new washes up. Over about 15 in-game days (around 4 hours of play) the survivor builds a hut, learns to make fire and to fish, gathers resources, cuts down trees, and finally builds a small boat to reach the next island. Reaching that island ends v1.
+A shipwreck survivor stranded on a tiny sand island with a few palms. Each day something new washes up. Over 7 in-game days the survivor learns to eat and fish, builds a hut, gets fire from a storm, makes an axe, cuts down palms, and finally builds a raft and sails away. Setting sail ends the demo (see **First week**).
 
 ## Platform
 
@@ -71,6 +71,35 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
   7. The boat (hull, sail).
   8. Departure.
 
+## First week
+
+The demo is 7 days. Each day teaches one thing; the survivor's thoughts hint at the next step (no on-screen tutorial). Set in the day editor (`/editor/`).
+
+| Day | Weather | What arrives | What the player learns |
+|-----|---------|--------------|------------------------|
+| 1 | sunny | 2 coconuts, driftwood, a sharp stone | Arrival, hungry: eat coconuts, pick things up, stick + stone = spear, spear a fish. Tired at night, sleep. |
+| 2 | windy | the crate | Something new washes up each morning. The crate is shut tight: needs a tool (a goal for later). The wind brings the first crabs out at night. |
+| 3 | rain | extra driftwood | Sleeping out in the rain gives a poor rest. Build a hut from driftwood + palm leaves, in stages. |
+| 4 | storm | — | The survivor wakes in the night to thunder and can't sleep again without fire. Lightning burns a palm; take fire from it, build a campfire, sleep by it. |
+| 5 | sunny | a vine (left by the storm) | Stick + stone + vine = stone axe ("tie it, like the spear"). The axe opens the crate: rope and cloth. |
+| 6 | cloudy | — | Fell palms with the axe for logs. |
+| 7 | sunny | — | Raft: logs + rope + cloth sail. "Set sail": the raft drifts off, fade, end card. |
+
+Rules this sets:
+
+- Crabs come out only on windy nights.
+- Rest depends on where you sleep: in the rain without the hut the next day starts with less energy.
+- A storm night wakes the survivor; sleep needs a burning campfire nearby.
+- A palm tapped gives a leaf; with the axe in hand it is cut down for two logs (the sapling is too small). The axe opens the crate.
+- Things are tied by holding one and tapping another in the bag (`src/crafts.ts`). The hut and raft are built in stages with a button that shows when the bag holds the next stage and the survivor stands in the right place (hut on land, raft on the beach).
+
+Open:
+
+- How many logs the raft needs, and how many palms the island can lose (fewer palms, fewer coconuts).
+- Whether the hut also shelters the campfire from rain.
+- Setting sail only fades to the end card; the raft does not drift off yet.
+- What the night crabs give besides food.
+
 ## Survivor
 
 - For now, one fixed character made once in the wardrobe.
@@ -93,5 +122,4 @@ Engine work this needs: the time-of-day tint, the touch camera and the fade. Eve
 - Sunset: for now the last minute of the 10-minute day, then 30 s of dusk (`src/clock.ts`).
 - How fast hunger and energy drain, and how many coconuts a day.
 - The exact size of the bag.
-- Which item is the day-1 wash-up, and the full 15-day key-item schedule. (Set in the day editor, `/editor/`.)
 - What the night creatures do for the game (food? materials?).

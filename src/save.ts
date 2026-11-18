@@ -3,10 +3,10 @@
 import { readStore, writeStore } from '@pixel/shared/files.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
+import { BAG_ITEMS, BUILDS, BUILD_KINDS, LOOSE, type BagItem, type Build, type Loose } from './crafts.ts';
 
 export const BAG_SLOTS = 6;
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'crab'] as const;
-export type BagItem = (typeof BAG_ITEMS)[number];
+export { BAG_ITEMS, type BagItem };
 
 export interface Game {
   day: number;
@@ -25,6 +25,12 @@ export interface Game {
   struck: number | null;
   /** Campfires burning, in scene metres. */
   fires: { i: number; j: number }[];
+  /** Bag items lying on the ground: wash-ups, what the crate held, logs. */
+  lying: { item: Loose; i: number; j: number }[];
+  /** Palms cut down (indices in the scene's plants). */
+  felled: number[];
+  /** The hut and raft, as far as they are built. */
+  builds: Build[];
   at: { i: number; j: number };
 }
 
@@ -49,6 +55,12 @@ export function loadGame(size: number, palms: number): Game | null {
     stones: spots(g.stones, size),
     struck: Number.isInteger(g.struck) && num(g.struck, 0, palms - 1) ? g.struck : null,
     fires: spots(g.fires, size),
+    lying: Array.isArray(g.lying) ? g.lying.filter((it: any) => spot(it, size) && LOOSE.includes(it.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })) : [],
+    felled: Array.isArray(g.felled) ? [...new Set<number>(g.felled.filter((k: unknown) => Number.isInteger(k) && num(k, 0, palms - 1)))] : [],
+    builds: Array.isArray(g.builds)
+      ? g.builds.filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && Number.isInteger(b.stage) && num(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
+        .map((b: any) => ({ kind: b.kind, i: b.i, j: b.j, stage: b.stage }))
+      : [],
     items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
     at: { i: g.at.i, j: g.at.j },
   };

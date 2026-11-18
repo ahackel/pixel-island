@@ -7,9 +7,11 @@ import { button, h } from '@pixel/shared/shell.ts';
 import { ITEMS } from '@pixel/engine/world/props.ts';
 import days from '../content/days.json' with { type: 'json' };
 import loca from '../content/loca.json' with { type: 'json' };
+import { LOOSE } from '../crafts.ts';
 import { checkContent, EVENT_KINDS, KINDS, LOCA_ID, MAX_AT, type DayEvent, type DayPlan, type Days, type Loca } from '../days.ts';
 
-const ITEM_IDS = ITEMS.map((it) => it.id);
+/** What the sea can bring: a crate to stand on the beach, or small things to pick up. */
+const ITEM_IDS = [...ITEMS.map((it) => it.id as string), ...LOOSE];
 /** The arc in DESIGN.md is about 15 days; the list always shows that many and one past the last planned. */
 const MIN_DAYS = 15;
 

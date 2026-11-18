@@ -37,13 +37,13 @@ export const woodThing = (spot: Thing['spot']): Thing => ({ spot, picture: WOOD,
  * sprite format, the shaft in the spear's column, gripped near its foot (the hand is at row 35).
  * Short, so they are told to be held as a pole, not carried in both arms.
  */
-function tool(name: string, rows: string[]): ReturnType<typeof compileSprite>['item'] {
+export function tool(name: string, rows: string[], more: Record<string, string> = {}): ReturnType<typeof compileSprite>['item'] {
   const top = 40 - rows.length;
   const grid = (x: number) => Array.from({ length: 48 }, (_, y) => {
     const r = rows[y - top] ?? '.......';
     return '.'.repeat(x - 3) + r + '.'.repeat(32 - x - 4);
   });
-  const legend = { W: 'wood', F: 'flame', Y: 'flare', B: 'blaze' };
+  const legend = { W: 'wood', F: 'flame', Y: 'flare', B: 'blaze', ...more };
   return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: 'pole' }).item;
 }
 /** A stick `n` rows long, not quite straight: its top bends aside, a stub of a twig halfway down. */

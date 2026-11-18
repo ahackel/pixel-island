@@ -56,8 +56,8 @@
   "de": "Da ist etwas an den Strand gespült!"
  },
  "think.crate": {
-  "en": "A crate from the ship. Nailed shut — I need a tool.",
-  "de": "Eine Kiste vom Schiff. Zugenagelt — ich brauche Werkzeug."
+  "en": "A crate from the ship. Shut tight — I need a tool to prise it open.",
+  "de": "Eine Kiste vom Schiff. Fest verschlossen — ich brauche Werkzeug, um sie aufzubrechen."
  },
  "think.full": {
   "en": "My bag is full.",
@@ -186,5 +186,153 @@
  "think.yumCrab": {
   "en": "Mmm, crab.",
   "de": "Mmm, Krabbe."
+ },
+ "leaf": {
+  "en": "Palm leaf",
+  "de": "Palmblatt"
+ },
+ "vine": {
+  "en": "Vine",
+  "de": "Ranke"
+ },
+ "axe": {
+  "en": "Stone axe",
+  "de": "Steinaxt"
+ },
+ "rope": {
+  "en": "Rope",
+  "de": "Seil"
+ },
+ "cloth": {
+  "en": "Cloth",
+  "de": "Tuch"
+ },
+ "log": {
+  "en": "Log",
+  "de": "Stamm"
+ },
+ "build.hut": {
+  "en": "Build hut",
+  "de": "Hütte bauen"
+ },
+ "build.raft": {
+  "en": "Build raft",
+  "de": "Floß bauen"
+ },
+ "setSail": {
+  "en": "Set sail",
+  "de": "Lossegeln"
+ },
+ "end": {
+  "en": "The end?",
+  "de": "Ende?"
+ },
+ "end.more": {
+  "en": "The next island is out there…",
+  "de": "Die nächste Insel wartet…"
+ },
+ "think.leaf": {
+  "en": "A big palm leaf. Good for a roof.",
+  "de": "Ein großes Palmblatt. Gut für ein Dach."
+ },
+ "think.vine": {
+  "en": "A tough vine. Tied tight, a stick and a stone would make an axe.",
+  "de": "Eine zähe Ranke. Fest gebunden gäben Stock und Stein eine Axt."
+ },
+ "think.axe": {
+  "en": "A stone axe! That crate won’t stay shut now.",
+  "de": "Eine Steinaxt! Jetzt bleibt die Kiste nicht mehr zu."
+ },
+ "think.opened": {
+  "en": "It’s open! Rope and a big cloth.",
+  "de": "Sie ist offen! Ein Seil und ein großes Tuch."
+ },
+ "think.rope": {
+  "en": "Strong rope. Good for lashing things.",
+  "de": "Starkes Seil. Gut zum Festbinden."
+ },
+ "think.cloth": {
+  "en": "Sailcloth! It would catch the wind.",
+  "de": "Segeltuch! Das würde den Wind fangen."
+ },
+ "think.felled": {
+  "en": "Timber! Two good logs.",
+  "de": "Baum fällt! Zwei gute Stämme."
+ },
+ "think.tooSmall": {
+  "en": "This one is too small to cut down.",
+  "de": "Die ist zu klein zum Fällen."
+ },
+ "think.log": {
+  "en": "A heavy log. It floats, I bet.",
+  "de": "Ein schwerer Stamm. Der schwimmt bestimmt."
+ },
+ "think.hut1": {
+  "en": "The frame stands. Now a roof — palm leaves!",
+  "de": "Das Gerüst steht. Jetzt ein Dach — Palmblätter!"
+ },
+ "think.hut2": {
+  "en": "A hut! Dry at last.",
+  "de": "Eine Hütte! Endlich trocken."
+ },
+ "think.raft1": {
+  "en": "Two logs. Two more, and rope to lash them.",
+  "de": "Zwei Stämme. Noch zwei, und ein Seil zum Festbinden."
+ },
+ "think.raft2": {
+  "en": "Lashed tight! Now a mast and a sail.",
+  "de": "Fest verschnürt! Jetzt Mast und Segel."
+ },
+ "think.raft3": {
+  "en": "The raft is ready. I can set sail!",
+  "de": "Das Floß ist fertig. Ich kann lossegeln!"
+ },
+ "think.badSleep": {
+  "en": "I barely slept, soaked through… I need a roof.",
+  "de": "Kaum geschlafen, völlig durchnässt… Ich brauche ein Dach."
+ },
+ "think.thunder": {
+  "en": "Thunder! I can’t sleep like this… I need a fire.",
+  "de": "Donner! So kann ich nicht schlafen… Ich brauche ein Feuer."
+ },
+ "think.scared": {
+  "en": "Too scared to sleep. If only I had a fire…",
+  "de": "Zu viel Angst zum Schlafen. Hätte ich nur ein Feuer…"
+ },
+ "think.day1.hungry": {
+  "en": "I’m starving… There are coconuts under the palms.",
+  "de": "Ich habe solchen Hunger… Unter den Palmen liegen Kokosnüsse."
+ },
+ "think.day1.fish": {
+  "en": "Fish, right by the shore! With something sharp on a stick…",
+  "de": "Fische, direkt am Ufer! Mit etwas Spitzem an einem Stock…"
+ },
+ "think.day2.morning": {
+  "en": "Something washed up! The sea brings new things every morning.",
+  "de": "Da ist etwas angespült! Das Meer bringt jeden Morgen Neues."
+ },
+ "think.day2.crabs": {
+  "en": "The wind is driving crabs up the beach!",
+  "de": "Der Wind treibt Krabben den Strand hinauf!"
+ },
+ "think.day3.morning": {
+  "en": "Rain clouds… I need a roof. Driftwood for a frame, palm leaves on top.",
+  "de": "Regenwolken… Ich brauche ein Dach. Treibholz fürs Gerüst, Palmblätter obendrauf."
+ },
+ "think.day4.night": {
+  "en": "What a storm. I hope I can sleep tonight…",
+  "de": "Was für ein Sturm. Hoffentlich kann ich heute Nacht schlafen…"
+ },
+ "think.day5.morning": {
+  "en": "The storm left a vine on the beach…",
+  "de": "Der Sturm hat eine Ranke an den Strand gespült…"
+ },
+ "think.day6.morning": {
+  "en": "With the axe I could cut down a palm. Logs… for a raft?",
+  "de": "Mit der Axt könnte ich eine Palme fällen. Stämme… für ein Floß?"
+ },
+ "think.day7.morning": {
+  "en": "Logs, rope, cloth. Time to build a raft and leave!",
+  "de": "Stämme, Seil, Tuch. Zeit, ein Floß zu bauen und aufzubrechen!"
  }
 }
