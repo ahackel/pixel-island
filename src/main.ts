@@ -927,6 +927,7 @@ function near(p: { x: number; y: number }, at: { i: number; j: number }, r: numb
   return Math.hypot(p.x - s.x, p.y - (s.y - up)) <= r;
 }
 
+// Whatever is picked up, the survivor reaches for it: the use animation, as for throwing or spearing.
 function arrive(pick: Pick): void {
   if ('crab' in pick) {
     const c = pick.crab;
@@ -938,6 +939,7 @@ function arrive(pick: Pick): void {
   // The hat goes straight on the head, not into the bag.
   if ('hat' in pick) {
     game.hat = null;
+    actor.emote('use', performance.now());
     looks.clear();
     mood = null;
     feel();
@@ -950,6 +952,7 @@ function arrive(pick: Pick): void {
     if (game.bag.length >= BAG_SLOTS) return think('think.full');
     game.items.splice(game.items.indexOf(pick.item), 1);
     game.bag.push('crate');
+    actor.emote('use', performance.now());
     showBag();
     return think('think.crateTaken');
   }
@@ -957,6 +960,7 @@ function arrive(pick: Pick): void {
     if (hand === 'axe') return tall(pick.palm) ? fell(pick.palm) : think('think.tooSmall');
     if (game.bag.length >= BAG_SLOTS) return think('think.full');
     game.bag.push('leaf');
+    actor.emote('use', performance.now());
     showBag();
     return think('think.leaf');
   }
@@ -982,6 +986,7 @@ function arrive(pick: Pick): void {
   if ('loose' in pick) {
     game.lying = game.lying.filter((l) => l !== pick.loose);
     game.bag.push(pick.loose.item);
+    actor.emote('use', performance.now());
     showBag();
     // Only what the sea or the crate brought is new enough to think about.
     if (isLoose(pick.loose.item)) think(`think.${pick.loose.item}`);
@@ -990,16 +995,19 @@ function arrive(pick: Pick): void {
   if ('coconut' in pick) {
     game.coconuts = game.coconuts.filter((c) => c !== pick.coconut);
     game.bag.push('coconut');
+    actor.emote('use', performance.now());
     return showBag();
   }
   if ('stone' in pick) {
     game.stones = game.stones.filter((s) => s !== pick.stone);
     game.bag.push('stone');
+    actor.emote('use', performance.now());
     showBag();
     return think('think.stone');
   }
   game.wood = game.wood.filter((w) => w !== pick.wood);
   game.bag.push('wood');
+  actor.emote('use', performance.now());
   showBag();
   think(game.struck === null ? 'think.wood' : 'think.woodFire');
 }

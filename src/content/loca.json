@@ -503,6 +503,22 @@
   "en": "Sleepy",
   "de": "Müde"
  },
+ "char.nose": {
+  "en": "Nose",
+  "de": "Nase"
+ },
+ "char.nose.small": {
+  "en": "Small",
+  "de": "Klein"
+ },
+ "char.nose.long": {
+  "en": "Long",
+  "de": "Lang"
+ },
+ "char.nose.thick": {
+  "en": "Thick",
+  "de": "Dick"
+ },
  "char.brows.none": {
   "en": "None",
   "de": "Keine"

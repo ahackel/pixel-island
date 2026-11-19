@@ -1,7 +1,7 @@
 // The character editor before each new game: the survivor as they were (or the default), changed a
 // row at a time under four tabs, or rolled at random. A small wardrobe: no tools, the spear is built.
 // Laid out for an iPad on its side: the survivor large on the left, the choices on the right.
-import { BROWS, EYE_SHAPES, HAIR_STYLES, HEAD_SHAPES } from '@pixel/engine/character/base.ts';
+import { BROWS, EYE_SHAPES, HAIR_STYLES, HEAD_SHAPES, NOSES } from '@pixel/engine/character/base.ts';
 import { CATALOG, CLOTH_KEYS, entryById } from '@pixel/engine/character/catalog.ts';
 import { HAIR_COLORS, lookOf, type State, type WornSlot } from '@pixel/engine/character/character.ts';
 import { PALETTE, SHADOW, SKIN_KEYS, type PaletteKey } from '@pixel/engine/core/palette.ts';
@@ -55,6 +55,7 @@ const TABS: { key: string; icon: Icon; rows: Row[] }[] = [
   { key: 'char.face', icon: 'face', rows: [
     { key: 'char.eyes', values: EYE_SHAPES, get: (s) => s.face.eyes, set: (s, v) => (s.face.eyes = v as never) },
     { key: 'char.brows', values: BROWS, get: (s) => s.face.brows, set: (s, v) => (s.face.brows = v as never) },
+    { key: 'char.nose', values: NOSES, get: (s) => s.face.nose ?? 'small', set: (s, v) => (s.face.nose = v as never) },
     { key: 'char.freckles', values: [false, true], get: (s) => s.face.freckles, set: (s, v) => (s.face.freckles = !!v), none: 0.7 },
     { key: 'char.glasses', values: [false, true], get: (s) => s.face.glasses, set: (s, v) => (s.face.glasses = !!v), none: 0.8 },
   ] },
