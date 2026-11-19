@@ -23,9 +23,9 @@ import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
-import { cruise, finThing, sharkNear, spawnSharks } from './shark.ts';
+import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
-import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNRISE_S, SUNSET_S, wake } from './clock.ts';
+import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
 import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from './ui.ts';
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
@@ -842,6 +842,10 @@ function press(p: { x: number; y: number }, start: boolean): void {
       actor.rouse(performance.now());
       return actor.sit(performance.now());
     }
+    // Wherever the tap is, the survivor turns to look there first: the screen offset from the feet back onto the
+    // map (a tile is 32 by 16 pixels, map +i is screen right and down), so only the direction counts.
+    const dx = p.x - foot.x, dy = p.y - foot.y;
+    if (dx || dy) actor.lookAt(dx / 32 + dy / 16, dy / 16 - dx / 32);
     // A crab: grabbed or speared if near enough, else walked up to, stopping just near enough.
     const crab = crabAt(world, crabs, p, 7);
     if (crab) {
@@ -850,6 +854,8 @@ function press(p: { x: number; y: number }, start: boolean): void {
       const d = Math.hypot(actor.i - crab.i, actor.j - crab.j);
       return goTo({ i: crab.i + ((actor.i - crab.i) / d) * reach * 0.8, j: crab.j + ((actor.j - crab.j) / d) * reach * 0.8 }, false, { crab });
     }
+    // A shark's fin, while it shows: nothing to be done about it but keep out of the water.
+    if (sharks.some((s) => finShows(s, performance.now()) && near(p, s, 7, 4))) return think('think.sharks');
     // With the spear in hand, a tap on a fish swimming near spears it.
     const fish = hand === 'spear' ? world.fishAt(p, 8) : null;
     if (fish) {
@@ -1354,8 +1360,7 @@ function weatherLight(w: Weather, night: number): Tint {
 
 function tintAt(time: number): Tint {
   const { phase, k } = phaseAt(time);
-  // Every morning the sun comes up: from dusk's purple through sunset's warmth to day.
-  if (phase === 'day') return time < SUNRISE_S ? along([TINTS.dusk, TINTS.sunset, TINTS.day], time / SUNRISE_S) : TINTS.day;
+  if (phase === 'day') return TINTS.day;
   if (phase === 'sunset') return mixTint(TINTS.day, TINTS.sunset, k);
   if (phase === 'dusk') return along([TINTS.sunset, TINTS.dusk, TINTS.night], k);
   return TINTS.night;

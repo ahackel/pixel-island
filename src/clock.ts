@@ -4,8 +4,6 @@
 /** The day lasts 10 minutes; its last minute is the sunset. Then night, which never ends by itself. */
 export const DAY_S = 600;
 export const SUNSET_S = 60;
-/** The first seconds of each morning, the sun coming up: from dusk's light to full day. */
-export const SUNRISE_S = 40;
 /** From sunset's end, how long dusk takes to turn into full night. */
 export const DUSK_S = 30;
 

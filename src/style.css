@@ -23,7 +23,9 @@ canvas { image-rendering: pixelated; }
 .bubble { position: absolute; left: 0; top: 0; pointer-events: none; }
 /* A story thought: the island dimmed behind a box at the bottom, over the bag; any tap goes on. */
 .dialog { position: absolute; inset: 0; background: #0005; display: flex; align-items: flex-end; justify-content: center;
-  padding-bottom: max(var(--gap), env(safe-area-inset-bottom)); cursor: pointer; }
+  padding-bottom: max(var(--gap), env(safe-area-inset-bottom)); cursor: pointer; animation: dim 0.3s ease-out; }
+/* Played each time the dialog is shown (unhiding restarts it): the island darkens rather than snapping dark. */
+@keyframes dim { from { background: #0000; } }
 /* Black over everything, the bars, bag and editor too, while a day ends and the next begins. */
 .veil { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: #000; opacity: 0; pointer-events: none; }
 /* The buttons' shadow: one interface pixel (4px) straight down. */

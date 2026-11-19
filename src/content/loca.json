@@ -171,6 +171,10 @@
   "en": "A fin! Sharks out there… I’ll never swim away from this island.",
   "de": "Eine Flosse! Da draußen sind Haie… Von dieser Insel schwimme ich niemals weg."
  },
+ "think.sharks": {
+  "en": "There are sharks. I better don't swim.",
+  "de": "Hier gibt es Haie. Ich schwimme besser nicht."
+ },
  "think.yumFish": {
   "en": "Mmm, fish.",
   "de": "Mmm, Fisch."

@@ -209,6 +209,9 @@ function sunk(s: Shark, ms: number): number {
   return Math.round(swell + k * (FIN.high + FADE));
 }
 
+/** Whether enough of a shark's fin is above the water at `ms` to be seen, and tapped. */
+export const finShows = (s: Shark, ms: number) => sunk(s, ms) < FIN.high - 2;
+
 /** A shark's fin to draw: cutting the water where it swims, the line moving up and down its blade. */
 export function finThing(s: Shark, ms: number): Thing {
   const dir = ((Math.round(s.a / (Math.PI / 4)) % 8) + 8) % 8;

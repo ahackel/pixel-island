@@ -95,7 +95,6 @@ Rules this sets:
 - No animal stays by a fire: crabs run off sideways and fish turn and swim away from a campfire or the burning palm, and from a torch in hand, though a carried flame frightens them only half as far. The sharks, out in the deep, are not troubled by it.
 - The island sits in the middle of a larger map, and the sea bed round it is laid by the distance to the nearest land: it falls away gently and has reached the deep before the map ends. The water's colours follow the depth, so a bed still shelving at the map's edge would show a seam against the open sea beyond it; and the shallows are where the crabs walk, so the wider they are, the further out a crab can wade, sinking and washing out with the water as it goes.
 - At night the moon throws shadows as hard as the sun's: cloud softens them by day but not after dark. Fog is the exception, and at night it lies as a dark blue bank rather than a pale grey one.
-- Every morning starts with a sunrise.
 - The survivor says how to tie things (drag one onto the other in the bag) the first time two things in the bag go together, and how to drop things (drag them out onto the sand) the first time the bag is full.
 - Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.
 - Whatever is taken out of the bag shows in the survivor's hand. Fires light the dark around them.
