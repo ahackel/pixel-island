@@ -32,5 +32,5 @@ function rowsOf(px: Pixel[]): Rows {
 export const FISH_ITEMS = ['fish', 'wrasse', 'snapper'] as const;
 /** A caught fish in the bag, by kind: the one swimming in the sea, in its colours. */
 export const FISH_IN_BAG = FISH_ITEMS.map((_, k) => rowsOf(fishPixels(0, 0, k)));
-/** A caught crab in the bag, looking out. */
-export const CRAB_IN_BAG = rowsOf(crabPixels(1));
+/** A caught crab in the bag, in 3/4 front view (heading 4; 5 is straight on): claws and eyes both showing. */
+export const CRAB_IN_BAG = rowsOf(crabPixels(4));

@@ -1474,7 +1474,7 @@ function frame(ms: number): void {
   swim(world.fish, world.floor, dt, fishRandom);
   cruise(sharks, world.floor, paused || sleeping ? 0 : dt, fishRandom);
   land(ms);
-  // On a windy day the crabs come out of the sand from the morning on, one every so often; only the wind drives them up the beach.
+  // On a windy day the crabs walk up out of the sea from the morning on, one every so often; only the wind drives them up the beach.
   if (!paused && !sleeping && !telling() && kindNow() === 'windy' && crabsOut < CRAB_NIGHT && fishRandom() < dt / 8) {
     const c = spawnCrab(world, fishRandom);
     if (c) crabs.push(c);
