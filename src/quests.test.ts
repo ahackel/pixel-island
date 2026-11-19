@@ -51,7 +51,16 @@ test('what a task needs only comes with its own quest', () => {
   assert.equal(QUESTS.findIndex((q) => q.strike), of('fire'));
   // Crabs come out only on windy days: the crab quest's, and none before it.
   assert.equal(QUESTS.findIndex((q) => q.weather === 'windy'), of('crab'));
-  // The storm comes in the night the hut is done.
+  // The storm comes in the night the hut is done, and the fire from the storm the morning after.
   assert.equal(QUESTS[of('storm') - 1].id, 'hut');
   assert.equal(QUESTS[of('storm')].night, true);
+  assert.equal(QUESTS[of('storm')].weather, 'storm');
+  assert.equal(QUESTS[of('fire') - 1].id, 'storm');
+  // The fire quest brings no weather of its own: the storm has blown over by its morning.
+  assert.equal(QUESTS[of('fire')].weather, undefined);
+});
+
+test('every quest that needs its own weather says so, and no quest asks for rain out of turn', () => {
+  // Rain and storms come only with the hut and the storm; the rest of the week is fair or whatever lasts.
+  assert.deepEqual(QUESTS.filter((q) => q.weather === 'rain' || q.weather === 'storm').map((q) => q.id), ['hut', 'storm']);
 });

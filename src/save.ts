@@ -5,7 +5,8 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BAG_ITEMS, BUILDS, BUILD_KINDS, HUT_AT, type BagItem, type Build } from './crafts.ts';
-import { QUESTS, type Progress } from './quests.ts';
+import { KINDS, QUESTS, type Progress } from './quests.ts';
+import { kindFor, type Kind } from './weather.ts';
 
 export const BAG_SLOTS = 6;
 export { BAG_ITEMS, type BagItem };
@@ -40,6 +41,8 @@ export interface Game {
   who: State;
   /** Where the story stands (quests.ts). */
   quest: Progress;
+  /** The weather, set when the quest started and the same every day until the next one begins (weather.ts). */
+  weather: Kind;
 }
 
 const KEY = 'pixel-island-save';
@@ -79,6 +82,8 @@ export function loadGame(size: number, palms: number): Game | null {
     hat: spot(g.hat, size) ? { i: g.hat.i, j: g.hat.j } : null,
     who: cleanState(g.who),
     quest: { quest: q.quest, count: q.count, done: q.done },
+    // Saves from before the weather lasted get the one their quest would have brought.
+    weather: KINDS.includes(g.weather) ? g.weather : kindFor(q.quest, g.day),
   };
 }
 

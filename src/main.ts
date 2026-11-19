@@ -12,9 +12,9 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
-import { along, light, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
+import { along, GLOWING, light, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
 import { flashAt, lightning, overcast } from '@pixel/engine/world/weather.ts';
-import { fairOf, KINDS, weatherAt, type Forced, type Kind } from './weather.ts';
+import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
 import { footOf, type Picture } from '@pixel/engine/world/island.ts';
 import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing } from '@pixel/engine/world/world.ts';
@@ -23,6 +23,7 @@ import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
+import { cruise, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNRISE_S, SUNSET_S, wake } from './clock.ts';
 import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from './ui.ts';
@@ -66,6 +67,9 @@ const DRIFT_LYING = 3;
 const FISH_COUNT = 7;
 /** How near a fish must swim to be speared, in metres. */
 const SPEAR_REACH = 1.8;
+/** How many sharks cruise the deep water, and how near one has to pass for the survivor in the water to see it. */
+const SHARK_COUNT = 3;
+const SHARK_SEEN = 5;
 /** How many crabs come out on a windy day; how near one must be to grab it by hand, and how often that works. */
 const CRAB_NIGHT = 5;
 const GRAB_REACH = 1.4;
@@ -78,6 +82,8 @@ const world = new World(scene);
 world.pieceKinds = PIECE_KINDS;
 const fishRandom = rng(Date.now());
 world.fish = spawnFish(world.floor, FISH_COUNT, fishRandom);
+/** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
+const sharks = spawnSharks(world.floor, SHARK_COUNT, fishRandom);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
 const palms = [...scene.plants];
 /** The tall palms can be felled and draw lightning; the sapling is too small. */
@@ -135,7 +141,10 @@ function newGame(who = firstWho()): Game {
   const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(at, 0.6, 0.3);
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
   const quest: Progress = { quest: START_QUEST, count: 0, done: false };
-  const g: Game = { day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at, hat, who, quest };
+  const g: Game = {
+    day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [],
+    builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
+  };
   // The island starts with two coconuts lying about.
   for (let n = 0; n < 2; n++) dropCoconuts(g);
   washWood(g);
@@ -155,12 +164,16 @@ function bring(g: Game, k: number): boolean {
   return washUp(g, q.washUps ?? []);
 }
 
-/** A stone on the beach; one more each morning while there is none lying about or in the bag (once a quest has brought stones). */
+/** How many stones there should always be on the island, once a quest has brought them. */
+const STONES_OUT = 2;
+/** The stones to be found: those lying about and those in the bag (the one in a spear or axe is used up). */
+const stonesAbout = (g: Game) => g.stones.length + g.bag.filter((it) => it === 'stone').length;
+/** A stone on the beach; the sea lays more each morning until there are STONES_OUT again. */
 function layStone(g: Game): void {
   if (beach.length) g.stones.push(onBeach());
 }
 
-/** One coconut a day falls from a palm, near its foot, never more than three under one; a burnt palm has none left. */
+/** A coconut falls from a palm, near its foot, never more than three under one; a burnt palm has none left. */
 function dropCoconuts(g: Game): void {
   const bearing = palms.filter((p, k) => k !== g.struck && !g.felled.includes(k) && g.coconuts.filter((c) => Math.hypot(c.i - p.i, c.j - p.j) < 1.8).length < 3);
   if (!bearing.length) return;
@@ -279,7 +292,6 @@ function coconutThing(c: { i: number; j: number }): Thing {
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Object.assign(document.createElement(tag), { className: cls });
 const app = document.getElementById('app')!;
-app.addEventListener('pointerdown', () => actor.rouse(performance.now()), { capture: true });
 
 type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true }
   | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true };
@@ -288,6 +300,8 @@ let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | nul
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
   const way = findPath(world, actor, at);
   target = way.length ? { way, run, pick } : null;
+  // Being sent somewhere gets the survivor up; eating or picking something out of the bag does not.
+  if (target) actor.rouse(performance.now());
 }
 
 const view = new Viewport({ zoom: 4, min: 2, max: 6, press: (p, start) => press(p, start) });
@@ -615,19 +629,22 @@ function reach(goal: Goal): void {
   if (after !== game.quest) tell(startQuest(after));
   showQuest();
 }
-/** Starts a quest: what it brings is on the beach, its lightning waits to strike. Its thought, to tell. */
+/** Starts a quest: its weather sets in, what it brings is on the beach, its lightning waits to strike. Its thought, to tell. */
 function startQuest(p: Progress): string {
   game.quest = p;
+  game.weather = kindFor(p.quest, game.day);
   bring(game, p.quest);
   if (questNow().strike) strikeNow = true;
   showQuest();
   return questNow().thought;
 }
-/** Today's weather: the quest's own while it runs, else a fair one; or the one the cheat forces. */
-const questKind = (quest: number, day: number): Kind => QUESTS[quest]?.weather ?? fairOf(day);
-const kindNow = () => weatherCheat ?? questKind(game.quest.quest, game.day);
-/** Tomorrow's, toward which the afternoon sky turns: the next quest's, if this one is done by then. */
-const kindTomorrow = () => weatherCheat ?? questKind(next(game.quest, true).quest, game.day + 1);
+/** Today's weather: the one the quest that is under way brought, or the one the cheat forces. */
+const kindNow = () => weatherCheat ?? game.weather;
+/** Tomorrow's, toward which the afternoon sky turns: unchanged, unless a new quest starts in the morning. */
+const kindTomorrow = () => {
+  const after = next(game.quest, true);
+  return weatherCheat ?? (after === game.quest ? game.weather : kindFor(after.quest, game.day + 1));
+};
 
 function startNew(who: State): void {
   if (!TRYOUT) clearGame();
@@ -815,12 +832,14 @@ let onSelf = false;
 function press(p: { x: number; y: number }, start: boolean): void {
   if (paused || sleeping || ended) return;
   if (start) {
-    // The survivor themself: they sit down (a tap on them sitting gets them up, see `rouse`).
+    // The survivor themself: they sit down, or get up again if they are already sitting.
     const foot = world.screenOf(actor.i, actor.j);
     // The survivor's body: about 8 pixels either side of the feet and 32 up.
     onSelf = Math.abs(p.x - foot.x) <= 8 && p.y <= foot.y + 2 && p.y >= foot.y - 32;
     if (onSelf) {
       target = null;
+      // Sitting or lying, a tap on themselves gets them up again; standing, it sits them down.
+      actor.rouse(performance.now());
       return actor.sit(performance.now());
     }
     // A crab: grabbed or speared if near enough, else walked up to, stopping just near enough.
@@ -943,14 +962,15 @@ function arrive(pick: Pick): void {
     hold('fire');
     return think('think.gotFire');
   }
-  // The torch in hand lights driftwood where it lies: a campfire.
+  // The torch in hand lights driftwood where it lies: a campfire. Only one by the hut is one to sleep by.
   if ('loose' in pick && pick.loose.item === 'drift' && hand === 'fire') {
     game.lying = game.lying.filter((l) => l !== pick.loose);
     game.fires.push({ i: pick.loose.i, j: pick.loose.j });
     game.bag.splice(game.bag.indexOf('fire'), 1);
     hold(null);
-    think('think.campfire');
-    return reach('campfire');
+    const atHut = byHut(pick.loose);
+    think(!atHut && wantsFire() ? 'think.fireFar' : 'think.campfire');
+    return atHut ? reach('campfire') : undefined;
   }
   if (game.bag.length >= BAG_SLOTS) return think('think.full');
   if ('loose' in pick) {
@@ -1074,6 +1094,12 @@ const hut = () => game.builds.find((b) => b.kind === 'hut' && finished(b));
 const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
 /** By a burning campfire (the stump is too wild a fire to sleep by). */
 const byFire = () => game.fires.some((f) => Math.hypot(f.i - actor.i, f.j - actor.j) <= 2.5);
+/** How near the hut a campfire counts as its own, in metres. */
+const HUT_FIRE = 3;
+const byHut = (at: { i: number; j: number }) => Math.hypot(at.i - HUT_AT.i, at.j - HUT_AT.j) <= HUT_FIRE;
+/** The fire quest is under way: after that storm the survivor does not sleep again until a campfire burns by the hut. */
+const wantsFire = () => questNow().goal === 'campfire' && !game.quest.done;
+const fireByHut = () => game.fires.some(byHut);
 
 /** The raft, finished, by the survivor, and the sea not stormy. */
 function canSail(): boolean {
@@ -1135,6 +1161,8 @@ function sleep(fainted: boolean, anywhere = false): void {
   if (chosen && !dry(actor)) return think('think.wet');
   // In the rain the survivor sleeps only under the hut's roof.
   if (chosen && weatherAt(kindNow(), kindTomorrow(), time).rain > 0.4 && !sheltered()) return think('think.rainSleep');
+  // After the storm night the survivor lies awake until a campfire burns by the hut.
+  if (chosen && wantsFire() && !fireByHut()) return think('think.needFire');
   // In a storm, sleep out of the hut and away from a fire is broken by thunder, and then does not come back.
   const wakes = chosen && kindNow() === 'storm' && !byFire() && !sheltered();
   if (wakes && stormWoken) return think('think.scared');
@@ -1166,7 +1194,8 @@ function morning(fainted: boolean): void {
   // Every night ends on the blanket: one who fainted somewhere crawled back to it in the dark.
   Object.assign(actor, BLANKET);
   game.at = { i: actor.i, j: actor.j };
-  dropCoconuts(game);
+  // A palm only drops a new coconut once the last one has been eaten.
+  if (!game.coconuts.length && !game.bag.includes('coconut')) dropCoconuts(game);
   washWood(game);
   world.fish.push(...spawnFish(world.floor, FISH_COUNT - world.fish.length, fishRandom));
   crabs = [];
@@ -1174,7 +1203,7 @@ function morning(fainted: boolean): void {
   // A done quest gives way to the next, which brings what it needs; else the morning's own thought.
   const after = next(game.quest, true);
   const thought = after !== game.quest ? startQuest(after) : morningThought();
-  if (stonesOut(game.quest.quest) && !game.stones.length && !game.bag.includes('stone')) layStone(game);
+  if (stonesOut(game.quest.quest)) for (let n = stonesAbout(game); n < STONES_OUT; n++) layStone(game);
   showQuest();
   if (!TRYOUT) saveGame(game);
   setTimeout(() => tell(thought), FADE.hold + FADE.in);
@@ -1186,7 +1215,7 @@ function morningThought(): string {
   return kind === 'sunny' ? questThought() : `think.${kind}`;
 }
 
-/** The fire quest's lightning, waiting until the survivor is up and its thought read. */
+/** The fire quest's lightning, waiting until the survivor is up, its thought read and the hut left behind. */
 let strikeNow = false;
 
 /** How dark the fade is now, and runs the morning at its darkest. */
@@ -1231,16 +1260,34 @@ function fadeAt(ms: number): number {
   return 0;
 }
 
+/**
+ * Where the torch burns in the survivor's picture, in ground pixels: the middle of its glowing pixels, so the light
+ * sits on the flame itself however they stand, turn or hold it, and not on a spot guessed above their feet.
+ */
+function flameAt(me: Thing): { x: number; y: number } | null {
+  let n = 0;
+  let sx = 0;
+  let sy = 0;
+  for (let y = 0; y < me.h; y++) for (let x = 0; x < me.w; x++) {
+    const c = me.picture.get(x, y);
+    if (c && GLOWING.has(c)) (sx += x), (sy += y), n++;
+  }
+  if (!n) return null;
+  const foot = footOf(world.ground, me.spot);
+  return { x: foot.x + sx / n - me.foot.x, y: foot.y + sy / n - me.foot.y };
+}
 /** The fires as lamps lighting the dark round them, in the view's pixels: campfires, the burning stump, the torch in hand. */
-function lamps(rect: { x: number; y: number }): Lamp[] {
+function lamps(rect: { x: number; y: number }, me: Thing | null): Lamp[] {
   const lamp = (at: { i: number; j: number }, up: number, r: number): Lamp => {
     const p = world.screenOf(at.i, at.j);
     return { x: p.x - rect.x, y: p.y - up - rect.y, r };
   };
+  // Every lamp sits on a flame: the torch's is found in the survivor's own picture.
+  const torch = hand === 'fire' && me ? flameAt(me) : null;
   return [
     ...game.fires.map((f) => lamp(f, 5, 46)),
     ...(game.struck === null ? [] : [lamp(palms[game.struck], 14, 40)]),
-    ...(hand === 'fire' && present ? [lamp(actor, 30, 28)] : []),
+    ...(torch ? [{ x: torch.x - rect.x, y: torch.y - rect.y, r: 28 }] : []),
   ];
 }
 
@@ -1324,6 +1371,7 @@ function frame(ms: number): void {
     Object.assign(game, drain(game, dt * SPEED * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
+    warnOnce('think.shark', !dry(actor) && !!sharkNear(sharks, actor, SHARK_SEEN));
     teach('think.canTie', canTie());
     teach('think.canDrop', game.bag.length >= BAG_SLOTS);
     if (faints(game)) {
@@ -1362,6 +1410,7 @@ function frame(ms: number): void {
   if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
 
   swim(world.fish, world.floor, dt, fishRandom);
+  cruise(sharks, world.floor, paused || sleeping ? 0 : dt, fishRandom);
   land(ms);
   // On a windy day the crabs come out of the sand from the morning on, one every so often; only the wind drives them up the beach.
   if (!paused && !sleeping && !telling() && kindNow() === 'windy' && crabsOut < CRAB_NIGHT && fishRandom() < dt / 8) {
@@ -1376,7 +1425,8 @@ function frame(ms: number): void {
   const flashNow = flashAt(ms, weather);
   // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
   if (game.struck !== null) strikeNow = false;
-  const striking = strikeNow && !paused && !sleeping && !telling();
+  // The bolt comes as the survivor steps out of the hut, so they see it strike.
+  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered();
   if (striking) {
     strikeNow = false;
     strike();
@@ -1404,7 +1454,7 @@ function frame(ms: number): void {
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),
-    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)),
+    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms)),
   ];
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
   const rect = view.rect();
@@ -1414,7 +1464,7 @@ function frame(ms: number): void {
   // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
   const flash = (striking ? 1 : flashNow) * (1 - fade);
   const tint = tintAt(time);
-  light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect));
+  light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me));
   lightning(image, flash);
   sparks.draw(image, rect, ms);
   strikeFx?.draw(image, rect, ms);

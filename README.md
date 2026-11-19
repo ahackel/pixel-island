@@ -27,7 +27,8 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 - `src/ui.ts` — the interface as pixel art (HUD, buttons, bag slots), on the engine's `shared/pixel-font.ts` and `shared/pixel-ui.ts`.
 - `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.
 - `src/quests.ts` — the quests from `src/content/quests.json`, how they advance, and the content checks (tested in `quests.test.ts`).
-- `src/weather.ts` — each day's weather: the quest's own, else a fair one.
+- `src/weather.ts` — the weather: set when a quest starts (its own, else a fair one) and the same every day until the next quest begins.
+- `src/shark.ts` — the sharks in the deep water and the fin that shows of them.
 
 ## Publishing
 

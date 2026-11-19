@@ -1,10 +1,11 @@
-// What the sky does. A quest can set the weather for as long as it runs (the rain while the hut is built, the storm
-// to sit out); every other day gets a fair one picked from the day number, so nothing needs saving. Through the
-// afternoon the sky turns toward tomorrow's weather (clouds and wind; rain only falls on a rain or storm day); fog
-// does not: a foggy day is fog from morning to night, and the fog comes and goes only overnight.
+// What the sky does. The weather lasts: it is set when a quest starts (the quest's own, else a fair one picked from
+// the day number) and stays the same every day until the next quest begins, so a day never dawns different for no
+// reason. It is kept in the save. Through the afternoon the sky turns toward tomorrow's weather (clouds and wind;
+// rain only falls on a rain or storm day); fog does not: a foggy day is fog from morning to night, and the fog comes
+// and goes only overnight.
 import { CLEAR, mixWeather, type Weather } from '@pixel/engine/world/weather.ts';
 import { DAY_S, DUSK_S } from './clock.ts';
-import { KINDS, type Kind } from './quests.ts';
+import { KINDS, QUESTS, type Kind } from './quests.ts';
 
 export { KINDS, type Kind };
 
@@ -26,6 +27,9 @@ export function fairOf(day: number): Kind {
   let r = roll(Math.max(1, Math.floor(day)));
   return (FAIR.find(([, w]) => (r -= w) < 0) ?? FAIR[0])[0];
 }
+
+/** The weather a quest brings when it starts on `day`: its own, else the fair one that day rolls. */
+export const kindFor = (quest: number, day: number): Kind => QUESTS[quest]?.weather ?? fairOf(day);
 
 /** What the cheat can force instead of the day's own weather. */
 export type Forced = Kind;

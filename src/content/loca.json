@@ -108,12 +108,12 @@
   "de": "Ein trockener Stock. Den könnte ich an der brennenden Palme anzünden."
  },
  "think.struck": {
-  "en": "Lightning hit the palm! It’s burning! With a stick I could carry the fire to a campfire.",
-  "de": "Der Blitz hat die Palme getroffen! Sie brennt! Mit einem Stock könnte ich das Feuer zu einem Lagerfeuer tragen."
+  "en": "Lightning hit the palm! It’s burning! With a stick I could carry the fire and light driftwood by the hut.",
+  "de": "Der Blitz hat die Palme getroffen! Sie brennt! Mit einem Stock könnte ich das Feuer holen und Treibholz neben der Hütte anzünden."
  },
  "think.gotFire": {
-  "en": "A torch! Now to light some driftwood…",
-  "de": "Eine Fackel! Jetzt noch Treibholz anzünden…"
+  "en": "A torch! Now to light some driftwood by the hut…",
+  "de": "Eine Fackel! Jetzt noch Treibholz neben der Hütte anzünden…"
  },
  "think.haveFire": {
   "en": "My torch is already burning.",
@@ -126,6 +126,14 @@
  "think.campfire": {
   "en": "A campfire! Warm and bright.",
   "de": "Ein Lagerfeuer! Warm und hell."
+ },
+ "think.fireFar": {
+  "en": "It burns! But out here it is no use to me — I want a fire by the hut.",
+  "de": "Es brennt! Aber hier draußen nützt es mir nichts — ich will ein Feuer neben der Hütte."
+ },
+ "think.needFire": {
+  "en": "Not after that storm. I need a fire burning by the hut before I lie down.",
+  "de": "Nicht nach diesem Sturm. Ich brauche ein Feuer neben der Hütte, bevor ich mich hinlege."
  },
  "stone": {
   "en": "Stone",
@@ -158,6 +166,10 @@
  "think.missed": {
   "en": "Too far away. I have to get closer.",
   "de": "Zu weit weg. Ich muss näher ran."
+ },
+ "think.shark": {
+  "en": "A fin! Sharks out there… I’ll never swim away from this island.",
+  "de": "Eine Flosse! Da draußen sind Haie… Von dieser Insel schwimme ich niemals weg."
  },
  "think.yumFish": {
   "en": "Mmm, fish.",
@@ -820,8 +832,8 @@
   "de": "Donner! In der Nacht ist ein Sturm losgebrochen. Gut, dass ich die Hütte habe — ich schlafe ihn unterm Dach aus."
  },
  "quest.fire": {
-  "en": "The storm is moving off… one last flash over the palms.",
-  "de": "Der Sturm zieht ab… ein letzter Blitz über den Palmen."
+  "en": "The storm is moving off… I should look outside. After a night like that I won’t sleep again without a fire by the hut.",
+  "de": "Der Sturm zieht ab… Ich schaue mal nach draußen. Nach so einer Nacht schlafe ich nicht wieder ohne ein Feuer neben der Hütte."
  },
  "quest.axe": {
   "en": "The storm left a vine on the beach. Stick, stone and vine make an axe — and with an axe I could cut logs.",

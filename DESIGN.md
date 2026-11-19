@@ -35,11 +35,11 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 - The player tells the survivor to sleep. The screen fades to black, a new morning starts, and the survivor is rested.
 - The clock only runs while playing. It stops when the app is hidden, and there is a pause button.
 - Night is darker, so seeing needs light (fire or torch). Some things happen only at night: crabs, turtles laying eggs, better fishing, stars.
-- Weather is a system: random rain, wind and storm days. Storms can cause events, for example lightning setting a tree on fire, which is the first fire.
+- Weather is a system, and it lasts: a quest sets the weather when it starts (its own, or a fair one), and every day after that is the same until the next quest begins, so a day never dawns different for no reason. Storms can cause events, for example lightning setting a tree on fire, which is the first fire.
 
 ## Survival (light)
 
-- **Hunger:** palms drop coconuts every day; fish come later.
+- **Hunger:** a palm drops a coconut in the night, but only once the last one on the island has been eaten; fish come later.
 - **Energy:** drains with time and work, and sleep refills it.
 - Low needs make the survivor slower. At zero they faint and wake the next morning, losing the rest of the day.
 - At first, anywhere on the island that is not water is a safe place to sleep. The hut gives a better rest later.
@@ -84,19 +84,22 @@ The demo is a chain of quests (`src/content/quests.json`), one at a time, each t
 | 5 | Open the crate | fair | the crate | it is smashed with a stone or the hammer: rope and two pieces of driftwood |
 | 6 | Build the hut | rain | the hammer | the hut's roof is on |
 | 7 | Sit out the storm (wakes the survivor the night the hut is done) | storm | — | a storm night slept, in the hut |
-| 8 | Light a campfire | fair | lightning burns a palm | driftwood is lit with a torch from it |
+| 8 | Light a campfire | fair | lightning burns a palm as the survivor steps out of the hut | driftwood is lit by the hut with a torch from it |
 | 9 | Make an axe, cut 4 logs | fair | the vine | four logs are cut |
 | 10 | Build the raft, sail away | fair | the cloth for the sail | the raft sets sail: the end |
 
 Rules this sets:
 
 - Crabs come out only on windy days, from the morning on.
+- Sharks cruise the deep water; only the fin shows. They are why there is no swimming away.
 - Every morning starts with a sunrise.
 - The survivor says how to tie things (drag one onto the other in the bag) the first time two things in the bag go together, and how to drop things (drag them out onto the sand) the first time the bag is full.
 - Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.
 - Whatever is taken out of the bag shows in the survivor's hand. Fires light the dark around them.
 - Standing behind the hut, its walls come down to knee height and its roof off, so the survivor is seen.
-- Rain and storms come only with their quests; other days are fair.
+- Rain and storms come only with their quests; other days are fair, and the weather holds from day to day until a quest changes it.
+- Once the sea has brought stones, there are always two to be found: fewer than two on the island (lying about or in the bag) and the next morning brings them back up to two.
+- After the storm night the survivor lies awake until a campfire burns by the hut, so the fire quest ends where they sleep.
 - In the rain the survivor sleeps only under the hut's roof. A storm night out of the hut wakes them with thunder.
 - A palm tapped gives a leaf; with the axe in hand it is cut down for two logs (the sapling is too small). A stone or the hammer smashes the crate, the axe prises it open.
 - Things are tied by dragging one onto another in the bag (`src/crafts.ts`). The hut and raft are built in stages with a button that shows when the bag holds the next stage and the survivor stands in the right place (hut round the blanket, raft on the beach).
@@ -105,6 +108,7 @@ Open:
 
 - How many logs the raft needs, and how many palms the island can lose (fewer palms, fewer coconuts).
 - Whether the hut also shelters the campfire from rain.
+- Whether a shark ever does more than show its fin.
 - Setting sail only fades to the end card; the raft does not drift off yet.
 - What the night crabs give besides food.
 
