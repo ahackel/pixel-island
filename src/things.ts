@@ -36,9 +36,31 @@ export const AXE_IN_BAG: Rows = {
   rows: ['....LLs..', '...LLssd.', '....csdd.', '...W.....', '..W......', '.W.......', 'w........'],
   colors: { ...STONE.colors, ...WOOD, c: PALETTE.straw.base },
 };
+/** The hammer: an iron head across a wooden handle. */
+export const HAMMER: Rows = {
+  rows: ['.IIIII.', 'IIIIIIi', '.iiWii.', '...W...', '...W...', '...W...', '...w...'],
+  colors: { I: '#9aa3ad', i: '#646c75', ...WOOD },
+};
 /** The axe held upright in one hand, its stone head on top. */
 export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({ length: 11 }, (_, y) => (y === 10 ? '...w...' : '...W...'))], { S: 'stone' });
 
+
+/**
+ * The blanket the survivor sleeps on, lying flat: red, cream and blue stripes across, an edge of shade in front.
+ * Long across the screen, as the survivor lies.
+ */
+const STRIPES = 'RRRCCBBBCC'.repeat(4).slice(0, 36);
+const BLANKET_ROWS = [...Array(6).fill(STRIPES), STRIPES.toLowerCase()];
+const blanketPicture = picture({ rows: BLANKET_ROWS, colors: { R: '#c8463a', r: '#8e2f27', C: '#efe2c4', c: '#b9a98a', B: '#3f6fa8', b: '#2b4d78' } });
+/**
+ * The blanket at `spot`. Its picture is centred on the spot, but the thing is placed half a metre back, so
+ * whoever lies on it is drawn over it; it casts no shadow.
+ */
+export function blanketThing(spot: Thing['spot']): Thing {
+  const w = BLANKET_ROWS[0].length, h = BLANKET_ROWS.length;
+  // Half a metre back along i and j is 8 ground pixels up the screen.
+  return { spot: { ...spot, i: spot.i - 0.5, j: spot.j - 0.5 }, picture: blanketPicture, w, h, foot: { x: Math.floor(w / 2), y: Math.floor(h / 2) - 8 }, shadow: [] };
+}
 
 const hats = new WeakMap<State, (spot: Thing['spot']) => Thing>();
 /**

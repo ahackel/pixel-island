@@ -263,6 +263,10 @@
   "en": "A heavy log. It floats, I bet.",
   "de": "Ein schwerer Stamm. Der schwimmt bestimmt."
  },
+ "think.hammer": {
+  "en": "A hammer! With this I could build a hut, round my blanket.",
+  "de": "Ein Hammer! Damit könnte ich eine Hütte bauen, um meine Decke herum."
+ },
  "think.hut1": {
   "en": "The back wall stands. Now the sides.",
   "de": "Die Rückwand steht. Jetzt die Seiten."
@@ -376,8 +380,8 @@
   "de": "Haut"
  },
  "char.figure": {
-  "en": "Figure",
-  "de": "Figur"
+  "en": "Gender",
+  "de": "Geschlecht"
  },
  "char.build": {
   "en": "Build",
@@ -480,12 +484,12 @@
   "de": "Nach rechts drehen"
  },
  "char.figure.m": {
-  "en": "Broad",
-  "de": "Breit"
+  "en": "Male",
+  "de": "Männlich"
  },
  "char.figure.f": {
-  "en": "Narrow",
-  "de": "Schmal"
+  "en": "Female",
+  "de": "Weiblich"
  },
  "char.build.thin": {
   "en": "Very slim",

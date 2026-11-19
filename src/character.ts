@@ -17,7 +17,7 @@ type Value = string | boolean | null;
  * `none`: how often a roll leaves it at its first value (none, no, own colours). `unset`: what null is called.
  * `swatches`: picked from colour squares, not stepped through; `own` is the colour null stands for.
  */
-interface Row { key: string; values: readonly Value[]; get(s: State): Value; set(s: State, v: Value): void; none?: number; unset?: string; swatches?: true; own?(s: State): Value }
+interface Row { key: string; values: readonly Value[]; get(s: State): Value; set(s: State, v: Value): void; none?: number; unset?: string; swatches?: true; own?(s: State): Value; icon?(v: Value): Icon }
 
 const ids = (slot: string) => CATALOG.filter((e) => e.slot === slot && !e.id.startsWith('job-')).map((e) => e.id);
 /** The palette colour a piece's own main colour is swapped for, or null for its own. */
@@ -48,7 +48,7 @@ const wornRow = (key: string, slot: WornSlot, optional: boolean, none = 0): Row 
 const TABS: { key: string; icon: Icon; rows: Row[] }[] = [
   { key: 'char.body', icon: 'body', rows: [
     { key: 'char.skin', values: SKIN_KEYS, get: (s) => s.skin, set: (s, v) => (s.skin = v as never), swatches: true },
-    { key: 'char.figure', values: ['m', 'f'], get: (s) => s.frame, set: (s, v) => (s.frame = v as 'm' | 'f') },
+    { key: 'char.figure', values: ['m', 'f'], get: (s) => s.frame, set: (s, v) => (s.frame = v as 'm' | 'f'), icon: (v) => (v === 'f' ? 'female' : 'male') },
     { key: 'char.build', values: BUILDS.map((b) => b.id), get: (s) => s.build, set: (s, v) => (s.build = v as string) },
     { key: 'char.head', values: HEAD_SHAPES, get: (s) => s.face.shape ?? 'round', set: (s, v) => (s.face.shape = v as never) },
   ] },
@@ -100,7 +100,7 @@ export function characterEditor(start: State, done: (s: State) => void): HTMLEle
   s.worn.tool = null;
   const box = el('div', 'editor');
 
-  // The survivor large, idling as on the island: blinking, now and then a glance or a smile.
+  // The survivor large and neat (not yet worn by the island), idling as on the island: blinking, now and then a glance or a smile.
   // Dragged sideways (or the arrows below), they turn round.
   const SIZE = 56;
   // shortcut: fixed so the longest German names still fit beside it on a 1024-wide iPad; size it from the window if wider screens should get more.
@@ -120,7 +120,7 @@ export function characterEditor(start: State, done: (s: State) => void): HTMLEle
     const look = fidget?.look ?? 0;
     const key = `${facing}|${face}|${look}`;
     let sprite = sprites.get(key);
-    if (!sprite) sprites.set(key, (sprite = drawCharacter(lookOf(s), look ? { ...STAND, look } : IDLE.frames[frame], facing, { face })));
+    if (!sprite) sprites.set(key, (sprite = drawCharacter(lookOf({ ...s, wear: 0 }), look ? { ...STAND, look } : IDLE.frames[frame], facing, { face })));
     ctx.clearRect(0, 0, SIZE, SIZE);
     panel(ctx, 0, 0, SIZE, SIZE - 1, C.paper, C.shadow);
     const dx = (SPRITE_W - SIZE) / 2, dy = 2;
@@ -214,7 +214,9 @@ export function characterEditor(start: State, done: (s: State) => void): HTMLEle
         panel(x, 0, 0, BAR_W, 13, C.paper, C.shadow);
         drawRows(x, ICONS.left, 2, 2, C.ink);
         drawRows(x, ICONS.right, BAR_W - 11, 2, C.ink);
-        text(x, caps(named(row, row.get(s))), BAR_W / 2, 4, C.ink, 'center');
+        const v = row.get(s);
+        if (row.icon) drawRows(x, ICONS[row.icon(v)], Math.floor((BAR_W - 9) / 2), 2, C.ink);
+        else text(x, caps(named(row, v)), BAR_W / 2, 4, C.ink, 'center');
         face.replaceChildren(c);
       };
       const step = (by: number) => {

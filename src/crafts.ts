@@ -1,10 +1,10 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
 // in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
 
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 /** Bag items that can also lie on the ground to be picked up (wash-ups, what the crate held, logs). */
-export const LOOSE = ['vine', 'rope', 'cloth', 'log'] as const;
+export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer'] as const;
 export type Loose = (typeof LOOSE)[number];
 
 /** A thing tied from what is in the bag: one dragged onto another, the rest anywhere in the bag. */
@@ -34,29 +34,34 @@ export function recipeFor(hand: BagItem | null, tapped: BagItem, bag: readonly B
 
 /** A structure built in stages, each taking what it needs from the bag. */
 export const BUILDS = {
-  /** A 2×2 hut of driftwood planks, one side at a time (HUT_PLAN), roofed with palm leaves: sleeping in it is dry. */
-  hut: { stages: [['wood'], ['wood'], ['wood'], ['wood'], ['leaf', 'leaf', 'leaf']], on: 'land' },
+  /**
+   * A 2×2 hut of driftwood planks round the blanket, one side at a time (HUT_PLAN), roofed with palm leaves:
+   * sleeping in it is dry. Nailed together: the hammer must be in the bag, and stays there.
+   */
+  hut: { stages: [['wood'], ['wood'], ['wood'], ['wood'], ['leaf', 'leaf', 'leaf']], on: 'land', tools: ['hammer'] },
   /** Logs lashed with rope, a stick for a mast and the cloth for a sail: on the beach, to sail away. */
   raft: { stages: [['log', 'log'], ['log', 'log', 'rope'], ['wood', 'cloth']], on: 'beach' },
-} as const satisfies Record<string, { stages: readonly (readonly BagItem[])[]; on: 'land' | 'beach' }>;
+} as const satisfies Record<string, { stages: readonly (readonly BagItem[])[]; on: 'land' | 'beach'; tools?: readonly BagItem[] }>;
 export type BuildKind = keyof typeof BUILDS;
 export const BUILD_KINDS = Object.keys(BUILDS) as BuildKind[];
 
 export interface Build { kind: BuildKind; i: number; j: number; /** Stages done. */ stage: number }
 export const finished = (b: Build | undefined) => !!b && b.stage >= BUILDS[b.kind].stages.length;
 
-/** What the bag still lacks for a build's next stage, empty when it can be built. */
+/** What the bag still lacks for a build's next stage, empty when it can be built: what the stage uses up, then the tools it needs. */
 export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[]): BagItem[] {
   const left = [...bag];
-  return (BUILDS[kind].stages[stage] ?? []).filter((n) => {
+  const used = (BUILDS[kind].stages[stage] ?? []).filter((n) => {
     const k = left.indexOf(n);
     if (k < 0) return true;
     left.splice(k, 1);
     return false;
   });
+  const tools = (BUILDS[kind] as { tools?: readonly BagItem[] }).tools ?? [];
+  return [...used, ...tools.filter((n) => !bag.includes(n))];
 }
 
-/** The middle of the hut's 2×2 cells. */
+/** The middle of the hut's 2×2 cells, where the blanket lies, so the hut is built round it. */
 // shortcut: one fixed place on the first island's hilltop; let the player choose once there are more islands.
 export const HUT_AT = { i: 9, j: 10 };
 /** A wall on a cell edge, relative to the hut's first cell (see engine/world/building). */

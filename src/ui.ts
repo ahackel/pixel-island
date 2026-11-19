@@ -27,6 +27,9 @@ export const ICONS = {
   face: ['..xxxxx..', '.x.....x.', 'x..x.x..x', 'x.......x', 'x.x...x.x', 'x..xxx..x', '.x.....x.', '..xxxxx..', '.........'],
   hair: ['..xxxxx..', '.xxxxxxx.', 'xxxxxxxxx', 'xxx...xxx', 'xx.x.x.xx', 'xx.....xx', 'xx.xxx.xx', 'xx.....xx', 'x.......x'],
   clothes: ['..xx.xx..', '.xx...xx.', 'xx.....xx', 'xxx...xxx', '..x...x..', '..x...x..', '..x...x..', '..xxxxx..', '.........'],
+  // The gender signs, for the character editor's figure row.
+  male: ['.....xxxx', '.......xx', '..xxx.x.x', '.x...x..x', 'x.....x..', 'x.....x..', 'x.....x..', '.x...x...', '..xxx....'],
+  female: ['...xxx...', '..x...x..', '..x...x..', '..x...x..', '...xxx...', '....x....', '....x....', '..xxxxx..', '....x....'],
   // Flags for the language, a flag's shape inside the square.
   en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'rrrrrrrrr', 'ttttttttt', '.........', '.........'],
   de: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', 'rrrrrrrrr', 'rrrrrrrrr', 'yyyyyyyyy', 'yyyyyyyyy', '.........', '.........'],

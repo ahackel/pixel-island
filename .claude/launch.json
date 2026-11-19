@@ -9,6 +9,21 @@
         "dev"
       ],
       "port": 8330
+    },
+    {
+      "name": "engine",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "../pixel-art/pixel-art",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8331",
+        "--strictPort"
+      ],
+      "port": 8331
     }
   ]
 }

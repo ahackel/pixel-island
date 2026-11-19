@@ -19,7 +19,8 @@
  "2": {
   "weather": "windy",
   "washUps": [
-   "crate"
+   "crate",
+   "hammer"
   ],
   "thought": "think.day2.morning",
   "events": [

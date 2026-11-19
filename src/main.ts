@@ -37,15 +37,25 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, CLOTH, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, blanketThing, CLOTH, HAMMER, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
 const SPEED = Math.max(0.1, Number(params.get('speed')) || 1);
 /** Debug, from the day editor: `?day=5` plays a new game from day 5 and never saves, so the real save is kept. */
-const TRYOUT = params.has('day');
-const START_DAY = Math.min(999, Math.max(1, Math.floor(Number(params.get('day'))) || 1));
+let TRYOUT = params.has('day');
+let START_DAY = Math.min(999, Math.max(1, Math.floor(Number(params.get('day'))) || 1));
+/** A new game from the menu is a real one: day 1, saved, and the tryout's `?day` gone from the address. */
+function endTryout(): void {
+  if (!TRYOUT) return;
+  TRYOUT = false;
+  START_DAY = 1;
+  params.delete('day');
+  // Flags like `cheats` keep their bare form, not `cheats=`.
+  const rest = `${params}`.replace(/=(?=&|$)/g, '');
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
+}
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -91,11 +101,13 @@ const firstWho = (): State => {
  * right. `side` -1 is left, 1 right.
  */
 const sideways = (p: { i: number; j: number }, side: number, d: number) => ({ i: p.i + (side * d) / Math.SQRT2, j: p.j - (side * d) / Math.SQRT2 });
-/** Head to feet, about, in metres: the lying sprite is some 22 pixels long, a tile's 32 pixels across are 1.4 metres. */
-const HALF_BODY = 0.45;
-/** The side of the screen the head goes, lying here: on dry ground, the feet (if one side must be) in the water. */
+/** Half of head to feet, in metres: the lying sprite is some 26 pixels long, and a tile's 32 pixels across are 1.4 metres. */
+const HALF_BODY = 0.6;
+/** The side of the screen the head goes, lying here: on dry ground, the feet (if one side must be) toward the water. */
 function headSide(p: { i: number; j: number }): -1 | 1 {
-  const score = (side: number) => (dry(sideways(p, side, HALF_BODY)) ? 2 : 0) + (dry(sideways(p, -side, HALF_BODY)) ? 0 : 1);
+  // Near the body first, then a metre further out: with both ends dry, the head goes inland, the feet toward the sea.
+  const score = (side: number) =>
+    [HALF_BODY, 1.2].reduce((n, d, k) => n + (k ? 1 : 3) * ((dry(sideways(p, side, d)) ? 2 : 0) + (dry(sideways(p, -side, d)) ? 0 : 1)), 0);
   return score(1) > score(-1) ? 1 : -1;
 }
 /** Turns the survivor so that, lying down, the head is on the dry side (see `headSide`). */
@@ -108,14 +120,15 @@ function faceToLie(): void {
 
 function newGame(who = firstWho()): Game {
   // The survivor wakes washed ashore: on the beach nearest the island's middle with the sea beside it on screen, so
-  // they lie with their head on the sand and their feet in the water.
+  // they lie along the water's edge, the feet toward the sea, all of them on the sand.
   const seaSide = (b: { i: number; j: number }) => [-1, 1].find((side) => !dry(sideways(b, side, 0.9)) && dry(sideways(b, -side, 0.9)));
   const far = (b: { i: number; j: number }) => Math.hypot(b.i - scene.spawn.i, b.j - scene.spawn.j);
   const shore = beach.filter((b) => seaSide(b) !== undefined).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
   const side = seaSide(shore);
   let at = { ...shore };
-  // Down the sand toward the sea, as far as stays dry underfoot with the feet already wet.
-  if (side) for (let d = 0; d < 0.6 && dry(sideways(shore, side, d)) && dry(sideways(shore, side, d + HALF_BODY)); d += 0.05) at = sideways(shore, side, d + 0.05);
+  // Up the sand from the sea until head and feet are both on dry ground, with a little to spare.
+  const ends = HALF_BODY + 0.4;
+  if (side) for (let d = 0.05; d < 1.5 && !(dry(sideways(at, side, ends)) && dry(sideways(at, -side, ends))); d += 0.05) at = sideways(shore, -side, d);
   if (!dry(at)) at = { ...shore };
   // The hat came off in the sea and lies on the sand beyond their head.
   const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(at, 0.6, 0.3);
@@ -243,7 +256,7 @@ const app = document.getElementById('app')!;
 app.addEventListener('pointerdown', () => actor.rouse(performance.now()), { capture: true });
 
 type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true }
-  | { loose: Game['lying'][number] } | { palm: number } | { hat: true };
+  | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -278,7 +291,7 @@ function hold(item: BagItem | null): void {
 const BAG_PICTURES = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
   stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG[0], wrasse: FISH_IN_BAG[1], snapper: FISH_IN_BAG[2], crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG,
+  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER,
 };
 /** What is eaten from the bag, and how much it fills. */
 const FOOD: Partial<Record<BagItem, { fills: number; label: Key; yum: Key }>> = {
@@ -624,7 +637,7 @@ function showMenu(): void {
     ...(present && !ended ? [pixelButton(t('continue'), { words: t('continue') }, play)] : []),
     // A new game starts over at the first menu, out at sea; the old one stays saved until a survivor is made.
     present
-      ? pixelButton(t('newGame'), { words: t('newGame') }, () => { present = false; showMenu(); })
+      ? pixelButton(t('newGame'), { words: t('newGame') }, () => { endTryout(); present = false; showMenu(); })
       : pixelButton(t('createCharacter'), { words: t('createCharacter') }, makeCharacter),
     pixelButton(t('settings'), { words: t('settings') }, showSettings),
   );
@@ -660,7 +673,7 @@ if (params.has('cheats')) {
     }),
     {
       words: 'GIVE',
-      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire'] as const).map((it) => cheat(it.toUpperCase(), () => {
+      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer'] as const).map((it) => cheat(it.toUpperCase(), () => {
         if (game.bag.length < BAG_SLOTS) game.bag.push(it);
         showBag();
       })),
@@ -742,6 +755,7 @@ function press(p: { x: number; y: number }, start: boolean): void {
     const st = game.stones.find((s) => near(p, s, 5, 1));
     if (st) return goTo(st, false, { stone: st });
     if (game.hat && near(p, game.hat, 6, 2)) return goTo(game.hat, false, { hat: true });
+    if (near(p, BLANKET, 15, 0)) return goTo(BLANKET, false, { blanket: true });
     const lo = game.lying.find((l) => near(p, l, 6, 2));
     if (lo) return goTo(lo, false, { loose: lo });
     const it = game.items.find((it) => near(p, it, 9, 7));
@@ -776,6 +790,8 @@ function arrive(pick: Pick): void {
     if (crabs.includes(c) && Math.hypot(c.i - actor.i, c.j - actor.j) <= crabReach() + 0.2) return catchCrab(c);
     return think('think.missed');
   }
+  // Once on the blanket, the sleep button shows, by day too: sleep then lasts till the next morning.
+  if ('blanket' in pick) return;
   // The hat goes straight on the head, not into the bag.
   if ('hat' in pick) {
     game.hat = null;
@@ -913,6 +929,9 @@ function build(kind: BuildKind): void {
   hold(hand);
   think(`think.${kind}${stage + 1}`);
 }
+/** Where the survivor sleeps: the blanket, in the middle of where the hut goes. */
+const BLANKET = HUT_AT;
+const onBlanket = () => Math.hypot(actor.i - BLANKET.i, actor.j - BLANKET.j) < 0.5;
 const hut = () => game.builds.find((b) => b.kind === 'hut' && finished(b));
 /** Under the finished hut's roof: on one of its 2×2 cells. */
 const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
@@ -981,6 +1000,8 @@ function sleep(fainted: boolean, anywhere = false): void {
   if (wakes && stormWoken) return think('think.scared');
   target = null;
   forget();
+  // Chosen, sleep is on the blanket (the button only shows there): settled onto its middle.
+  if (chosen) Object.assign(actor, BLANKET);
   // The survivor lies down and shuts their eyes; the night fades in once they lie.
   faceToLie();
   actor.lieDown(performance.now(), true, SLEEPS);
@@ -995,7 +1016,8 @@ function morning(fainted: boolean): void {
   game.day++;
   time = 0;
   warned.clear();
-  if (!dry(actor)) Object.assign(actor, world.nearestLand(actor.i, actor.j));
+  // Every night ends on the blanket: one who fainted somewhere crawled back to it in the dark.
+  Object.assign(actor, BLANKET);
   game.at = { i: actor.i, j: actor.j };
   dropCoconuts(game);
   washWood(game);
@@ -1153,7 +1175,7 @@ function frame(ms: number): void {
     dj = next.j - actor.j;
     run = target.run;
     // A crab is walked right up to the spot just near enough, not within the usual reach of it.
-    if (target.pick && Math.hypot(goal.i - actor.i, goal.j - actor.j) < ('crab' in target.pick ? 0.12 : REACH)) {
+    if (target.pick && Math.hypot(goal.i - actor.i, goal.j - actor.j) < ('crab' in target.pick || 'blanket' in target.pick ? 0.12 : REACH)) {
       arrive(target.pick);
       target = null;
       di = dj = 0;
@@ -1202,7 +1224,7 @@ function frame(ms: number): void {
   world.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
-    ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
+    blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
     ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...(present ? [actor.thing(world, ms), ...actor.dropThings()] : []),
   ];
   const rect = view.rect();
@@ -1223,7 +1245,7 @@ function frame(ms: number): void {
   // The page around the picture.
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
-  sleepButton.hidden = phase === 'day' || !!ended;
+  sleepButton.hidden = !!ended || !onBlanket();
   // In the rain the survivor sleeps only under the hut's roof.
   // Looks disabled but still takes a press, which says why not.
   sleepButton.setAttribute('aria-disabled', String(weather.rain > 0.4 && !sheltered()));
