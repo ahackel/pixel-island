@@ -5,6 +5,7 @@ import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { itemById } from '@pixel/engine/world/props.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BAG_ITEMS, BUILDS, BUILD_KINDS, HUT_AT, type BagItem, type Build } from './crafts.ts';
+import { QUESTS, type Progress } from './quests.ts';
 
 export const BAG_SLOTS = 6;
 export { BAG_ITEMS, type BagItem };
@@ -37,13 +38,13 @@ export interface Game {
   hat: { i: number; j: number } | null;
   /** The survivor as made in the character editor. */
   who: State;
+  /** Where the story stands (quests.ts). */
+  quest: Progress;
 }
 
 const KEY = 'pixel-island-save';
-/** 2: the hut is built side by side at a fixed place, no longer as an A-frame in two stages. */
-const VERSION = 2;
-/** A version 1 hut: its 3 wood went into poles (now the first three sides), its leaves into the roof. */
-const oldHut = (b: any) => ({ ...b, stage: b.stage >= 2 ? BUILDS.hut.stages.length : 3 });
+/** 3: quests instead of a plan per day; older saves start a new game. */
+const VERSION = 3;
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);
@@ -52,8 +53,10 @@ const spots = (v: unknown, size: number) => (Array.isArray(v) ? v.filter((c) => 
 /** Reads the saved game; fields older saves lack start empty. */
 export function loadGame(size: number, palms: number): Game | null {
   const g = readStore<any>(KEY, null);
-  if (!g || (g.v !== 1 && g.v !== VERSION) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
+  if (!g || g.v !== VERSION || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.coconuts) || !Array.isArray(g.items)) return null;
+  const q = g.quest;
+  if (!q || !Number.isInteger(q.quest) || !num(q.quest, 0, QUESTS.length - 1) || !Number.isInteger(q.count) || !num(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
   return {
     day: Math.floor(g.day),
     hunger: g.hunger,
@@ -67,7 +70,7 @@ export function loadGame(size: number, palms: number): Game | null {
     lying: Array.isArray(g.lying) ? g.lying.filter((it: any) => spot(it, size) && BAG_ITEMS.includes(it.item) && it.item !== 'fire').map((it: any) => ({ item: it.item, i: it.i, j: it.j })) : [],
     felled: Array.isArray(g.felled) ? [...new Set<number>(g.felled.filter((k: unknown) => Number.isInteger(k) && num(k, 0, palms - 1)))] : [],
     builds: Array.isArray(g.builds)
-      ? g.builds.map((b: any) => (g.v === 1 && b?.kind === 'hut' ? oldHut(b) : b))
+      ? g.builds
         .filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && Number.isInteger(b.stage) && num(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
         .map((b: any) => (b.kind === 'hut' ? { kind: b.kind, ...HUT_AT, stage: b.stage } : { kind: b.kind, i: b.i, j: b.j, stage: b.stage }))
       : [],
@@ -75,6 +78,7 @@ export function loadGame(size: number, palms: number): Game | null {
     at: { i: g.at.i, j: g.at.j },
     hat: spot(g.hat, size) ? { i: g.hat.i, j: g.hat.j } : null,
     who: cleanState(g.who),
+    quest: { quest: q.quest, count: q.count, done: q.done },
   };
 }
 

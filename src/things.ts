@@ -41,6 +41,16 @@ export const HAMMER: Rows = {
   rows: ['.IIIII.', 'IIIIIIi', '.iiWii.', '...W...', '...W...', '...W...', '...w...'],
   colors: { I: '#9aa3ad', i: '#646c75', ...WOOD },
 };
+/** The crate in the bag: a small box of boards, banded. */
+export const CRATE_IN_BAG: Rows = {
+  rows: ['WWWWWWWW', 'WbbbbbbW', 'WWWWWWWW', 'WbbbbbbW', 'WWWWWWWW', 'wwwwwwww'],
+  colors: { ...WOOD, b: PALETTE.bark.shade },
+};
+/** The raft quest's picture: a sail on a mast over two logs. */
+export const RAFT_ICON: Rows = {
+  rows: ['....W....', '....WCC..', '....WCCC.', '....WCCcc', '....W....', 'bbbbbbbbR', 'aaaaaaaar', 'bbbbbbbbR', 'aaaaaaaar'],
+  colors: { ...BARK, ...WOOD, C: '#efe6d2', c: '#d8ccb2' },
+};
 /** The axe held upright in one hand, its stone head on top. */
 export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({ length: 11 }, (_, y) => (y === 10 ? '...w...' : '...W...'))], { S: 'stone' });
 

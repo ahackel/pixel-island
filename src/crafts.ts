@@ -1,7 +1,7 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
 // in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
 
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 /** Bag items that can also lie on the ground to be picked up (wash-ups, what the crate held, logs). */
 export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer'] as const;
@@ -63,7 +63,7 @@ export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[])
 
 /** The middle of the hut's 2×2 cells, where the blanket lies, so the hut is built round it. */
 // shortcut: one fixed place on the first island's hilltop; let the player choose once there are more islands.
-export const HUT_AT = { i: 9, j: 10 };
+export const HUT_AT = { i: 6, j: 7 };
 /** A wall on a cell edge, relative to the hut's first cell (see engine/world/building). */
 export interface HutWall { axis: 'H' | 'V'; i: number; j: number }
 /** What each of the hut's stages lays: the back, the two sides, the front with its doorway on the left, the roof. */

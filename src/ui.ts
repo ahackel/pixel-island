@@ -11,7 +11,7 @@ export const C = {
 };
 
 /** Icons, 9 by 9: each character a colour of `PAINT`, '.' nothing. */
-const PAINT: Record<string, string> = {
+export const PAINT: Record<string, string> = {
   x: C.ink, k: '#1f1f1f', r: '#d9412b', b: '#2f3b6e', g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
 };
 export const ICONS = {
@@ -30,6 +30,8 @@ export const ICONS = {
   // The gender signs, for the character editor's figure row.
   male: ['.....xxxx', '.......xx', '..xxx.x.x', '.x...x..x', 'x.....x..', 'x.....x..', 'x.....x..', '.x...x...', '..xxx....'],
   female: ['...xxx...', '..x...x..', '..x...x..', '..x...x..', '...xxx...', '....x....', '....x....', '..xxxxx..', '....x....'],
+  // A storm cloud, a bolt and rain: the quest to sit out the storm.
+  storm: ['..xxx....', '.xgggxx..', 'xgggggggx', 'xxxxxxxxx', '...yy....', '..yy..w..', '.yyyy....', '...y..w..', '..y......'],
   // Flags for the language, a flag's shape inside the square.
   en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'rrrrrrrrr', 'ttttttttt', '.........', '.........'],
   de: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', 'rrrrrrrrr', 'rrrrrrrrr', 'yyyyyyyyy', 'yyyyyyyyy', '.........', '.........'],

@@ -14,9 +14,9 @@ import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, light, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
 import { flashAt, lightning, overcast } from '@pixel/engine/world/weather.ts';
-import { KINDS, kindOf, weatherAt, type Forced } from './weather.ts';
-import type { Picture } from '@pixel/engine/world/island.ts';
-import { levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
+import { fairOf, KINDS, weatherAt, type Forced, type Kind } from './weather.ts';
+import { footOf, type Picture } from '@pixel/engine/world/island.ts';
+import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing } from '@pixel/engine/world/world.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
@@ -25,33 +25,33 @@ import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, hud, pixelButton, S, slot } from './ui.ts';
+import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from './ui.ts';
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
 import { SHADOW } from '@pixel/engine/core/palette.ts';
 import { firstIsland } from './island.ts';
 import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
-import { dayPlan, type DayEvent } from './days.ts';
+import { advance, next, QUESTS, stonesOut, type Goal, type Progress, type QuestIcon } from './quests.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, blanketThing, CLOTH, HAMMER, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, blanketThing, CLOTH, CRATE_IN_BAG, HAMMER, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
 const SPEED = Math.max(0.1, Number(params.get('speed')) || 1);
-/** Debug, from the day editor: `?day=5` plays a new game from day 5 and never saves, so the real save is kept. */
-let TRYOUT = params.has('day');
-let START_DAY = Math.min(999, Math.max(1, Math.floor(Number(params.get('day'))) || 1));
-/** A new game from the menu is a real one: day 1, saved, and the tryout's `?day` gone from the address. */
+/** Debug: `?quest=5` plays a new game from the fifth quest, with what the ones before brought, and never saves, so the real save is kept. */
+let TRYOUT = params.has('quest');
+let START_QUEST = Math.min(QUESTS.length, Math.max(1, Math.floor(Number(params.get('quest'))) || 1)) - 1;
+/** A new game from the menu is a real one: the first quest, saved, and the tryout's `?quest` gone from the address. */
 function endTryout(): void {
   if (!TRYOUT) return;
   TRYOUT = false;
-  START_DAY = 1;
-  params.delete('day');
+  START_QUEST = 0;
+  params.delete('quest');
   // Flags like `cheats` keep their bare form, not `cheats=`.
   const rest = `${params}`.replace(/=(?=&|$)/g, '');
   history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
@@ -133,16 +133,27 @@ function newGame(who = firstWho()): Game {
   // The hat came off in the sea and lies on the sand beyond their head.
   const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(at, 0.6, 0.3);
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
-  const g: Game = { day: START_DAY, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at, hat, who };
-  // The island starts with two coconuts lying about, unless the day's plan says otherwise.
-  for (let n = 0; n < (dayPlan(g.day).coconuts ?? 2); n++) dropCoconuts(g);
+  const quest: Progress = { quest: START_QUEST, count: 0, done: false };
+  const g: Game = { day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at, hat, who, quest };
+  // The island starts with two coconuts lying about.
+  for (let n = 0; n < 2; n++) dropCoconuts(g);
   washWood(g);
-  for (let n = 0; n < 3; n++) layStone(g);
-  washUp(g);
+  // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
+  for (let k = 0; k <= START_QUEST; k++) {
+    bring(g, k);
+    if (QUESTS[k].strike && k < START_QUEST) burnPalm(g, at);
+  }
   return g;
 }
 
-/** A stone on the beach; one more each morning while there is none lying about or in the bag. */
+/** What a quest brings as it starts: its wash-ups and stones (its lightning waits for the morning's thought to be read). */
+function bring(g: Game, k: number): boolean {
+  const q = QUESTS[k];
+  for (let n = 0; n < (q.stones ?? 0); n++) layStone(g);
+  return washUp(g, q.washUps ?? []);
+}
+
+/** A stone on the beach; one more each morning while there is none lying about or in the bag (once a quest has brought stones). */
 function layStone(g: Game): void {
   if (beach.length) g.stones.push(onBeach());
 }
@@ -173,11 +184,17 @@ const beach: { i: number; j: number }[] = [];
 for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) if (surfaceAt(world.map, i, j) === 'beach') beach.push({ i: i + 0.5, j: j + 0.5 });
 /** Somewhere on the beach, anywhere in its tile. */
 const onBeach = () => {
-  const b = beach[Math.floor(Math.random() * beach.length)];
-  return { i: b.i - 0.3 + Math.random() * 0.6, j: b.j - 0.3 + Math.random() * 0.6 };
+  // The shore runs through the beach tiles: only a spot whose ground is above the water, so what lies there is seen.
+  let at = { i: 0, j: 0 };
+  for (let n = 0; n < 50; n++) {
+    const b = beach[Math.floor(Math.random() * beach.length)];
+    at = { i: b.i - 0.3 + Math.random() * 0.6, j: b.j - 0.3 + Math.random() * 0.6 };
+    if (heightAt(world.map, at.i, at.j) > SEA_LEVEL + 0.1) break;
+  }
+  return at;
 };
-/** What the sea brings: the day's planned wash-ups (days.json), or the items given. Whether anything came. */
-function washUp(g: Game, items: string[] = dayPlan(g.day).washUps ?? []): boolean {
+/** What the sea brings: the items given. Whether anything came. */
+function washUp(g: Game, items: string[]): boolean {
   if (!beach.length) return false;
   // A crate stands on the beach; the small things lie there to be picked up.
   for (const item of items) {
@@ -187,9 +204,9 @@ function washUp(g: Game, items: string[] = dayPlan(g.day).washUps ?? []): boolea
   return items.length > 0;
 }
 const isLoose = (item: string): item is Loose => (LOOSE as readonly string[]).includes(item);
-/** Each morning the sea leaves a piece or two of driftwood (or as planned), dry by the time it is found. */
+/** Each morning the sea leaves a piece or two of driftwood, dry by the time it is found. */
 function washWood(g: Game): void {
-  for (let n = 0; n < (dayPlan(g.day).wood ?? 2) && g.wood.length < WOOD_LYING && beach.length; n++) g.wood.push(onBeach());
+  for (let n = 0; n < 2 && g.wood.length < WOOD_LYING && beach.length; n++) g.wood.push(onBeach());
 }
 
 const saved = params.has('new') || TRYOUT ? null : loadGame(scene.w, palms.length);
@@ -269,7 +286,13 @@ app.append(view.el);
 
 const status = hud({ hunger: t('hunger'), energy: t('energy') });
 const hudBox = el('div', 'hud');
-hudBox.append(status.canvas);
+/** The current quest's picture beside the bars; a tap says it again. */
+const questButton = el('button', 'pbtn quest');
+questButton.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!paused && !sleeping) think(questThought());
+});
+hudBox.append(status.canvas, questButton);
 
 const buttons = el('div', 'buttons');
 const sleepButton = pixelButton(t('sleep'), { icon: 'moon', words: t('sleep'), dark: true }, () => sleep(false));
@@ -291,7 +314,12 @@ function hold(item: BagItem | null): void {
 const BAG_PICTURES = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
   stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG[0], wrasse: FISH_IN_BAG[1], snapper: FISH_IN_BAG[2], crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER,
+  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG,
+};
+/** The quests' pictures in the corner. */
+const QUEST_PICTURES: Record<QuestIcon, { rows: readonly string[]; colors: Record<string, string> }> = {
+  coconut: BAG_PICTURES.coconut, moon: { rows: ICONS.moon, colors: PAINT }, fish: FISH_IN_BAG[0], crate: CRATE_IN_BAG, hammer: HAMMER,
+  storm: { rows: ICONS.storm, colors: PAINT }, fire: BAG_PICTURES.fire, axe: AXE_IN_BAG, raft: RAFT_ICON,
 };
 /** What is eaten from the bag, and how much it fills. */
 const FOOD: Partial<Record<BagItem, { fills: number; label: Key; yum: Key }>> = {
@@ -430,6 +458,8 @@ function land(ms: number): void {
     if (t.item === 'wood') game.wood.push(at);
     else if (t.item === 'coconut') game.coconuts.push(at);
     else if (t.item === 'stone') game.stones.push(at);
+    // Put down, the crate stands on the ground again, in the way like before.
+    else if (t.item === 'crate') game.items.push({ item: 'crate', ...at });
     else game.lying.push({ item: t.item, ...at });
   }
   thrown = thrown.filter((t) => ms - t.start < THROW.ms);
@@ -550,6 +580,46 @@ function clearVeil(): void {
   veil.replaceChildren();
   veilDay = 0;
 }
+// ------------------------------------------------------------------ quests
+
+const questNow = () => QUESTS[game.quest.quest];
+/** Done, with the next quest waiting for the morning: then the survivor should rest. */
+const resting = () => game.quest.done && next(game.quest, false) === game.quest;
+const questThought = () => (resting() && QUESTS[game.quest.quest + 1] ? 'quest.rest' : questNow().thought);
+let questShown = '';
+/** The quest's picture beside the bars, or the moon once it is done and the next waits for the morning. */
+function showQuest(): void {
+  const icon: QuestIcon = resting() && QUESTS[game.quest.quest + 1] ? 'moon' : questNow().icon;
+  const words = t(questThought());
+  if (questShown === icon + words) return;
+  questShown = icon + words;
+  questButton.replaceChildren(slot(QUEST_PICTURES[icon]));
+  questButton.setAttribute('aria-label', words);
+  questButton.title = words;
+}
+/** `goal` happened: the current quest counts it, if it is its own; a next quest that says `now` starts at once. */
+function reach(goal: Goal): void {
+  const before = game.quest;
+  game.quest = advance(game.quest, goal);
+  if (game.quest === before) return;
+  const after = next(game.quest, false);
+  if (after !== game.quest) tell(startQuest(after));
+  showQuest();
+}
+/** Starts a quest: what it brings is on the beach, its lightning waits to strike. Its thought, to tell. */
+function startQuest(p: Progress): string {
+  game.quest = p;
+  bring(game, p.quest);
+  if (questNow().strike) strikeNow = true;
+  showQuest();
+  return questNow().thought;
+}
+/** Today's weather: the quest's own while it runs, else a fair one; or the one the cheat forces. */
+const questKind = (quest: number, day: number): Kind => QUESTS[quest]?.weather ?? fairOf(day);
+const kindNow = () => weatherCheat ?? questKind(game.quest.quest, game.day);
+/** Tomorrow's, toward which the afternoon sky turns: the next quest's, if this one is done by then. */
+const kindTomorrow = () => weatherCheat ?? questKind(next(game.quest, true).quest, game.day + 1);
+
 function startNew(who: State): void {
   if (!TRYOUT) clearGame();
   game = newGame(who);
@@ -563,9 +633,11 @@ function startNew(who: State): void {
   keepStanding();
   centerOn(actor);
   time = 0;
-  done.clear();
   stormWoken = false;
+  strikeNow = false;
   ended = null;
+  questShown = '';
+  showQuest();
   if (!TRYOUT) saveGame(game);
   hold(null);
 }
@@ -576,7 +648,8 @@ const menuBox = el('div', 'menu');
 let started = false;
 function play(): void {
   setPaused(false);
-  if (!started && game.day === 1) tell(morningThought(game.items.length > 0));
+  // Back on the island, the survivor recalls what they were about.
+  if (!started) tell(questThought());
   started = true;
 }
 /**
@@ -629,7 +702,8 @@ function showMenu(): void {
   if (editing) editor!.hidden = true;
   if (editing) return void menuBox.replaceChildren(
     titleLabel('PIXEL ISLAND'),
-    pixelButton(t('continue'), { words: t('continue') }, () => { menuBox.hidden = true; editor!.hidden = false; }),
+    // Once the survivor is made and the screen is fading to the island, play goes on.
+    pixelButton(t('continue'), { words: t('continue') }, () => { menuBox.hidden = true; editor!.hidden = false; if (editor!.inert) setPaused(false); }),
     pixelButton(t('settings'), { words: t('settings') }, showSettings),
   );
   menuBox.replaceChildren(
@@ -655,6 +729,7 @@ function showSettings(): void {
 
 app.append(hudBox, buttons, actions, bag, bubble, dialog, veil, menuBox);
 showBag();
+showQuest();
 
 // ?cheats: an orange button in the corner opens a drawer of buttons to get somewhere quickly while developing.
 let fast = 1;
@@ -681,6 +756,11 @@ if (params.has('cheats')) {
     cheat('SUNSET', () => (time = DAY_S - SUNSET_S)),
     cheat('NIGHT', () => (time = DAY_S + DUSK_S)),
     cheat('MORNING', () => sleep(false, true)),
+    // The current quest done, as if its goal had happened as often as it needs.
+    cheat('QUEST+', () => {
+      for (let n = 0; n < (questNow().count ?? 1) && !game.quest.done; n++) reach(questNow().goal);
+      think(questThought());
+    }),
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
     // The ways of lying, to compare: the survivor lies down awake as each one.
     {
@@ -772,6 +852,36 @@ function press(p: { x: number; y: number }, start: boolean): void {
   goTo({ i: tile.i + 0.5, j: tile.j + 0.5 }, far && speedOf(game) === 1);
 }
 
+/** Where a thing's picture starts on the ground image. */
+function topLeft(t: Thing): { x: number; y: number } {
+  const f = footOf(world.ground, t.spot);
+  return { x: f.x - t.foot.x, y: f.y - t.foot.y };
+}
+/**
+ * The hut's parts, drawn every other pixel (a checkerboard on the ground image) while any of them hides
+ * the survivor behind it, so they show through. Not while they are inside: then the roof is off already.
+ */
+function seeThrough(parts: Thing[], me: Thing | null): Thing[] {
+  if (!me || !parts.length || sheltered()) return parts;
+  const m = topLeft(me);
+  const hides = parts.some((p) => {
+    // Behind: further back than the part's footprint middle (the box the world sorts by).
+    if (!p.box || actor.i + actor.j >= (p.box.x0 + p.box.x1 + p.box.y0 + p.box.y1) / 2) return false;
+    const o = topLeft(p);
+    const x0 = Math.max(m.x, o.x), x1 = Math.min(m.x + me.w, o.x + p.w);
+    const y0 = Math.max(m.y, o.y), y1 = Math.min(m.y + me.h, o.y + p.h);
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      if (me.picture.get(x - m.x, y - m.y) && p.picture.get(x - o.x, y - o.y)) return true;
+    }
+    return false;
+  });
+  if (!hides) return parts;
+  return parts.map((p) => {
+    const o = topLeft(p);
+    return { ...p, picture: { get: (x: number, y: number) => ((x + o.x + y + o.y) & 1 ? null : p.picture.get(x, y)), shaded: p.picture.shaded?.bind(p.picture) } };
+  });
+}
+
 /** Half a metre short of something that blocks the way, on the survivor's side of it. */
 function nearSide(at: { i: number; j: number }): { i: number; j: number } {
   const d = Math.hypot(actor.i - at.i, actor.j - at.j) || 1;
@@ -800,7 +910,16 @@ function arrive(pick: Pick): void {
     feel();
     return think('think.hat');
   }
-  if ('item' in pick) return hand === 'axe' ? openCrate(pick.item) : think('think.crate');
+  // A stone or the hammer smashes the crate, the axe prises it open; with empty hands it goes into the bag.
+  if ('item' in pick) {
+    if (hand === 'stone' || hand === 'axe' || hand === 'hammer') return openCrate(pick.item, hand !== 'axe');
+    if (hand) return think('think.crate');
+    if (game.bag.length >= BAG_SLOTS) return think('think.full');
+    game.items.splice(game.items.indexOf(pick.item), 1);
+    game.bag.push('crate');
+    showBag();
+    return think('think.crateTaken');
+  }
   if ('palm' in pick) {
     if (hand === 'axe') return tall(pick.palm) ? fell(pick.palm) : think('think.tooSmall');
     if (game.bag.length >= BAG_SLOTS) return think('think.full');
@@ -822,7 +941,8 @@ function arrive(pick: Pick): void {
     game.fires.push(pick.wood);
     game.bag.splice(game.bag.indexOf('fire'), 1);
     hold(null);
-    return think('think.campfire');
+    think('think.campfire');
+    return reach('campfire');
   }
   if (game.bag.length >= BAG_SLOTS) return think('think.full');
   if ('loose' in pick) {
@@ -860,6 +980,7 @@ function spear(fish: (typeof world.fish)[number]): void {
   game.bag.push(FISH_ITEMS[fish.kind % FISH_ITEMS.length]);
   showBag();
   think('think.caught');
+  reach('fish');
 }
 
 const crabReach = () => (hand === 'spear' ? SPEAR_REACH : GRAB_REACH);
@@ -880,12 +1001,16 @@ function catchCrab(crab: Crab): void {
   think('think.caught');
 }
 
-/** The axe prises the crate open: rope and cloth from the ship, laid beside it. */
-function openCrate(crate: PlacedItem): void {
+/** The axe prises the crate open, or a stone or the hammer smashes it to boards: rope from the ship, laid beside it. */
+function openCrate(crate: PlacedItem, smashed: boolean): void {
   actor.emote('use', performance.now());
   game.items.splice(game.items.indexOf(crate), 1);
-  for (const item of ['rope', 'cloth'] as const) game.lying.push({ item, ...(spotNear(crate, 0.4, 0.5) ?? { i: crate.i, j: crate.j }) });
-  think('think.opened');
+  const beside = () => spotNear(crate, 0.4, 0.5) ?? { i: crate.i, j: crate.j };
+  game.lying.push({ item: 'rope', ...beside() });
+  // Smashed, its boards are wood to pick up.
+  if (smashed) for (let n = 0; n < 2; n++) game.wood.push(beside());
+  think(smashed ? 'think.smashed' : 'think.opened');
+  reach('open');
 }
 
 /** The axe cuts a palm down: two logs where it stood, no more coconuts from it. Hard work. */
@@ -895,7 +1020,7 @@ function fell(k: number): void {
   keepStanding();
   for (let n = 0, tries = 0; n < 2 && tries < 40; tries++) {
     const at = spotNear(palms[k], 0.3, 0.8);
-    if (at) game.lying.push({ item: 'log', ...at }), n++;
+    if (at) game.lying.push({ item: 'log', ...at }), n++, reach('log');
   }
   game.energy = Math.max(0, game.energy - 0.08);
   think('think.felled');
@@ -928,6 +1053,7 @@ function build(kind: BuildKind): void {
   game.energy = Math.max(0, game.energy - 0.05);
   hold(hand);
   think(`think.${kind}${stage + 1}`);
+  if (kind === 'hut' && finished(game.builds.find((b) => b.kind === 'hut'))) reach('hut');
 }
 /** Where the survivor sleeps: the blanket, in the middle of where the hut goes. */
 const BLANKET = HUT_AT;
@@ -937,8 +1063,6 @@ const hut = () => game.builds.find((b) => b.kind === 'hut' && finished(b));
 const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
 /** By a burning campfire (the stump is too wild a fire to sleep by). */
 const byFire = () => game.fires.some((f) => Math.hypot(f.i - actor.i, f.j - actor.j) <= 2.5);
-/** The day's weather, or the one the cheat forces. */
-const kindNow = () => weatherCheat ?? kindOf(game.day);
 
 /** The raft, finished, by the survivor, and the sea not stormy. */
 function canSail(): boolean {
@@ -953,29 +1077,33 @@ function setSail(): void {
   ended = performance.now();
   veil.replaceChildren(label(caps(t('end')), C.moon, S * 2), ...wrap(t('end.more'), 100).map((line) => label(line, C.paper, S)));
   veilDay = -1;
+  reach('sail');
   setTimeout(() => setPaused(true), END_FADE + 3500);
 }
 
-/** The first storm's lightning burns down the tall palm nearest the survivor, so they see it. */
+/** The fire quest's lightning burns down the tall palm nearest the survivor, so they see it. */
 function strike(): void {
+  if (burnPalm(game, actor)) think('think.struck');
+}
+/** Burns the tall palm nearest `near` down to a burning stump, its crown's twigs dry wood round it. Whether there was one. */
+function burnPalm(g: Game, near: { i: number; j: number }): boolean {
   let best = -1;
   let bestD = Infinity;
   palms.forEach((p, k) => {
-    const d = Math.hypot(p.i - actor.i, p.j - actor.j);
+    const d = Math.hypot(p.i - near.i, p.j - near.j);
     // A sapling is too small to draw lightning.
-    if (tall(k) && !game.felled.includes(k) && d < bestD) [best, bestD] = [k, d];
+    if (tall(k) && !g.felled.includes(k) && d < bestD) [best, bestD] = [k, d];
   });
-  if (best < 0) return;
-  game.struck = best;
-  // The crown's twigs fall round the stump, dry wood to pick up and light.
+  if (best < 0) return false;
+  g.struck = best;
   for (let n = 0, tries = 0; n < 3 && tries < 40; tries++) {
     const twig = spotNear(palms[best], 0.8, 0.9);
     if (twig) {
-      game.wood.push(twig);
+      g.wood.push(twig);
       n++;
     }
   }
-  think('think.struck');
+  return true;
 }
 
 function eat(slot: number): void {
@@ -985,6 +1113,7 @@ function eat(slot: number): void {
   game.hunger = Math.min(1, game.hunger + food.fills);
   showBag();
   think(food.yum);
+  reach('eat');
 }
 
 /** Whether the storm has woken the survivor tonight; then only a fire lets them sleep again. */
@@ -994,9 +1123,9 @@ function sleep(fainted: boolean, anywhere = false): void {
   const chosen = !fainted && !anywhere;
   if (chosen && !dry(actor)) return think('think.wet');
   // In the rain the survivor sleeps only under the hut's roof.
-  if (chosen && weatherAt(game.day, time, weatherCheat).rain > 0.4 && !sheltered()) return think('think.rainSleep');
-  // In a storm, sleep without a fire is broken by thunder, and then does not come back.
-  const wakes = chosen && kindNow() === 'storm' && !byFire();
+  if (chosen && weatherAt(kindNow(), kindTomorrow(), time).rain > 0.4 && !sheltered()) return think('think.rainSleep');
+  // In a storm, sleep out of the hut and away from a fire is broken by thunder, and then does not come back.
+  const wakes = chosen && kindNow() === 'storm' && !byFire() && !sheltered();
   if (wakes && stormWoken) return think('think.scared');
   target = null;
   forget();
@@ -1009,8 +1138,13 @@ function sleep(fainted: boolean, anywhere = false): void {
   sleeping = { start: performance.now() + LIE_MS, fainted, woken: false, wakes };
 }
 
-/** The night is over: a new morning, rested, with what the palms dropped and the sea brought. Saved. */
+/** The night is over: a new morning, rested, with what the palms dropped and the sea brought, and maybe a new quest. Saved. */
 function morning(fainted: boolean): void {
+  // A night slept through, not fainted: the sleep quest's goal, and in a storm the storm quest's.
+  if (!fainted) {
+    if (kindNow() === 'storm') reach('stormSleep');
+    reach('sleep');
+  }
   Object.assign(game, wake(game, fainted));
   stormWoken = false;
   game.day++;
@@ -1021,35 +1155,26 @@ function morning(fainted: boolean): void {
   game.at = { i: actor.i, j: actor.j };
   dropCoconuts(game);
   washWood(game);
-  if (!game.stones.length && !game.bag.includes('stone')) layStone(game);
   world.fish.push(...spawnFish(world.floor, FISH_COUNT - world.fish.length, fishRandom));
   crabs = [];
   crabsOut = 0;
-  done.clear();
-  // A storm leaves something on the beach.
-  const washed = washUp(game) || (kindOf(game.day - 1) === 'storm' && washUp(game, ['crate']));
+  // A done quest gives way to the next, which brings what it needs; else the morning's own thought.
+  const after = next(game.quest, true);
+  const thought = after !== game.quest ? startQuest(after) : morningThought();
+  if (stonesOut(game.quest.quest) && !game.stones.length && !game.bag.includes('stone')) layStone(game);
+  showQuest();
   if (!TRYOUT) saveGame(game);
-  const after = FADE.hold + FADE.in;
-  setTimeout(() => {
-    tell(morningThought(washed));
-  }, after);
+  setTimeout(() => tell(thought), FADE.hold + FADE.in);
 }
 
-/** The morning's thought: the day's planned one, else what washed up, else the weather. */
-function morningThought(washed: boolean): string {
-  const kind = kindOf(game.day);
-  return dayPlan(game.day).thought ?? (washed ? 'think.washed' : kind === 'sunny' ? 'think.morning' : `think.${kind}`);
+/** A morning with no new quest: what the weather is like, or on a fine day what the quest still wants. */
+function morningThought(): string {
+  const kind = kindNow();
+  return kind === 'sunny' ? questThought() : `think.${kind}`;
 }
 
-/** The day's planned events (days.json) that have happened, by index; none yet each morning. */
-const done = new Set<number>();
-/** A planned lightning strike, waiting for the next frame to draw it. */
+/** The fire quest's lightning, waiting until the survivor is up and its thought read. */
 let strikeNow = false;
-function happen(e: DayEvent): void {
-  if (e.do === 'thought') tell(e.text);
-  else if (e.do === 'washUp') washUp(game, [e.item]) && think('think.washed');
-  else strikeNow = true;
-}
 
 /** How dark the fade is now, and runs the morning at its darkest. */
 function fadeAt(ms: number): number {
@@ -1067,11 +1192,10 @@ function fadeAt(ms: number): number {
       faceToLie();
       actor.lieDown(ms, true, SLEEPS);
     }
-    // Thunder: awake again in the same night, and the lightning strikes soon after.
+    // Thunder: awake again in the same night.
     else if (sleeping.wakes) {
       stormWoken = true;
       setTimeout(() => tell('think.thunder'), FADE.hold + FADE.in);
-      setTimeout(() => (strikeNow = true), FADE.hold + FADE.in + 2500);
     } else morning(sleeping.fainted);
   }
   if (e < FADE.out + FADE.hold) return 1;
@@ -1081,7 +1205,7 @@ function fadeAt(ms: number): number {
   // Morning: lying there, the survivor opens their eyes, and a moment later gets up.
   actor.asleep = false;
   // At the start they wonder first, and get up at the tap that puts the thought away.
-  if (intro) setTimeout(() => (tell('think.howHere'), tell(morningThought(game.items.length > 0))), WAKE_MS);
+  if (intro) setTimeout(() => (tell('think.howHere'), tell(questThought())), WAKE_MS);
   else setTimeout(() => actor.rouse(performance.now()), WAKE_MS);
   return 0;
 }
@@ -1152,9 +1276,6 @@ function frame(ms: number): void {
     Object.assign(game, drain(game, dt * SPEED * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
-    dayPlan(game.day).events?.forEach((e, n) => {
-      if (time >= e.at * 60 && !done.has(n)) done.add(n), happen(e);
-    });
     if (faints(game)) {
       think('think.faint');
       sleep(true);
@@ -1200,15 +1321,16 @@ function frame(ms: number): void {
     crabsOut++;
   }
   scuttle(crabs, world, paused ? 0 : dt, fishRandom, sleeping ? null : actor);
-  const weather = weatherAt(game.day, time, weatherCheat);
+  const weather = weatherAt(kindNow(), kindTomorrow(), time);
   world.setWeather(weather);
-  // The storm's first bright flash is the one that strikes: a bolt into the palm, its crown bursting.
   const flashNow = flashAt(ms, weather);
-  // A planned strike (days.json) comes in any weather, with a flash of its own.
-  const planned = strikeNow;
-  strikeNow = false;
-  const striking = game.struck === null && !paused && !sleeping && (planned || (stormWoken && weather.storm > 0.9 && flashNow >= 1));
-  if (striking) strike();
+  // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
+  if (game.struck !== null) strikeNow = false;
+  const striking = strikeNow && !paused && !sleeping && !telling();
+  if (striking) {
+    strikeNow = false;
+    strike();
+  }
   const plants = world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES);
   // The scene draws only the standing palms, so the struck one's place among them.
   const struckAt = game.struck === null ? -1 : scene.plants.indexOf(palms[game.struck]);
@@ -1224,9 +1346,11 @@ function frame(ms: number): void {
   world.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
-    blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
-    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...(present ? [actor.thing(world, ms), ...actor.dropThings()] : []),
+    blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),
+    ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)),
   ];
+  const me = present ? actor.thing(world, ms) : null;
+  things.push(...seeThrough(world.buildingThings(actor), me), ...(me ? [me, ...actor.dropThings()] : []));
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
@@ -1239,7 +1363,6 @@ function frame(ms: number): void {
   sparks.draw(image, rect, ms);
   strikeFx?.draw(image, rect, ms);
   if (strikeFx?.done(ms)) strikeFx = null;
-  warnOnce('think.rainStarts', weather.rain > 0.4 && kindOf(game.day) !== 'rain' && kindOf(game.day) !== 'storm' && !weatherCheat);
   view.show(image);
 
   // The page around the picture.

@@ -35,10 +35,6 @@
   "en": "Continue",
   "de": "Weiterspielen"
  },
- "think.first": {
-  "en": "Where am I…? At least there are palms.",
-  "de": "Wo bin ich…? Immerhin gibt es Palmen."
- },
  "think.morning": {
   "en": "A new morning.",
   "de": "Ein neuer Morgen."
@@ -48,8 +44,8 @@
   "de": "Da ist etwas an den Strand gespült!"
  },
  "think.crate": {
-  "en": "A crate from the ship. Shut tight — I need a tool to prise it open.",
-  "de": "Eine Kiste vom Schiff. Fest verschlossen — ich brauche Werkzeug, um sie aufzubrechen."
+  "en": "A crate from the ship. Shut tight — a stone in my hand might smash it.",
+  "de": "Eine Kiste vom Schiff. Fest verschlossen — mit einem Stein in der Hand könnte ich sie zerschlagen."
  },
  "think.full": {
   "en": "My bag is full.",
@@ -95,10 +91,6 @@
   "en": "Fog everywhere. I can hardly see the sea.",
   "de": "Überall Nebel. Ich sehe kaum das Meer."
  },
- "think.rainStarts": {
-  "en": "Here comes the rain.",
-  "de": "Jetzt kommt der Regen."
- },
  "wood": {
   "en": "Dry wood",
   "de": "Trockenes Holz"
@@ -116,8 +108,8 @@
   "de": "Ein trockener Stock. Den könnte ich an der brennenden Palme anzünden."
  },
  "think.struck": {
-  "en": "Lightning hit the palm! It’s burning!",
-  "de": "Der Blitz hat in die Palme eingeschlagen! Sie brennt!"
+  "en": "Lightning hit the palm! It’s burning! With a stick I could carry the fire to a campfire.",
+  "de": "Der Blitz hat die Palme getroffen! Sie brennt! Mit einem Stock könnte ich das Feuer zu einem Lagerfeuer tragen."
  },
  "think.gotFire": {
   "en": "A torch! Now to light some dry wood…",
@@ -236,12 +228,12 @@
   "de": "Eine zähe Ranke. Fest gebunden gäben Stock und Stein eine Axt."
  },
  "think.axe": {
-  "en": "A stone axe! That crate won’t stay shut now.",
-  "de": "Eine Steinaxt! Jetzt bleibt die Kiste nicht mehr zu."
+  "en": "A stone axe! Now for the palms.",
+  "de": "Eine Steinaxt! Jetzt zu den Palmen."
  },
  "think.opened": {
-  "en": "It’s open! Rope and a big cloth.",
-  "de": "Sie ist offen! Ein Seil und ein großes Tuch."
+  "en": "It’s open! A rope inside.",
+  "de": "Sie ist offen! Ein Seil liegt drin."
  },
  "think.rope": {
   "en": "Strong rope. Good for lashing things.",
@@ -308,48 +300,12 @@
   "de": "Zu nass, um hier draußen zu schlafen. Ich brauche ein Dach über mir."
  },
  "think.thunder": {
-  "en": "Thunder! I can’t sleep like this… I need a fire.",
-  "de": "Donner! So kann ich nicht schlafen… Ich brauche ein Feuer."
+  "en": "Thunder! I can’t sleep out here… I need a roof.",
+  "de": "Donner! Hier draußen kann ich nicht schlafen… Ich brauche ein Dach."
  },
  "think.scared": {
-  "en": "Too scared to sleep. If only I had a fire…",
-  "de": "Zu viel Angst zum Schlafen. Hätte ich nur ein Feuer…"
- },
- "think.day1.hungry": {
-  "en": "I’m starving… There are coconuts under the palms.",
-  "de": "Ich habe solchen Hunger… Unter den Palmen liegen Kokosnüsse."
- },
- "think.day1.fish": {
-  "en": "Fish, right by the shore! With something sharp on a stick…",
-  "de": "Fische, direkt am Ufer! Mit etwas Spitzem an einem Stock…"
- },
- "think.day2.morning": {
-  "en": "Something washed up! The sea brings new things every morning.",
-  "de": "Da ist etwas angespült! Das Meer bringt jeden Morgen Neues."
- },
- "think.day2.crabs": {
-  "en": "The wind is driving crabs up the beach!",
-  "de": "Der Wind treibt Krabben den Strand hinauf!"
- },
- "think.day3.morning": {
-  "en": "Rain clouds… I need shelter. Driftwood for walls, palm leaves for a roof.",
-  "de": "Regenwolken… Ich brauche einen Unterschlupf. Treibholz für Wände, Palmblätter fürs Dach."
- },
- "think.day4.night": {
-  "en": "What a storm. I hope I can sleep tonight…",
-  "de": "Was für ein Sturm. Hoffentlich kann ich heute Nacht schlafen…"
- },
- "think.day5.morning": {
-  "en": "The storm left a vine on the beach…",
-  "de": "Der Sturm hat eine Ranke an den Strand gespült…"
- },
- "think.day6.morning": {
-  "en": "With the axe I could cut down a palm. Logs… for a raft?",
-  "de": "Mit der Axt könnte ich eine Palme fällen. Stämme… für ein Floß?"
- },
- "think.day7.morning": {
-  "en": "Logs, rope, cloth. Time to build a raft and leave!",
-  "de": "Stämme, Seil, Tuch. Zeit, ein Floß zu bauen und aufzubrechen!"
+  "en": "Too scared to sleep out here. If only I were in the hut…",
+  "de": "Zu viel Angst, um hier draußen zu schlafen. Wäre ich nur in der Hütte…"
  },
  "createCharacter": {
   "en": "Create character",
@@ -822,5 +778,61 @@
  "char.hat.sprite-hat-2": {
   "en": "Floppy straw",
   "de": "Strohschlapphut"
+ },
+ "hammer": {
+  "en": "Hammer",
+  "de": "Hammer"
+ },
+ "crate": {
+  "en": "Crate",
+  "de": "Kiste"
+ },
+ "think.crateTaken": {
+  "en": "Heavy… A stone could smash it open.",
+  "de": "Schwer… Mit einem Stein bekäme ich sie auf."
+ },
+ "think.smashed": {
+  "en": "Smashed it! A rope, and boards to burn or build with.",
+  "de": "Zerschlagen! Ein Seil und Bretter zum Bauen oder Feuern."
+ },
+ "quest.eat": {
+  "en": "I’m starving… There are coconuts under the palms.",
+  "de": "Ich habe solchen Hunger… Unter den Palmen liegen Kokosnüsse."
+ },
+ "quest.sleep": {
+  "en": "That’s better. But I’m worn out… I’ll lie down on my blanket.",
+  "de": "Schon besser. Aber ich bin erschöpft… Ich lege mich auf meine Decke."
+ },
+ "quest.fish": {
+  "en": "The sea left stones on the beach. Tied to a stick, a sharp one makes a spear — and fish swim right by the shore.",
+  "de": "Das Meer hat Steine an den Strand gespült. Ein spitzer an einem Stock gibt einen Speer — und Fische schwimmen direkt am Ufer."
+ },
+ "quest.crate": {
+  "en": "A crate from the ship washed up! It’s shut tight… a stone in my hand might smash it.",
+  "de": "Eine Kiste vom Schiff ist angespült! Fest verschlossen… vielleicht kann ich sie mit einem Stein zerschlagen."
+ },
+ "quest.hut": {
+  "en": "Rain… and a hammer washed up! Driftwood for walls, palm leaves for a roof: a hut round my blanket.",
+  "de": "Regen… und ein Hammer ist angespült! Treibholz für Wände, Palmblätter fürs Dach: eine Hütte um meine Decke."
+ },
+ "quest.storm": {
+  "en": "A storm is coming. Tonight I sleep in the hut.",
+  "de": "Ein Sturm zieht auf. Heute Nacht schlafe ich in der Hütte."
+ },
+ "quest.fire": {
+  "en": "The storm is moving off… one last flash over the palms.",
+  "de": "Der Sturm zieht ab… ein letzter Blitz über den Palmen."
+ },
+ "quest.axe": {
+  "en": "The storm left a vine on the beach. Stick, stone and vine make an axe — and with an axe I could cut logs.",
+  "de": "Der Sturm hat eine Ranke an den Strand gespült. Stock, Stein und Ranke ergeben eine Axt — und mit einer Axt könnte ich Stämme schlagen."
+ },
+ "quest.raft": {
+  "en": "Sailcloth washed up! Logs, rope and a sail: time to build a raft and leave.",
+  "de": "Segeltuch ist angespült! Stämme, Seil und ein Segel: Zeit, ein Floß zu bauen und loszusegeln."
+ },
+ "quest.rest": {
+  "en": "Done for today. I’ll sleep on it — who knows what the sea brings tomorrow.",
+  "de": "Für heute geschafft. Ich schlafe drüber — wer weiß, was das Meer morgen bringt."
  }
 }

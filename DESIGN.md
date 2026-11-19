@@ -1,6 +1,6 @@
 # Pixel Island — design
 
-A shipwreck survivor stranded on a tiny sand island with a few palms. Each day something new washes up. Over 7 in-game days the survivor learns to eat and fish, builds a hut, gets fire from a storm, makes an axe, cuts down palms, and finally builds a raft and sails away. Setting sail ends the demo (see **First week**).
+A shipwreck survivor stranded on a tiny sand island with a few palms. Quest by quest, the sea brings something new. The survivor learns to eat and fish, builds a hut, gets fire from a storm, makes an axe, cuts down palms, and finally builds a raft and sails away. Setting sail ends the demo (see **First week**).
 
 ## Platform
 
@@ -55,7 +55,7 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 
 ## Progression
 
-- **Mornings:** key items wash up on fixed days, which guarantees a path to the boat. Random driftwood and junk come on top.
+- **Mornings:** key items wash up with the quest that needs them, which guarantees a path to the boat. Random driftwood comes on top.
 - **Learning** happens three ways:
   - finding an item that unlocks something (flint → fire, hook → fishing);
   - combining items (stick + stone → axe);
@@ -73,25 +73,27 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 
 ## First week
 
-The demo is 7 days. Each day teaches one thing; the survivor's thoughts hint at the next step (no on-screen tutorial). Set in the day editor (`/editor/`).
+The demo is a chain of quests (`src/content/quests.json`), one at a time, each teaching one thing; the survivor's thought says what to do, and a picture by the bars keeps it in mind (no on-screen tutorial). A quest counts only what happens while it is the current one and brings what its task needs, so nothing can be done ahead of it. A finished quest gives way to the next the following morning.
 
-| Day | Weather | What arrives | What the player learns |
-|-----|---------|--------------|------------------------|
-| 1 | sunny | 2 coconuts, driftwood, a sharp stone | Arrival, hungry: eat coconuts, pick things up, stick + stone = spear, spear a fish. Tired at night, sleep. |
-| 2 | windy | the crate | Something new washes up each morning. The crate is shut tight: needs a tool (a goal for later). The wind brings the first crabs out at night. |
-| 3 | rain | extra driftwood | Sleeping out in the rain gives a poor rest. Build a hut from driftwood + palm leaves, in stages. |
-| 4 | storm | — | The survivor wakes in the night to thunder and can't sleep again without fire. Lightning burns a palm; take fire from it, build a campfire, sleep by it. |
-| 5 | sunny | a vine (left by the storm) | Stick + stone + vine = stone axe ("tie it, like the spear"). The axe opens the crate: rope and cloth. |
-| 6 | cloudy | — | Fell palms with the axe for logs. |
-| 7 | sunny | — | Raft: logs + rope + cloth sail. "Set sail": the raft drifts off, fade, end card. |
+| # | Quest | Weather | What it brings | Done when |
+|---|-------|---------|----------------|-----------|
+| 1 | Eat something | sunny | 2 coconuts, driftwood | something is eaten |
+| 2 | Sleep on the blanket (starts at once) | sunny | — | a night slept, not fainted |
+| 3 | Make a spear, catch a fish | fair | 3 stones (the first) | a fish is speared |
+| 4 | Open the crate | windy (crabs at night) | the crate | it is smashed with a stone in hand: rope and boards |
+| 5 | Build the hut | rain | the hammer | the hut's roof is on |
+| 6 | Sit out the storm | storm | — | a storm night slept, in the hut |
+| 7 | Light a campfire | fair | lightning burns a palm | a campfire is lit from it |
+| 8 | Make an axe, cut 4 logs | fair | the vine | four logs are cut |
+| 9 | Build the raft, sail away | fair | the cloth for the sail | the raft sets sail: the end |
 
 Rules this sets:
 
 - Crabs come out only on windy nights.
-- Rest depends on where you sleep: in the rain without the hut the next day starts with less energy.
-- A storm night wakes the survivor; sleep needs a burning campfire nearby.
-- A palm tapped gives a leaf; with the axe in hand it is cut down for two logs (the sapling is too small). The axe opens the crate.
-- Things are tied by holding one and tapping another in the bag (`src/crafts.ts`). The hut and raft are built in stages with a button that shows when the bag holds the next stage and the survivor stands in the right place (hut on land, raft on the beach).
+- Rain and storms come only with their quests; other days are fair.
+- In the rain the survivor sleeps only under the hut's roof. A storm night out of the hut wakes them with thunder.
+- A palm tapped gives a leaf; with the axe in hand it is cut down for two logs (the sapling is too small). A stone or the hammer smashes the crate, the axe prises it open.
+- Things are tied by dragging one onto another in the bag (`src/crafts.ts`). The hut and raft are built in stages with a button that shows when the bag holds the next stage and the survivor stands in the right place (hut round the blanket, raft on the beach).
 
 Open:
 
