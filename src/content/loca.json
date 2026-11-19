@@ -48,8 +48,8 @@
   "de": "Eine Kiste vom Schiff. Fest verschlossen — mit einem Stein in der Hand könnte ich sie zerschlagen."
  },
  "think.full": {
-  "en": "My bag is full.",
-  "de": "Mein Beutel ist voll."
+  "en": "My bag is full. I could drag something out of it onto the sand.",
+  "de": "Mein Beutel ist voll. Ich könnte etwas herausziehen und in den Sand legen."
  },
  "think.hungry": {
   "en": "I’m hungry…",
@@ -844,7 +844,15 @@
   "de": "Ausgeblichenes Treibholz. Gut zum Bauen — oder für ein Feuer."
  },
  "quest.crab": {
-  "en": "Listen to that wind… On windy nights crabs come up the beach. With my spear I could catch one.",
-  "de": "Hör dir den Wind an… In windigen Nächten kommen Krebse den Strand herauf. Mit dem Speer könnte ich einen fangen."
+  "en": "Listen to that wind… On windy days crabs come up the beach. With my spear I could catch one.",
+  "de": "Hör dir den Wind an… An windigen Tagen kommen Krebse den Strand herauf. Mit dem Speer könnte ich einen fangen."
+ },
+ "think.canTie": {
+  "en": "These could go together… I’ll drag one onto the other in my bag.",
+  "de": "Die könnten zusammenpassen… Ich ziehe im Beutel das eine aufs andere."
+ },
+ "think.canDrop": {
+  "en": "My bag is full. To make room, I can drag a thing out of it and drop it on the sand.",
+  "de": "Mein Beutel ist voll. Um Platz zu machen, kann ich etwas herausziehen und in den Sand fallen lassen."
  }
 }

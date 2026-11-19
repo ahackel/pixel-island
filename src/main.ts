@@ -1,6 +1,6 @@
 // Pixel Island: days on the island, quest by quest. Tap to walk, pick up coconuts and eat them,
 // watch the sun set, get tired, sleep, wake to what the sea brought: sticks and driftwood. Tie a stone
-// to a stick for a spear, and spear the fish that swim near. On windy nights crabs come out on the
+// to a stick for a spear, and spear the fish that swim near. On windy days crabs come out on the
 // beach: speared, or grabbed by hand if lucky. A crate smashed gives rope and driftwood; a hut of
 // driftwood keeps the rain and the storm off. Once lightning has burnt a palm, hold a stick to its fire
 // for a torch, and with the torch light driftwood: a campfire. A vine makes an axe, which fells palms;
@@ -24,7 +24,7 @@ import { findPath } from '@pixel/engine/world/path.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { rng } from '@pixel/shared/random.ts';
-import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
+import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNRISE_S, SUNSET_S, wake } from './clock.ts';
 import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from './ui.ts';
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
@@ -66,7 +66,7 @@ const DRIFT_LYING = 3;
 const FISH_COUNT = 7;
 /** How near a fish must swim to be speared, in metres. */
 const SPEAR_REACH = 1.8;
-/** How many crabs come out each night; how near one must be to grab it by hand, and how often that works. */
+/** How many crabs come out on a windy day; how near one must be to grab it by hand, and how often that works. */
 const CRAB_NIGHT = 5;
 const GRAB_REACH = 1.4;
 const GRAB_LUCK = 0.25;
@@ -84,7 +84,7 @@ const palms = [...scene.plants];
 const tall = (k: number) => palms[k].plant !== 'plant-palms-2';
 /** Shows (and lets block the way) only the palms not cut down. */
 const keepStanding = () => (scene.plants = palms.filter((_, k) => !game.felled.includes(k)));
-/** The crabs out tonight, and how many have come out so far; all gone by morning. */
+/** The crabs out today, and how many have come out so far; all gone by the next morning. */
 let crabs: Crab[] = [];
 let crabsOut = 0;
 /** When the survivor set sail, which ends the game. */
@@ -645,6 +645,7 @@ function startNew(who: State): void {
   stormWoken = false;
   strikeNow = false;
   weatherCheat = undefined;
+  taught.clear();
   ended = null;
   questShown = '';
   showQuest();
@@ -1245,11 +1246,23 @@ function lamps(rect: { x: number; y: number }): Lamp[] {
 
 function tintAt(time: number): Tint {
   const { phase, k } = phaseAt(time);
-  if (phase === 'day') return TINTS.day;
+  // Every morning the sun comes up: from dusk's purple through sunset's warmth to day.
+  if (phase === 'day') return time < SUNRISE_S ? along([TINTS.dusk, TINTS.sunset, TINTS.day], time / SUNRISE_S) : TINTS.day;
   if (phase === 'sunset') return mixTint(TINTS.day, TINTS.sunset, k);
   if (phase === 'dusk') return along([TINTS.sunset, TINTS.dusk, TINTS.night], k);
   return TINTS.night;
 }
+
+/** Hints said once a game (and again after a reload): how to tie things together and how to drop them. */
+const taught = new Set<Key>();
+function teach(key: Key, when: boolean): void {
+  if (when && bubble.hidden && !telling() && !taught.has(key)) {
+    taught.add(key);
+    think(key);
+  }
+}
+/** Whether two things in the bag tie into something. */
+const canTie = () => game.bag.some((a, n) => game.bag.some((b, m) => m > n && recipeFor(a, b, game.bag)));
 
 /** Thoughts said once a day. */
 const warned = new Set<Key>();
@@ -1311,6 +1324,8 @@ function frame(ms: number): void {
     Object.assign(game, drain(game, dt * SPEED * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
+    teach('think.canTie', canTie());
+    teach('think.canDrop', game.bag.length >= BAG_SLOTS);
     if (faints(game)) {
       think('think.faint');
       sleep(true);
@@ -1348,9 +1363,8 @@ function frame(ms: number): void {
 
   swim(world.fish, world.floor, dt, fishRandom);
   land(ms);
-  // After sunset the crabs come out of the sand, one every few seconds.
-  // Only the wind drives them up the beach.
-  if (!paused && !sleeping && kindNow() === 'windy' && (phaseAt(time).phase === 'dusk' || phaseAt(time).phase === 'night') && crabsOut < CRAB_NIGHT && fishRandom() < dt / 3) {
+  // On a windy day the crabs come out of the sand from the morning on, one every so often; only the wind drives them up the beach.
+  if (!paused && !sleeping && !telling() && kindNow() === 'windy' && crabsOut < CRAB_NIGHT && fishRandom() < dt / 8) {
     const c = spawnCrab(world, fishRandom);
     if (c) crabs.push(c);
     crabsOut++;

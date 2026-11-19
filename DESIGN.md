@@ -80,7 +80,7 @@ The demo is a chain of quests (`src/content/quests.json`), one at a time, each t
 | 1 | Eat something | sunny | 2 coconuts, driftwood | something is eaten |
 | 2 | Sleep on the blanket (starts at once) | sunny | — | a night slept, not fainted |
 | 3 | Make a spear, catch a fish | fair | 3 stones (the first) | a fish is speared |
-| 4 | Catch a crab | windy (crabs at night) | — | a crab is speared or grabbed |
+| 4 | Catch a crab | windy (crabs all day) | — | a crab is speared or grabbed |
 | 5 | Open the crate | fair | the crate | it is smashed with a stone or the hammer: rope and two pieces of driftwood |
 | 6 | Build the hut | rain | the hammer | the hut's roof is on |
 | 7 | Sit out the storm (wakes the survivor the night the hut is done) | storm | — | a storm night slept, in the hut |
@@ -90,7 +90,9 @@ The demo is a chain of quests (`src/content/quests.json`), one at a time, each t
 
 Rules this sets:
 
-- Crabs come out only on windy nights.
+- Crabs come out only on windy days, from the morning on.
+- Every morning starts with a sunrise.
+- The survivor says how to tie things (drag one onto the other in the bag) the first time two things in the bag go together, and how to drop things (drag them out onto the sand) the first time the bag is full.
 - Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.
 - Whatever is taken out of the bag shows in the survivor's hand. Fires light the dark around them.
 - Standing behind the hut, its walls come down to knee height and its roof off, so the survivor is seen.
