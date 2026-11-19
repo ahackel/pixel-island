@@ -46,8 +46,10 @@ export interface Game {
 }
 
 const KEY = 'pixel-island-save';
-/** 4: more sea round the island, so every place on it has moved; older saves start a new game. */
-const VERSION = 4;
+/** 4: more sea round the island, so every place on it has moved; older saves start a new game. 5: the roof is laid a leaf at a time. */
+const VERSION = 5;
+/** In a version 4 save the hut's roof was one stage, its fifth: done then means done now. */
+const hutStageFrom4 = (stage: number) => (stage >= 5 ? BUILDS.hut.stages.length : stage);
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);
@@ -56,7 +58,7 @@ const spots = (v: unknown, size: number) => (Array.isArray(v) ? v.filter((c) => 
 /** Reads the saved game; fields older saves lack start empty. */
 export function loadGame(size: number, palms: number): Game | null {
   const g = readStore<any>(KEY, null);
-  if (!g || g.v !== VERSION || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
+  if (!g || (g.v !== VERSION && g.v !== 4) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.coconuts) || !Array.isArray(g.items)) return null;
   const q = g.quest;
   if (!q || !Number.isInteger(q.quest) || !num(q.quest, 0, QUESTS.length - 1) || !Number.isInteger(q.count) || !num(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
@@ -74,6 +76,7 @@ export function loadGame(size: number, palms: number): Game | null {
     felled: Array.isArray(g.felled) ? [...new Set<number>(g.felled.filter((k: unknown) => Number.isInteger(k) && num(k, 0, palms - 1)))] : [],
     builds: Array.isArray(g.builds)
       ? g.builds
+        .map((b: any) => (g.v === 4 && b?.kind === 'hut' && Number.isInteger(b.stage) ? { ...b, stage: hutStageFrom4(b.stage) } : b))
         .filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && Number.isInteger(b.stage) && num(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
         .map((b: any) => (b.kind === 'hut' ? { kind: b.kind, ...HUT_AT, stage: b.stage } : { kind: b.kind, i: b.i, j: b.j, stage: b.stage }))
       : [],

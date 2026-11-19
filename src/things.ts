@@ -146,6 +146,9 @@ export function hatThing(who: State): (spot: Thing['spot']) => Thing {
 export const PIECE_KINDS: Record<string, PieceKind> = {
   plank: plankWall({ overhang: 3, top: 'slope', seed: 1 }),
   thatch: thatchRoof({ rise: 3, eaves: 0.3, seed: 1 }),
+  // The same thatch under another name: neighbouring cells of one kind are roofed as one rectangle, so a lone third
+  // leaf beside the back two takes this, to be a small roof of its own rather than the whole roof at once.
+  thatchApart: thatchRoof({ rise: 3, eaves: 0.3, seed: 2 }),
 };
 /** Wall height, in levels: about the survivor's height. */
 const HUT_HEIGHT = 4;
@@ -154,9 +157,14 @@ const HUT_HEIGHT = 4;
 export function hutBuilding(stage: number, low = false): Building {
   const b = emptyBuilding(low ? 1 : HUT_HEIGHT);
   const i0 = HUT_AT.i - 1, j0 = HUT_AT.j - 1;
-  for (const s of HUT_PLAN.slice(0, stage)) {
-    if (s === 'roof') {
-      if (!low) for (let j = j0; j < j0 + 2; j++) for (let i = i0; i < i0 + 2; i++) b.cells.set(cellKey(i, j), { kind: 'thatch', i, j });
+  const plan = HUT_PLAN.slice(0, stage);
+  const leaves = plan.filter((s) => 'roof' in s).length;
+  for (const s of plan) {
+    if ('roof' in s) {
+      // Two leaves make a rectangle and four the whole roof; the third alone is apart.
+      const i = i0 + s.roof.i, j = j0 + s.roof.j;
+      const kind = leaves === 3 && s.roof.j === 1 ? 'thatchApart' : 'thatch';
+      if (!low) b.cells.set(cellKey(i, j), { kind, i, j });
     } else {
       for (const w of s) {
         const edge = { axis: w.axis, i: i0 + w.i, j: j0 + w.j };

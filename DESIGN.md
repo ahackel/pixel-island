@@ -99,6 +99,7 @@ Rules this sets:
 - Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.
 - Whatever is taken out of the bag shows in the survivor's hand. Fires light the dark around them.
 - Standing behind the hut, its walls come down to knee height and its roof off, so the survivor is seen.
+- The hut's roof goes on a palm leaf at a time, one over each of its four cells: two make a ridge over the back, the third a small roof of its own, the fourth the whole roof.
 - Rain and storms come only with their quests; other days are fair, and the weather holds from day to day until a quest changes it.
 - Once the sea has brought stones, there are always two to be found: fewer than two on the island (lying about or in the bag) and the next morning brings them back up to two.
 - After the storm night the survivor lies awake until a campfire burns by the hut, so the fire quest ends where they sleep.

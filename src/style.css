@@ -1,4 +1,4 @@
-/* The interface is pixel art drawn into canvases (src/ui.ts); this only places it. */
+/* The interface is pixel art drawn into canvases (the engine's shared/game-ui.ts); this only places it. */
 :root { --sea: #1d5f86; --gap: 12px; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--sea); overflow: hidden; overscroll-behavior: none; }
@@ -6,10 +6,6 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 #app { position: fixed; inset: 0; }
 canvas { image-rendering: pixelated; }
 
-.pbtn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
-.pbtn:disabled { cursor: default; }
-/* Pressed: the colours turned round, as in Lop Hop. */
-.pbtn:not(:disabled):not([aria-disabled='true']):active canvas { filter: invert(1) hue-rotate(180deg); }
 /* The bag slot whose thing is in the survivor's hands sits raised. */
 .bag .pbtn.held { transform: translateY(-12px); }
 
@@ -47,24 +43,3 @@ canvas { image-rendering: pixelated; }
 .bag .pbtn.dim { opacity: 0.4; }
 /* An action that can't be done here, like sleeping out in the rain, shows faded. */
 .actions .pbtn[aria-disabled='true'] { opacity: 0.45; }
-/* The character editor, over the menu: the survivor turning, tabs, a row per choice. */
-.editor { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 32px; background: #0006; padding: 12px; overflow-y: auto; }
-.editor .stage { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.editor .preview { touch-action: none; cursor: grab; }
-.editor .preview.hop { animation: hop 0.35s ease-out; }
-@keyframes hop { 40% { transform: translateY(-16px); } }
-.editor .turn, .editor .end { display: flex; gap: 8px; }
-.editor .end { position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom)); }
-.editor .side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.editor .tabs { display: flex; gap: 8px; }
-.editor .value { line-height: 0; }
-/* As tall as the longest tab, so switching tabs does not move the buttons. */
-.editor .rows { display: flex; flex-direction: column; gap: 8px; min-height: 336px; }
-.editor .row { display: grid; grid-template-columns: var(--name-w) auto; gap: 12px; align-items: center; }
-.editor .pick { position: relative; }
-/* The two halves of a choice's box, over its picture: tapped, one steps back, the other on. */
-.editor .half { position: absolute; top: 0; bottom: 4px; width: 50%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
-.editor .half.prev { left: 0; }
-.editor .half.next { right: 0; }
-.editor .half:active { background: #2b1d1222; }
-.editor .bar { touch-action: none; cursor: pointer; }

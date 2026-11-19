@@ -7,7 +7,7 @@
 // logs, rope and the cloth make a raft, and setting sail ends the game.
 import './style.css';
 import { defaultState, lookOf, type State } from '@pixel/engine/character/character.ts';
-import { characterEditor } from './character.ts';
+import { characterEditor } from '@pixel/engine/character/editor.ts';
 import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
@@ -26,7 +26,7 @@ import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from './ui.ts';
+import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
@@ -691,7 +691,7 @@ function makeCharacter(): void {
   if (editor) return;
   editing = true;
   // The last survivor's looks to start from; before any, the default.
-  editor = characterEditor(game.who, (who) => {
+  editor = characterEditor(game.who, { done: (who) => {
     // Nothing more to press while it fades.
     editor!.inert = true;
     clearVeil();
@@ -699,7 +699,7 @@ function makeCharacter(): void {
     forget();
     started = true;
     sleeping = { start: performance.now(), fainted: false, woken: false, wakes: false, intro: who };
-  });
+  } });
   menuBox.hidden = true;
   // Under the menu button and the veil, so it fades to black with everything else.
   buttons.before(editor);
@@ -1553,9 +1553,9 @@ function frame(ms: number): void {
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
   sleepButton.hidden = !!ended || !onBlanket();
-  // In the rain the survivor sleeps only under the hut's roof.
+  // In the rain the survivor sleeps only under the hut's roof, and after the storm only once a campfire burns by it.
   // Looks disabled but still takes a press, which says why not.
-  sleepButton.setAttribute('aria-disabled', String(weather.rain > 0.4 && !sheltered()));
+  sleepButton.setAttribute('aria-disabled', String((weather.rain > 0.4 && !sheltered()) || (wantsFire() && !fireByHut())));
   for (const k of BUILD_KINDS) buildButtons[k].hidden = !!ended || !buildable(k);
   sailButton.hidden = !!ended || !canSail();
   veil.style.opacity = String(fade);

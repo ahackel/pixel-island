@@ -35,10 +35,10 @@ export function recipeFor(hand: BagItem | null, tapped: BagItem, bag: readonly B
 /** A structure built in stages, each taking what it needs from the bag. */
 export const BUILDS = {
   /**
-   * A 2×2 hut of driftwood (not sticks) round the blanket, one side at a time (HUT_PLAN), roofed with palm leaves:
-   * sleeping in it is dry. Nailed together: the hammer must be in the bag, and stays there.
+   * A 2×2 hut of driftwood (not sticks) round the blanket, one side at a time (HUT_PLAN), roofed with palm leaves,
+   * one leaf over each of its cells: sleeping in it is dry. Nailed together: the hammer must be in the bag, and stays there.
    */
-  hut: { stages: [['drift'], ['drift'], ['drift'], ['drift'], ['leaf', 'leaf', 'leaf']], on: 'land', tools: ['hammer'] },
+  hut: { stages: [['drift'], ['drift'], ['drift'], ['drift'], ['leaf'], ['leaf'], ['leaf'], ['leaf']], on: 'land', tools: ['hammer'] },
   /** Logs lashed with rope, a stick for a mast and the cloth for a sail: on the beach, to sail away. */
   raft: { stages: [['log', 'log'], ['log', 'log', 'rope'], ['wood', 'cloth']], on: 'beach' },
 } as const satisfies Record<string, { stages: readonly (readonly BagItem[])[]; on: 'land' | 'beach'; tools?: readonly BagItem[] }>;
@@ -67,11 +67,16 @@ export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[])
 export const HUT_AT = { i: 10, j: 11 };
 /** A wall on a cell edge, relative to the hut's first cell (see engine/world/building). */
 export interface HutWall { axis: 'H' | 'V'; i: number; j: number }
-/** What each of the hut's stages lays: the back, the two sides, the front with its doorway on the left, the roof. */
-export const HUT_PLAN: (HutWall[] | 'roof')[] = [
+/** A leaf of the roof over one of the hut's cells, relative to its first cell. */
+export interface HutLeaf { roof: { i: number; j: number } }
+/** What each of the hut's stages lays: the back, the two sides, the front with its doorway on the left, then a leaf over each cell, back ones first. */
+export const HUT_PLAN: (HutWall[] | HutLeaf)[] = [
   [{ axis: 'H', i: 0, j: 0 }, { axis: 'H', i: 1, j: 0 }],
   [{ axis: 'V', i: 0, j: 0 }, { axis: 'V', i: 0, j: 1 }],
   [{ axis: 'V', i: 2, j: 0 }, { axis: 'V', i: 2, j: 1 }],
   [{ axis: 'H', i: 1, j: 2 }],
-  'roof',
+  { roof: { i: 0, j: 0 } },
+  { roof: { i: 1, j: 0 } },
+  { roof: { i: 0, j: 1 } },
+  { roof: { i: 1, j: 1 } },
 ];

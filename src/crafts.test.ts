@@ -14,10 +14,12 @@ test('a build stage takes exactly what it needs', () => {
   assert.deepEqual(lacking('hut', 0, bag), ['drift', 'hammer']);
   bag.push('hammer');
   assert.deepEqual(lacking('hut', 0, bag), ['drift']);
-  assert.deepEqual(lacking('hut', 4, bag), ['leaf']);
-  bag.push('leaf');
+  // The roof goes on a leaf at a time.
   assert.deepEqual(lacking('hut', 4, bag), []);
   takeFrom(bag, BUILDS.hut.stages[4]);
+  assert.deepEqual(lacking('hut', 5, bag), []);
+  takeFrom(bag, BUILDS.hut.stages[5]);
+  assert.deepEqual(lacking('hut', 6, bag), ['leaf']);
   // The hammer is not used up.
   assert.deepEqual(bag, ['axe', 'hammer']);
   assert.deepEqual(lacking('raft', 1, ['log', 'rope']), ['log']);
@@ -25,5 +27,8 @@ test('a build stage takes exactly what it needs', () => {
 
 test('the hut plan has a stage for every cost', () => {
   assert.equal(HUT_PLAN.length, BUILDS.hut.stages.length);
-  assert.equal(HUT_PLAN.at(-1), 'roof');
+  // Four leaves, one over each of the 2×2 cells, after the walls.
+  const leaves = HUT_PLAN.flatMap((s) => ('roof' in s ? [`${s.roof.i},${s.roof.j}`] : []));
+  assert.deepEqual([...new Set(leaves)].sort(), ['0,0', '0,1', '1,0', '1,1']);
+  assert.ok(HUT_PLAN.slice(-4).every((s) => 'roof' in s));
 });
