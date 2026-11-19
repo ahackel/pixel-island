@@ -92,6 +92,7 @@ Rules this sets:
 
 - Crabs come out only on windy days, from the morning on.
 - Sharks cruise the deep water; only the fin shows. They are why there is no swimming away.
+- No animal stays by a fire: crabs run off sideways and fish turn and swim away from a campfire, the burning palm or a lit torch. The sharks, out in the deep, are not troubled by it.
 - Every morning starts with a sunrise.
 - The survivor says how to tie things (drag one onto the other in the bag) the first time two things in the bag go together, and how to drop things (drag them out onto the sand) the first time the bag is full.
 - Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.

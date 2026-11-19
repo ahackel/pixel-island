@@ -1101,6 +1101,45 @@ const byHut = (at: { i: number; j: number }) => Math.hypot(at.i - HUT_AT.i, at.j
 const wantsFire = () => questNow().goal === 'campfire' && !game.quest.done;
 const fireByHut = () => game.fires.some(byHut);
 
+/** How far a fire scares animals off, in metres. */
+const FIRE_FEAR = 3.5;
+/** Every fire burning now: the campfires, the palm lightning left alight, and the torch in the survivor's hand. */
+function burning(): { i: number; j: number }[] {
+  return [
+    ...game.fires,
+    ...(game.struck === null ? [] : [palms[game.struck]]),
+    ...(hand === 'fire' && present ? [{ i: actor.i, j: actor.j }] : []),
+  ];
+}
+/** The fire nearest an animal, if one is near enough to frighten it. */
+function fireNear(at: { i: number; j: number }, lit: readonly { i: number; j: number }[]): { i: number; j: number } | null {
+  let best: { i: number; j: number } | null = null;
+  let bestD = FIRE_FEAR;
+  for (const f of lit) {
+    const d = Math.hypot(f.i - at.i, f.j - at.j);
+    if (d <= bestD) [best, bestD] = [f, d];
+  }
+  return best;
+}
+/** How fast a frightened fish turns away, in radians a second. */
+const FISH_TURN = 3;
+/** No animal stays by a fire: a crab runs off sideways as it does from the survivor, a fish turns and swims away. */
+function fleeFire(dt: number): void {
+  const lit = burning();
+  if (!lit.length) return;
+  for (const c of crabs) {
+    const f = fireNear(c, lit);
+    if (f) scare(c, f);
+  }
+  for (const fish of world.fish) {
+    const f = fireNear(fish, lit);
+    if (!f) continue;
+    // Round to the heading straight away from the fire, the short way about.
+    const d = Math.atan2(fish.j - f.j, fish.i - f.i) - fish.a;
+    fish.a += Math.max(-FISH_TURN * dt, Math.min(FISH_TURN * dt, Math.atan2(Math.sin(d), Math.cos(d))));
+  }
+}
+
 /** The raft, finished, by the survivor, and the sea not stormy. */
 function canSail(): boolean {
   const r = game.builds.find((b) => b.kind === 'raft');
@@ -1409,6 +1448,7 @@ function frame(ms: number): void {
   // A target that cannot be reached is given up rather than walked against forever.
   if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
 
+  if (!paused && !sleeping && !telling()) fleeFire(dt);
   swim(world.fish, world.floor, dt, fishRandom);
   cruise(sharks, world.floor, paused || sleeping ? 0 : dt, fishRandom);
   land(ms);
