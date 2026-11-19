@@ -37,7 +37,7 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, CLOTH, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, CLOTH, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -86,12 +86,41 @@ const firstWho = (): State => {
   return who;
 };
 
+/**
+ * A spot `d` metres to the side on screen from `p`: lying, the body lies across the screen, and +i -j is screen
+ * right. `side` -1 is left, 1 right.
+ */
+const sideways = (p: { i: number; j: number }, side: number, d: number) => ({ i: p.i + (side * d) / Math.SQRT2, j: p.j - (side * d) / Math.SQRT2 });
+/** Head to feet, about, in metres: the lying sprite is some 22 pixels long, a tile's 32 pixels across are 1.4 metres. */
+const HALF_BODY = 0.45;
+/** The side of the screen the head goes, lying here: on dry ground, the feet (if one side must be) in the water. */
+function headSide(p: { i: number; j: number }): -1 | 1 {
+  const score = (side: number) => (dry(sideways(p, side, HALF_BODY)) ? 2 : 0) + (dry(sideways(p, -side, HALF_BODY)) ? 0 : 1);
+  return score(1) > score(-1) ? 1 : -1;
+}
+/** Turns the survivor so that, lying down, the head is on the dry side (see `headSide`). */
+function faceToLie(): void {
+  // Facing 0 lies with the head to the left, 1 to the right (the engine mirrors facings 1, 2, 5 and 6).
+  const right = headSide(actor) === 1;
+  actor.facing = right ? 1 : 0;
+  actor.lookAt(right ? 0 : 1, right ? 1 : 0);
+}
+
 function newGame(who = firstWho()): Game {
-  // The survivor wakes washed ashore: on the beach by the water, nearest the island's middle.
-  const wet = (b: { i: number; j: number }) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([di, dj]) => !dry({ i: b.i + di, j: b.j + dj }));
+  // The survivor wakes washed ashore: on the beach nearest the island's middle with the sea beside it on screen, so
+  // they lie with their head on the sand and their feet in the water.
+  const seaSide = (b: { i: number; j: number }) => [-1, 1].find((side) => !dry(sideways(b, side, 0.9)) && dry(sideways(b, -side, 0.9)));
   const far = (b: { i: number; j: number }) => Math.hypot(b.i - scene.spawn.i, b.j - scene.spawn.j);
-  const shore = beach.filter(wet).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
-  const g: Game = { day: START_DAY, hunger: 0.8, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at: { ...shore }, who };
+  const shore = beach.filter((b) => seaSide(b) !== undefined).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
+  const side = seaSide(shore);
+  let at = { ...shore };
+  // Down the sand toward the sea, as far as stays dry underfoot with the feet already wet.
+  if (side) for (let d = 0; d < 0.6 && dry(sideways(shore, side, d)) && dry(sideways(shore, side, d + HALF_BODY)); d += 0.05) at = sideways(shore, side, d + 0.05);
+  if (!dry(at)) at = { ...shore };
+  // The hat came off in the sea and lies on the sand beyond their head.
+  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(at, 0.6, 0.3);
+  const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
+  const g: Game = { day: START_DAY, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [], builds: [], at, hat, who };
   // The island starts with two coconuts lying about, unless the day's plan says otherwise.
   for (let n = 0; n < (dayPlan(g.day).coconuts ?? 2); n++) dropCoconuts(g);
   washWood(g);
@@ -186,7 +215,7 @@ function dress(): void {
   let look = byMood.get(m);
   if (!look) {
     look = lookOf({ ...game.who, mood: m });
-    look.items = [...look.items.filter((it) => it.slot !== 'tool'), ...(held ? [held] : [])];
+    look.items = [...look.items.filter((it) => it.slot !== 'tool' && !(it.slot === 'hat' && game.hat)), ...(held ? [held] : [])];
     byMood.set(m, look);
   }
   actor.setLook(look);
@@ -214,7 +243,7 @@ const app = document.getElementById('app')!;
 app.addEventListener('pointerdown', () => actor.rouse(performance.now()), { capture: true });
 
 type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true }
-  | { loose: Game['lying'][number] } | { palm: number };
+  | { loose: Game['lying'][number] } | { palm: number } | { hat: true };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -236,8 +265,6 @@ const sailButton = pixelButton(t('setSail'), { words: t('setSail') }, () => setS
 // The view's buttons top right; what the survivor can do now (sleep, build, set sail) above the bag, where long words
 // have room and never run into the day and bars.
 buttons.append(
-  pixelButton(t('zoomIn'), { icon: 'zoomIn' }, () => view.step(1)),
-  pixelButton(t('zoomOut'), { icon: 'zoomOut' }, () => view.step(-1)),
   pixelButton(t('menu'), { icon: 'menu' }, () => setPaused(true)),
 );
 const actions = el('div', 'actions');
@@ -503,7 +530,13 @@ function storyBox(words: string): HTMLCanvasElement {
 }
 
 const veil = el('div', 'veil');
+/** The day whose title the veil shows, 0 for none: the title comes up once the screen is black. */
 let veilDay = 0;
+/** No title while fading out: the last one would show yesterday's day. */
+function clearVeil(): void {
+  veil.replaceChildren();
+  veilDay = 0;
+}
 function startNew(who: State): void {
   if (!TRYOUT) clearGame();
   game = newGame(who);
@@ -533,20 +566,29 @@ function play(): void {
   if (!started && game.day === 1) tell(morningThought(game.items.length > 0));
   started = true;
 }
-/** The character editor, over the menu; once confirmed the screen goes dark and the survivor wakes on the beach. */
+/**
+ * The character editor, over the menu. Once confirmed the whole screen fades to black over it, and only then is it
+ * closed and the survivor washed up on the beach (see `fadeAt`).
+ */
+let editor: HTMLElement | null = null;
+/** Whether the character editor is open: then, as before the first game, only the sea behind it. */
+let editing = false;
 function makeCharacter(): void {
-  const editor = characterEditor(present ? game.who : firstWho(), (who) => {
-    editor.remove();
+  if (editor) return;
+  editing = true;
+  // The last survivor's looks to start from; before any, the default.
+  editor = characterEditor(game.who, (who) => {
+    // Nothing more to press while it fades.
+    editor!.inert = true;
+    clearVeil();
     setPaused(false);
     forget();
     started = true;
     sleeping = { start: performance.now(), fainted: false, woken: false, wakes: false, intro: who };
-  }, () => {
-    editor.remove();
-    menuBox.hidden = false;
   });
   menuBox.hidden = true;
-  app.append(editor);
+  // Under the menu button and the veil, so it fades to black with everything else.
+  buttons.before(editor);
 }
 /** A flag for each language, the one in use bright. */
 function flags(): HTMLElement {
@@ -562,13 +604,39 @@ function flags(): HTMLElement {
   }));
   return row;
 }
+/** The game's name, large; its shadow (style.css) falls as far as the buttons', not a large pixel. */
+function titleLabel(words: string): HTMLCanvasElement {
+  const c = label(words, C.paper, S * 3);
+  c.className = 'title';
+  return c;
+}
 function showMenu(): void {
+  // Over the editor: back to it, or the settings; the editor is a new game already.
+  // The editor steps aside meanwhile, so the two do not show through each other.
+  if (editing) editor!.hidden = true;
+  if (editing) return void menuBox.replaceChildren(
+    titleLabel('PIXEL ISLAND'),
+    pixelButton(t('continue'), { words: t('continue') }, () => { menuBox.hidden = true; editor!.hidden = false; }),
+    pixelButton(t('settings'), { words: t('settings') }, showSettings),
+  );
   menuBox.replaceChildren(
-    label('PIXEL ISLAND', C.paper, S * 3),
+    titleLabel('PIXEL ISLAND'),
     ...(present && !ended ? [pixelButton(t('continue'), { words: t('continue') }, play)] : []),
-    pixelButton(present ? t('newGame') : t('createCharacter'), { words: present ? t('newGame') : t('createCharacter') }, makeCharacter),
-    // The page is built in one language, so a change reloads it; offered only before playing, when that loses nothing.
-    ...(started ? [] : [flags()]),
+    // A new game starts over at the first menu, out at sea; the old one stays saved until a survivor is made.
+    present
+      ? pixelButton(t('newGame'), { words: t('newGame') }, () => { present = false; showMenu(); })
+      : pixelButton(t('createCharacter'), { words: t('createCharacter') }, makeCharacter),
+    pixelButton(t('settings'), { words: t('settings') }, showSettings),
+  );
+}
+/** Settings, in place of the menu: the language for now. */
+function showSettings(): void {
+  menuBox.replaceChildren(
+    label(caps(t('settings')), C.paper, S * 2),
+    flags(),
+    // The page is built in one language, so a change reloads it, back to the last save: the morning.
+    ...(started ? [label(caps(t('settings.langLoses')), C.paper, S)] : []),
+    pixelButton(t('back'), { words: t('back') }, showMenu),
   );
 }
 
@@ -601,6 +669,12 @@ if (params.has('cheats')) {
     cheat('NIGHT', () => (time = DAY_S + DUSK_S)),
     cheat('MORNING', () => sleep(false, true)),
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
+    // The ways of lying, to compare: the survivor lies down awake as each one.
+    {
+      words: 'LIE',
+      more: ([['FRONT UP', {}], ['FRONT DOWN', { down: true }], ['BACK UP', { back: true }], ['BACK DOWN', { back: true, down: true }]] as const)
+        .map(([words, how]) => cheat(words, () => actor.lieDown(performance.now(), false, how))),
+    },
     {
       words: 'WEATHER',
       more: KINDS.map((k) => cheat(k.toUpperCase(), () => {
@@ -622,6 +696,8 @@ function setPaused(on: boolean): void {
 setPaused(true);
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
+/** Asleep, the survivor lies face down, seen in three-quarter from the front. */
+const SLEEPS = { down: true };
 /** How long lying down takes before the night fades in, and lying awake in the morning before getting up, in ms. */
 const LIE_MS = 1100;
 const WAKE_MS = 1400;
@@ -665,6 +741,7 @@ function press(p: { x: number; y: number }, start: boolean): void {
     if (w) return goTo(w, false, { wood: w });
     const st = game.stones.find((s) => near(p, s, 5, 1));
     if (st) return goTo(st, false, { stone: st });
+    if (game.hat && near(p, game.hat, 6, 2)) return goTo(game.hat, false, { hat: true });
     const lo = game.lying.find((l) => near(p, l, 6, 2));
     if (lo) return goTo(lo, false, { loose: lo });
     const it = game.items.find((it) => near(p, it, 9, 7));
@@ -698,6 +775,14 @@ function arrive(pick: Pick): void {
     const c = pick.crab;
     if (crabs.includes(c) && Math.hypot(c.i - actor.i, c.j - actor.j) <= crabReach() + 0.2) return catchCrab(c);
     return think('think.missed');
+  }
+  // The hat goes straight on the head, not into the bag.
+  if ('hat' in pick) {
+    game.hat = null;
+    looks.clear();
+    mood = null;
+    feel();
+    return think('think.hat');
   }
   if ('item' in pick) return hand === 'axe' ? openCrate(pick.item) : think('think.crate');
   if ('palm' in pick) {
@@ -897,7 +982,9 @@ function sleep(fainted: boolean, anywhere = false): void {
   target = null;
   forget();
   // The survivor lies down and shuts their eyes; the night fades in once they lie.
-  actor.lieDown(performance.now(), true);
+  faceToLie();
+  actor.lieDown(performance.now(), true, SLEEPS);
+  clearVeil();
   sleeping = { start: performance.now() + LIE_MS, fainted, woken: false, wakes };
 }
 
@@ -950,9 +1037,13 @@ function fadeAt(ms: number): number {
   if (!sleeping.woken) {
     sleeping.woken = true;
     if (sleeping.intro) {
+      editor?.remove();
+      editor = null;
+      editing = false;
       startNew(sleeping.intro);
       centerOn(actor);
-      actor.lieDown(ms, true);
+      faceToLie();
+      actor.lieDown(ms, true, SLEEPS);
     }
     // Thunder: awake again in the same night, and the lightning strikes soon after.
     else if (sleeping.wakes) {
@@ -999,6 +1090,27 @@ function centerOn(at: { i: number; j: number }): void {
 }
 centerOn(actor);
 
+/**
+ * Panning is free, but never so far that the survivor leaves the middle of the view: like a follow camera's dead
+ * zone, the view is pushed along when they near its edge, walking or panned. Before there is a survivor, open sea.
+ */
+function keepInView(): void {
+  if (!present || editing) {
+    const p = world.screenOf(scene.spawn.i, scene.spawn.j);
+    view.cam.x = p.x;
+    view.cam.y = p.y - SEA_AWAY;
+    return;
+  }
+  const p = world.screenOf(actor.i, actor.j);
+  // Within the middle half of the view, clear of the bars and the bag at its edges; the body is centred 16 above the feet.
+  const mx = view.w / 4;
+  const my = view.h / 4;
+  view.cam.x = Math.min(p.x + mx, Math.max(p.x - mx, view.cam.x));
+  view.cam.y = Math.min(p.y - 16 + my, Math.max(p.y - 16 - my, view.cam.y));
+}
+/** How far up from the island the start screen looks, in ground pixels: far enough that none of it shows. */
+const SEA_AWAY = 400;
+
 /** The lightning strike being drawn, for the few seconds its bolt and burst last. */
 let strikeFx: Strike | null = null;
 const sparks = new Sparks();
@@ -1007,6 +1119,9 @@ function frame(ms: number): void {
   const dt = Math.min(0.1, (ms - last) / 1000);
   last = ms;
   view.update(dt);
+  keepInView();
+  // Before the first survivor and while making one, only the menu or editor over the sea, and the menu button.
+  for (const b of [hudBox, actions, bag]) b.hidden = !present || editing;
   // Sleep fades out and back in; setting sail fades out for good.
   const fade = ended ? Math.min(1, (ms - ended) / END_FADE) : fadeAt(ms);
 
@@ -1087,7 +1202,7 @@ function frame(ms: number): void {
   world.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const things: Thing[] = [
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
-    ...game.lying.map((l) => LYING[l.item](at(l))), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
+    ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))), ...world.buildingThings(actor),
     ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...(present ? [actor.thing(world, ms), ...actor.dropThings()] : []),
   ];
   const rect = view.rect();
@@ -1115,7 +1230,8 @@ function frame(ms: number): void {
   for (const k of BUILD_KINDS) buildButtons[k].hidden = !!ended || !buildable(k);
   sailButton.hidden = !!ended || !canSail();
   veil.style.opacity = String(fade);
-  if (fade >= 1 && veilDay !== game.day && !ended) {
+  // A new day's title; thunder waking the survivor in the same night gets none.
+  if (fade >= 1 && veilDay !== game.day && !ended && !sleeping?.wakes) {
     veilDay = game.day;
     veil.replaceChildren(label(caps(t('day', { n: game.day })), C.moon, S * 2));
   }

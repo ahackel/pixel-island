@@ -33,6 +33,8 @@ export interface Game {
   /** The hut and raft, as far as they are built. */
   builds: Build[];
   at: { i: number; j: number };
+  /** Where the survivor's hat lies, washed off with them, until they pick it up; null once worn (or with no hat). */
+  hat: { i: number; j: number } | null;
   /** The survivor as made in the character editor. */
   who: State;
 }
@@ -71,6 +73,7 @@ export function loadGame(size: number, palms: number): Game | null {
       : [],
     items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
     at: { i: g.at.i, j: g.at.j },
+    hat: spot(g.hat, size) ? { i: g.hat.i, j: g.hat.j } : null,
     who: cleanState(g.who),
   };
 }

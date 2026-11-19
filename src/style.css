@@ -24,7 +24,10 @@ canvas { image-rendering: pixelated; }
 /* A story thought: the island dimmed behind a box at the bottom, over the bag; any tap goes on. */
 .dialog { position: absolute; inset: 0; background: #0005; display: flex; align-items: flex-end; justify-content: center;
   padding-bottom: max(var(--gap), env(safe-area-inset-bottom)); cursor: pointer; }
-.veil { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; opacity: 0; pointer-events: none; }
+/* Black over everything, the bars, bag and editor too, while a day ends and the next begins. */
+.veil { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: #000; opacity: 0; pointer-events: none; }
+/* The buttons' shadow: one interface pixel (4px) straight down. */
+.menu .title { filter: drop-shadow(0 4px 0 #00000040); }
 .menu .langs { display: flex; gap: 8px; }
 .menu .off { opacity: 0.5; }
 .menu { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; background: #0009; transition: opacity 0.25s, visibility 0.25s; }
@@ -43,9 +46,23 @@ canvas { image-rendering: pixelated; }
 /* An action that can't be done here, like sleeping out in the rain, shows faded. */
 .actions .pbtn[aria-disabled='true'] { opacity: 0.45; }
 /* The character editor, over the menu: the survivor turning, tabs, a row per choice. */
-.editor { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: #000b; padding: 16px; overflow-y: auto; }
-.editor .tabs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.editor .tabs .off { opacity: 0.5; }
-.editor .rows { display: flex; flex-direction: column; gap: 6px; }
-.editor .row { display: flex; gap: 4px; align-items: center; }
-.editor .value { display: block; line-height: 0; }
+.editor { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 32px; background: #0006; padding: 12px; overflow-y: auto; }
+.editor .stage { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.editor .preview { touch-action: none; cursor: grab; }
+.editor .preview.hop { animation: hop 0.35s ease-out; }
+@keyframes hop { 40% { transform: translateY(-16px); } }
+.editor .turn, .editor .end { display: flex; gap: 8px; }
+.editor .end { position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom)); }
+.editor .side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.editor .tabs { display: flex; gap: 8px; }
+.editor .value { line-height: 0; }
+/* As tall as the longest tab, so switching tabs does not move the buttons. */
+.editor .rows { display: flex; flex-direction: column; gap: 8px; min-height: 336px; }
+.editor .row { display: grid; grid-template-columns: var(--name-w) auto; gap: 12px; align-items: center; }
+.editor .pick { position: relative; }
+/* The two halves of a choice's box, over its picture: tapped, one steps back, the other on. */
+.editor .half { position: absolute; top: 0; bottom: 4px; width: 50%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
+.editor .half.prev { left: 0; }
+.editor .half.next { right: 0; }
+.editor .half:active { background: #2b1d1222; }
+.editor .bar { touch-action: none; cursor: pointer; }

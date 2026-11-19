@@ -2,12 +2,12 @@
 import { LINE_STEP, text, textWidth } from '@pixel/shared/pixel-font.ts';
 import { drawRows, panel, pixelCanvas, rounded } from '@pixel/shared/pixel-ui.ts';
 
-/** How many screen pixels one interface pixel takes: big enough to tap on an iPad. */
-export const S = window.innerWidth < 600 ? 3 : 4;
+/** How many screen pixels one interface pixel takes: big enough to tap on an iPad, which the game is made for. */
+export const S = 4;
 
 export const C = {
   ink: '#2b1d12', paper: '#f6ecd2', empty: '#f6ecd28c', shadow: '#00000040', track: '#e2d3ae', hunger: '#e0862e', energy: '#4f9ad6', low: '#d9412b',
-  night: '#2f3b6e', moon: '#f3eccf', white: '#ffffff',
+  lit: '#e8862a', night: '#2f3b6e', moon: '#f3eccf', white: '#ffffff',
 };
 
 /** Icons, 9 by 9: each character a colour of `PAINT`, '.' nothing. */
@@ -15,8 +15,6 @@ const PAINT: Record<string, string> = {
   x: C.ink, k: '#1f1f1f', r: '#d9412b', b: '#2f3b6e', g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
 };
 export const ICONS = {
-  zoomIn: ['..xxx....', '.xgggx...', 'xggxggx..', 'xgxxxgx..', 'xggxggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
-  zoomOut: ['..xxx....', '.xgggx...', 'xgggggx..', 'xgxxxgx..', 'xgggggx..', '.xgggx...', '..xxx.h..', '......hh.', '.......hh'],
   menu: ['.........', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.xxxxxxx.', '.........', '.........'],
   sun: ['....y....', '.y.....y.', '...ooo...', '..oyyyo..', 'y.oyyyo.y', '..oyyyo..', '...ooo...', '.y.....y.', '....y....'],
   dusk: ['.........', '.y..y..y.', '.........', '...ooo...', '..oyyyo..', '.oyyyyyo.', 'wwwwwwwww', '.........', '..ww.ww..'],
@@ -24,6 +22,11 @@ export const ICONS = {
   left: ['.........', '.....x...', '....xx...', '...xxx...', '..xxxx...', '...xxx...', '....xx...', '.....x...', '.........'],
   right: ['.........', '...x.....', '...xx....', '...xxx...', '...xxxx..', '...xxx...', '...xx....', '...x.....', '.........'],
   dice: ['.xxxxxxx.', 'x.......x', 'x.x...x.x', 'x.......x', 'x...x...x', 'x.......x', 'x.x...x.x', 'x.......x', '.xxxxxxx.'],
+  // The character editor's tabs, in ink like the other buttons: a figure, a smiling face, a head of hair, a shirt.
+  body: ['...xxx...', '...xxx...', '.........', '.xxxxxxx.', 'x.xxxxx.x', 'x.xxxxx.x', '..xx.xx..', '..xx.xx..', '..xx.xx..'],
+  face: ['..xxxxx..', '.x.....x.', 'x..x.x..x', 'x.......x', 'x.x...x.x', 'x..xxx..x', '.x.....x.', '..xxxxx..', '.........'],
+  hair: ['..xxxxx..', '.xxxxxxx.', 'xxxxxxxxx', 'xxx...xxx', 'xx.x.x.xx', 'xx.....xx', 'xx.xxx.xx', 'xx.....xx', 'x.......x'],
+  clothes: ['..xx.xx..', '.xx...xx.', 'xx.....xx', 'xxx...xxx', '..x...x..', '..x...x..', '..x...x..', '..xxxxx..', '.........'],
   // Flags for the language, a flag's shape inside the square.
   en: ['.........', 'btbtrrrrr', 'bbbbttttt', 'btbtrrrrr', 'bbbbttttt', 'rrrrrrrrr', 'ttttttttt', '.........', '.........'],
   de: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', 'rrrrrrrrr', 'rrrrrrrrr', 'yyyyyyyyy', 'yyyyyyyyy', '.........', '.........'],
@@ -36,16 +39,16 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Objec
 export const caps = (s: string) => s.toUpperCase();
 
 /**
- * A flat button with an icon, words, or an icon then words, in capitals. `dark` for the night's own button.
+ * A flat button with an icon, words, or an icon then words, in capitals. `dark` for the night's own button, `lit` for the one chosen of a row (the open tab).
  */
-export function pixelButton(label: string, face: { icon?: Icon; words?: string; dark?: boolean }, on: () => void): HTMLButtonElement {
+export function pixelButton(label: string, face: { icon?: Icon; words?: string; dark?: boolean; lit?: boolean }, on: () => void): HTMLButtonElement {
   const iconW = face.icon ? 9 : 0;
   const words = face.words && caps(face.words);
   const wordsW = words ? textWidth(words) : 0;
   const w = words ? 4 + iconW + (face.icon ? 3 : 0) + wordsW + 4 : 13;
   const h = 13;
   const { canvas, ctx } = pixelCanvas(w, h + 1, S);
-  panel(ctx, 0, 0, w, h, face.dark ? C.night : C.paper, C.shadow);
+  panel(ctx, 0, 0, w, h, face.dark ? C.night : face.lit ? C.lit : C.paper, C.shadow);
   if (face.icon) drawRows(ctx, ICONS[face.icon], words ? 4 : 2, 2, PAINT);
   if (words) text(ctx, words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
   const b = el('button', 'pbtn');

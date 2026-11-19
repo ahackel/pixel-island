@@ -19,14 +19,6 @@
   "en": "Menu",
   "de": "Menü"
  },
- "zoomIn": {
-  "en": "Zoom in",
-  "de": "Näher"
- },
- "zoomOut": {
-  "en": "Zoom out",
-  "de": "Weiter weg"
- },
  "bag": {
   "en": "Bag",
   "de": "Beutel"
@@ -154,6 +146,10 @@
  "eatFish": {
   "en": "Eat the fish",
   "de": "Fisch essen"
+ },
+ "think.hat": {
+  "en": "My hat! Good, it didn't drift off.",
+  "de": "Mein Hut! Gut, dass er nicht weggetrieben ist."
  },
  "think.stone": {
   "en": "A sharp stone. With a stick it would make a spear.",
@@ -451,10 +447,6 @@
   "en": "Next",
   "de": "Nächste"
  },
- "char.back": {
-  "en": "Back",
-  "de": "Zurück"
- },
  "char.random": {
   "en": "Random",
   "de": "Zufall"
@@ -466,5 +458,365 @@
  "char.own": {
   "en": "Original",
   "de": "Original"
+ },
+ "settings": {
+  "en": "Settings",
+  "de": "Einstellungen"
+ },
+ "back": {
+  "en": "Back",
+  "de": "Zurück"
+ },
+ "settings.langLoses": {
+  "en": "Restarts the day",
+  "de": "Beginnt den Tag neu"
+ },
+ "char.turnLeft": {
+  "en": "Turn left",
+  "de": "Nach links drehen"
+ },
+ "char.turnRight": {
+  "en": "Turn right",
+  "de": "Nach rechts drehen"
+ },
+ "char.figure.m": {
+  "en": "Broad",
+  "de": "Breit"
+ },
+ "char.figure.f": {
+  "en": "Narrow",
+  "de": "Schmal"
+ },
+ "char.build.thin": {
+  "en": "Very slim",
+  "de": "Sehr schlank"
+ },
+ "char.build.slim": {
+  "en": "Slim",
+  "de": "Schlank"
+ },
+ "char.build.sturdy": {
+  "en": "Sturdy",
+  "de": "Kräftig"
+ },
+ "char.head.round": {
+  "en": "Round",
+  "de": "Rund"
+ },
+ "char.head.heart": {
+  "en": "Heart",
+  "de": "Herz"
+ },
+ "char.head.thin": {
+  "en": "Narrow",
+  "de": "Schmal"
+ },
+ "char.head.square": {
+  "en": "Square",
+  "de": "Eckig"
+ },
+ "char.eyes.round": {
+  "en": "Round",
+  "de": "Rund"
+ },
+ "char.eyes.small": {
+  "en": "Small",
+  "de": "Klein"
+ },
+ "char.eyes.sleepy": {
+  "en": "Sleepy",
+  "de": "Müde"
+ },
+ "char.brows.none": {
+  "en": "None",
+  "de": "Keine"
+ },
+ "char.brows.thin": {
+  "en": "Thin",
+  "de": "Dünn"
+ },
+ "char.brows.thick": {
+  "en": "Thick",
+  "de": "Dick"
+ },
+ "char.hairStyle.short": {
+  "en": "Unruly",
+  "de": "Strubbelig"
+ },
+ "char.hairStyle.long": {
+  "en": "Long",
+  "de": "Lang"
+ },
+ "char.hairStyle.recipe-hair-loose-0": {
+  "en": "Wavy",
+  "de": "Wellig"
+ },
+ "char.hairStyle.recipe-hair-loose-1": {
+  "en": "Curls",
+  "de": "Locken"
+ },
+ "char.hairStyle.recipe-hair-loose-2": {
+  "en": "Bob",
+  "de": "Bob"
+ },
+ "char.hairStyle.recipe-hair-short-0": {
+  "en": "Mohawk",
+  "de": "Irokese"
+ },
+ "char.hairStyle.recipe-hair-short-1": {
+  "en": "Side part",
+  "de": "Seitenscheitel"
+ },
+ "char.hairStyle.recipe-hair-short-2": {
+  "en": "Buzz cut",
+  "de": "Stoppeln"
+ },
+ "char.hairStyle.recipe-hair-tied-0": {
+  "en": "Ponytail",
+  "de": "Pferdeschwanz"
+ },
+ "char.hairStyle.recipe-hair-tied-1": {
+  "en": "Pigtails",
+  "de": "Zöpfe"
+ },
+ "char.hairStyle.recipe-hair-tied-2": {
+  "en": "Braid",
+  "de": "Zopf"
+ },
+ "char.hairStyle.recipe-hairstyles-0": {
+  "en": "Top bun",
+  "de": "Dutt"
+ },
+ "char.hairStyle.recipe-hairstyles-1": {
+  "en": "Afro",
+  "de": "Afro"
+ },
+ "char.hairStyle.recipe-hairstyles-2": {
+  "en": "Fringe bob",
+  "de": "Pony-Bob"
+ },
+ "char.beard.recipe-beard-0": {
+  "en": "Castaway",
+  "de": "Wildbart"
+ },
+ "char.beard.recipe-beard-1": {
+  "en": "Straggly",
+  "de": "Zottelbart"
+ },
+ "char.beard.recipe-beard-2": {
+  "en": "Bushy",
+  "de": "Buschbart"
+ },
+ "char.beard.sprite-beard-0": {
+  "en": "Full beard",
+  "de": "Vollbart"
+ },
+ "char.beard.sprite-beard-1": {
+  "en": "Very long",
+  "de": "Sehr lang"
+ },
+ "char.beard.sprite-beard-2": {
+  "en": "Wild",
+  "de": "Wild"
+ },
+ "char.beard.base-beard-stubble": {
+  "en": "Stubble",
+  "de": "Stoppeln"
+ },
+ "char.beard.base-beard-moustache": {
+  "en": "Moustache",
+  "de": "Schnurrbart"
+ },
+ "char.beard.base-beard-goatee": {
+  "en": "Goatee",
+  "de": "Spitzbart"
+ },
+ "char.beard.base-beard-chinstrap": {
+  "en": "Chin strap",
+  "de": "Kinnbart"
+ },
+ "char.beard.base-beard-short": {
+  "en": "Short beard",
+  "de": "Kurzer Bart"
+ },
+ "char.top.recipe-everyday-0": {
+  "en": "Polo shirt",
+  "de": "Poloshirt"
+ },
+ "char.top.recipe-everyday-1": {
+  "en": "Jumper",
+  "de": "Pullover"
+ },
+ "char.top.recipe-tops-0": {
+  "en": "T-shirt",
+  "de": "T-Shirt"
+ },
+ "char.top.recipe-tops-1": {
+  "en": "Tank top",
+  "de": "Trägershirt"
+ },
+ "char.top.recipe-tops-2": {
+  "en": "Tunic",
+  "de": "Tunika"
+ },
+ "char.top.recipe-tops-3": {
+  "en": "Checked shirt",
+  "de": "Karohemd"
+ },
+ "char.top.recipe-tops-4": {
+  "en": "Open shirt",
+  "de": "Offenes Hemd"
+ },
+ "char.top.sprite-casual-0": {
+  "en": "Sailor shirt",
+  "de": "Matrosenhemd"
+ },
+ "char.top.sprite-casual-1": {
+  "en": "Hoodie",
+  "de": "Kapuzenpulli"
+ },
+ "char.top.sprite-casual-2": {
+  "en": "Blouse",
+  "de": "Bluse"
+ },
+ "char.top.sprite-dresses-0": {
+  "en": "Sundress",
+  "de": "Sommerkleid"
+ },
+ "char.top.sprite-dresses-1": {
+  "en": "Evening dress",
+  "de": "Abendkleid"
+ },
+ "char.top.sprite-dresses-2": {
+  "en": "Pinafore",
+  "de": "Trägerkleid"
+ },
+ "char.top.sprite-formal-0": {
+  "en": "Suit jacket",
+  "de": "Sakko"
+ },
+ "char.top.sprite-formal-1": {
+  "en": "Officer jacket",
+  "de": "Offiziersjacke"
+ },
+ "char.top.sprite-formal-2": {
+  "en": "Cook jacket",
+  "de": "Kochjacke"
+ },
+ "char.top.sprite-vest-0": {
+  "en": "Sail vest",
+  "de": "Segelweste"
+ },
+ "char.top.sprite-vest-1": {
+  "en": "Long vest",
+  "de": "Lange Weste"
+ },
+ "char.bottom.recipe-bottoms-0": {
+  "en": "Trousers",
+  "de": "Hose"
+ },
+ "char.bottom.recipe-bottoms-1": {
+  "en": "Rolled-up",
+  "de": "Hochgekrempelt"
+ },
+ "char.bottom.recipe-bottoms-3": {
+  "en": "Wrap skirt",
+  "de": "Wickelrock"
+ },
+ "char.bottom.recipe-bottoms-5": {
+  "en": "Briefs",
+  "de": "Unterhose"
+ },
+ "char.bottom.recipe-everyday-4": {
+  "en": "Shorts",
+  "de": "Shorts"
+ },
+ "char.bottom.recipe-everyday-5": {
+  "en": "Long skirt",
+  "de": "Langer Rock"
+ },
+ "char.bottom.sprite-everyday-bottoms-0": {
+  "en": "Jeans",
+  "de": "Jeans"
+ },
+ "char.bottom.sprite-everyday-bottoms-1": {
+  "en": "Suit trousers",
+  "de": "Anzughose"
+ },
+ "char.bottom.sprite-everyday-bottoms-2": {
+  "en": "Pleated skirt",
+  "de": "Faltenrock"
+ },
+ "char.bottom.sprite-leafskirt-0": {
+  "en": "Leaf skirt",
+  "de": "Blätterrock"
+ },
+ "char.bottom.sprite-leafskirt-1": {
+  "en": "Frond skirt",
+  "de": "Palmrock"
+ },
+ "char.bottom.sprite-leafskirt-2": {
+  "en": "Short leaves",
+  "de": "Blätterschurz"
+ },
+ "char.hat.recipe-everyday-hats-0": {
+  "en": "Sailor cap",
+  "de": "Matrosenmütze"
+ },
+ "char.hat.recipe-everyday-hats-1": {
+  "en": "Chef hat",
+  "de": "Kochmütze"
+ },
+ "char.hat.recipe-everyday-hats-2": {
+  "en": "Ribbon hat",
+  "de": "Bänderhut"
+ },
+ "char.hat.recipe-hat-0": {
+  "en": "Sun hat",
+  "de": "Sonnenhut"
+ },
+ "char.hat.recipe-hat-1": {
+  "en": "Field hat",
+  "de": "Feldhut"
+ },
+ "char.hat.recipe-hat-2": {
+  "en": "Floppy hat",
+  "de": "Schlapphut"
+ },
+ "char.hat.sprite-bandana-0": {
+  "en": "Headband",
+  "de": "Stirnband"
+ },
+ "char.hat.sprite-bandana-1": {
+  "en": "Head wrap",
+  "de": "Kopftuch"
+ },
+ "char.hat.sprite-bandana-2": {
+  "en": "Bandana",
+  "de": "Bandana"
+ },
+ "char.hat.sprite-cap-0": {
+  "en": "Captain cap",
+  "de": "Kapitänsmütze"
+ },
+ "char.hat.sprite-cap-1": {
+  "en": "Gold braid cap",
+  "de": "Tressenmütze"
+ },
+ "char.hat.sprite-cap-2": {
+  "en": "Skipper cap",
+  "de": "Schiffermütze"
+ },
+ "char.hat.sprite-hat-0": {
+  "en": "Straw hat",
+  "de": "Strohhut"
+ },
+ "char.hat.sprite-hat-1": {
+  "en": "Conical hat",
+  "de": "Kegelhut"
+ },
+ "char.hat.sprite-hat-2": {
+  "en": "Floppy straw",
+  "de": "Strohschlapphut"
  }
 }

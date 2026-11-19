@@ -1,6 +1,9 @@
 // Small hand-drawn pictures for the week's new things: palm leaves, the vine, the stone axe, what the
 // crate held, logs, the raft at each stage of building; and the hut, laid from the engine's building pieces.
 import { PALETTE } from '@pixel/engine/core/palette.ts';
+import { lookOf, type State } from '@pixel/engine/character/character.ts';
+import { STAND } from '@pixel/engine/core/poses.ts';
+import { drawCharacter, PART_COLORS, SPRITE_H, SPRITE_W } from '@pixel/engine/core/puppet.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { tool } from './fire.ts';
@@ -36,6 +39,33 @@ export const AXE_IN_BAG: Rows = {
 /** The axe held upright in one hand, its stone head on top. */
 export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({ length: 11 }, (_, y) => (y === 10 ? '...w...' : '...W...'))], { S: 'stone' });
 
+
+const hats = new WeakMap<State, (spot: Thing['spot']) => Thing>();
+/**
+ * The survivor's own hat lying on the sand, just as they wear it: their 3/4 front view drawn twice, plainly
+ * and in the parts colours, keeping only the pixels the parts drawing marks as hat.
+ */
+export function hatThing(who: State): (spot: Thing['spot']) => Thing {
+  let made = hats.get(who);
+  if (made) return made;
+  const look = lookOf(who);
+  const plain = drawCharacter(look, STAND, 0);
+  const parts = drawCharacter(look, STAND, 0, { parts: true });
+  const cells: [number, number, string][] = [];
+  for (let y = 0; y < SPRITE_H; y++) for (let x = 0; x < SPRITE_W; x++) {
+    const c = plain.get(x, y);
+    if (c && parts.get(x, y) === PART_COLORS.hat) cells.push([x, y, c]);
+  }
+  // A hat that draws nothing in 3/4 front still needs a pixel to tap.
+  if (!cells.length) cells.push([0, 0, PALETTE.straw.base]);
+  const x0 = Math.min(...cells.map((c) => c[0])), y0 = Math.min(...cells.map((c) => c[1]));
+  const w = Math.max(...cells.map((c) => c[0])) - x0 + 1, h = Math.max(...cells.map((c) => c[1])) - y0 + 1;
+  const at = new Map(cells.map(([x, y, c]) => [`${x - x0},${y - y0}`, c]));
+  const picture: Picture = { get: (x, y) => at.get(`${x},${y}`) ?? null };
+  made = (spot) => ({ spot, picture, w, h, foot: { x: Math.floor(w / 2), y: h - 1 } });
+  hats.set(who, made);
+  return made;
+}
 
 // ------------------------------------------------------------------ the hut
 
