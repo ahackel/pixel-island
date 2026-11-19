@@ -73,23 +73,27 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 
 ## First week
 
-The demo is a chain of quests (`src/content/quests.json`), one at a time, each teaching one thing; the survivor's thought says what to do, and a picture by the bars keeps it in mind (no on-screen tutorial). A quest counts only what happens while it is the current one and brings what its task needs, so nothing can be done ahead of it. A finished quest gives way to the next the following morning.
+The demo is a chain of quests (`src/content/quests.json`), one at a time, each teaching one thing; the survivor's thought says what to do, and a picture by the bars keeps it in mind (no on-screen tutorial). A quest counts only what happens while it is the current one and brings what its task needs, so nothing can be done ahead of it. A finished quest gives way to the next the following morning (the storm comes in the night already).
 
 | # | Quest | Weather | What it brings | Done when |
 |---|-------|---------|----------------|-----------|
 | 1 | Eat something | sunny | 2 coconuts, driftwood | something is eaten |
 | 2 | Sleep on the blanket (starts at once) | sunny | — | a night slept, not fainted |
 | 3 | Make a spear, catch a fish | fair | 3 stones (the first) | a fish is speared |
-| 4 | Open the crate | windy (crabs at night) | the crate | it is smashed with a stone in hand: rope and boards |
-| 5 | Build the hut | rain | the hammer | the hut's roof is on |
-| 6 | Sit out the storm | storm | — | a storm night slept, in the hut |
-| 7 | Light a campfire | fair | lightning burns a palm | a campfire is lit from it |
-| 8 | Make an axe, cut 4 logs | fair | the vine | four logs are cut |
-| 9 | Build the raft, sail away | fair | the cloth for the sail | the raft sets sail: the end |
+| 4 | Catch a crab | windy (crabs at night) | — | a crab is speared or grabbed |
+| 5 | Open the crate | fair | the crate | it is smashed with a stone or the hammer: rope and two pieces of driftwood |
+| 6 | Build the hut | rain | the hammer | the hut's roof is on |
+| 7 | Sit out the storm (wakes the survivor the night the hut is done) | storm | — | a storm night slept, in the hut |
+| 8 | Light a campfire | fair | lightning burns a palm | driftwood is lit with a torch from it |
+| 9 | Make an axe, cut 4 logs | fair | the vine | four logs are cut |
+| 10 | Build the raft, sail away | fair | the cloth for the sail | the raft sets sail: the end |
 
 Rules this sets:
 
 - Crabs come out only on windy nights.
+- Each morning the sea leaves sticks and a piece of driftwood (the engine's driftwood flora). Sticks are for tools, the torch and the mast; driftwood builds the hut's walls and is what a campfire is lit on.
+- Whatever is taken out of the bag shows in the survivor's hand. Fires light the dark around them.
+- Standing behind the hut, its walls come down to knee height and its roof off, so the survivor is seen.
 - Rain and storms come only with their quests; other days are fair.
 - In the rain the survivor sleeps only under the hut's roof. A storm night out of the hut wakes them with thunder.
 - A palm tapped gives a leaf; with the axe in hand it is cut down for two logs (the sapling is too small). A stone or the hammer smashes the crate, the axe prises it open.

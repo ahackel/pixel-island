@@ -11,9 +11,9 @@ test('stick and stone make a spear, with a vine in hand an axe', () => {
 
 test('a build stage takes exactly what it needs', () => {
   const bag: BagItem[] = ['leaf', 'leaf', 'axe'];
-  assert.deepEqual(lacking('hut', 0, bag), ['wood', 'hammer']);
+  assert.deepEqual(lacking('hut', 0, bag), ['drift', 'hammer']);
   bag.push('hammer');
-  assert.deepEqual(lacking('hut', 0, bag), ['wood']);
+  assert.deepEqual(lacking('hut', 0, bag), ['drift']);
   assert.deepEqual(lacking('hut', 4, bag), ['leaf']);
   bag.push('leaf');
   assert.deepEqual(lacking('hut', 4, bag), []);

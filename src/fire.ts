@@ -37,14 +37,16 @@ export const woodThing = (spot: Thing['spot']): Thing => ({ spot, picture: WOOD,
  * sprite format, the shaft in the spear's column, gripped near its foot (the hand is at row 35).
  * Short, so they are told to be held as a pole, not carried in both arms.
  */
-export function tool(name: string, rows: string[], more: Record<string, string> = {}): ReturnType<typeof compileSprite>['item'] {
-  const top = 40 - rows.length;
+export function tool(name: string, rows: string[], more: Record<string, string> = {}, o: { bottom?: number; hold?: 'pole' | 'carry' } = {}): ReturnType<typeof compileSprite>['item'] {
+  const top = (o.bottom ?? 40) - rows.length;
+  // Centred on the spear's column, however wide.
+  const w = Math.max(...rows.map((r) => r.length));
   const grid = (x: number) => Array.from({ length: 48 }, (_, y) => {
-    const r = rows[y - top] ?? '.......';
-    return '.'.repeat(x - 3) + r + '.'.repeat(32 - x - 4);
+    const r = (rows[y - top] ?? '').padEnd(w, '.');
+    return ('.'.repeat(x - Math.floor(w / 2)) + r).padEnd(32, '.').slice(0, 32);
   });
   const legend = { W: 'wood', F: 'flame', Y: 'flare', B: 'blaze', ...more };
-  return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: 'pole' }).item;
+  return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: o.hold ?? 'pole' }).item;
 }
 /** A stick `n` rows long, not quite straight: its top bends aside, a stub of a twig halfway down. */
 const shaft = (n: number) => Array.from({ length: n }, (_, y) =>
@@ -194,6 +196,36 @@ export class Strike {
           dot(image, view, x, y, WHITE);
         }
       }
+    }
+  }
+}
+
+/**
+ * Bits bursting from a point, flying out and up, falling back to the ground and fading: splinters of the crate
+ * smashed. In ground pixels, worked out from the time since the start.
+ */
+export class Burst {
+  private bits: (Bit & { c: number[] })[] = [];
+  constructor(at: { x: number; y: number }, ground: number, private start: number, colors: string[], n = 24) {
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 20 + Math.random() * 45;
+      this.bits.push({
+        x: at.x + (Math.random() - 0.5) * 6, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5 - 45 - Math.random() * 30,
+        floor: ground + (Math.random() - 0.5) * 6, life: 0.5 + Math.random() * 0.5, c: rgb(colors[k % colors.length]),
+      });
+    }
+  }
+
+  done(ms: number): boolean { return ms - this.start > 1000; }
+
+  draw(image: Image, view: Rect, ms: number): void {
+    const t = (ms - this.start) / 1000;
+    for (const b of this.bits) {
+      if (t > b.life) continue;
+      const y = Math.min(b.floor, b.y + b.vy * t + 160 * t * t);
+      const k = Math.min(1, 3 * (1 - t / b.life));
+      dot(image, view, b.x + b.vx * t, y, b.c, k);
     }
   }
 }

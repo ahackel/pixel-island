@@ -8,8 +8,8 @@ import { rng } from '@pixel/shared/random.ts';
 
 const SIZE = 16;
 const SEED = 7;
-/** The palm recipes in the flora catalogue: leaning, bushy, sapling. */
-const PALMS = ['plant-palms-0', 'plant-palms-1', 'plant-palms-0', 'plant-palms-2'];
+/** The palms, from the flora catalogue: three tall leaning ones (no bushy palm, no sapling), each grown from its own seed. */
+const PALMS = ['plant-palms-0', 'plant-palms-0', 'plant-palms-0'];
 /** Things lying about, by where they go: the beach, the sand above it, the shallows. */
 const DECOR: [string[], (map: HeightMap, i: number, j: number) => boolean][] = [
   [['starfish-orange', 'starfish-pink', 'shell-spiral', 'shell-scallop', 'shell-spiral'], (m, i, j) => surfaceAt(m, i, j) === 'beach'],

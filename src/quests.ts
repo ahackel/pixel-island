@@ -1,18 +1,18 @@
 // The story as a chain of quests (content/quests.json), one at a time. Each quest counts only what happens while it
 // is the current one, and brings with it what its task needs (stones, the hammer, the vine, ...), so no task can be
 // done before its quest. A finished quest hands over to the next one the following morning, or at once if the next
-// says `now`. Plain data and rules, no page or engine code, so the tests can use it.
+// says `now`, or in the night before if it says `night`. Plain data and rules, no page or engine code, so the tests can use it.
 import data from './content/quests.json' with { type: 'json' };
 
 export const KINDS = ['sunny', 'cloudy', 'windy', 'fog', 'rain', 'storm'] as const;
 export type Kind = (typeof KINDS)[number];
 
 /** What a quest waits for; the game reports each as it happens. */
-export const GOALS = ['eat', 'sleep', 'fish', 'open', 'hut', 'stormSleep', 'campfire', 'log', 'sail'] as const;
+export const GOALS = ['eat', 'sleep', 'fish', 'crab', 'open', 'hut', 'stormSleep', 'campfire', 'log', 'sail'] as const;
 export type Goal = (typeof GOALS)[number];
 
 /** The pictures a quest can show in the corner (see main.ts). */
-export const QUEST_ICONS = ['coconut', 'moon', 'fish', 'crate', 'hammer', 'storm', 'fire', 'axe', 'raft'] as const;
+export const QUEST_ICONS = ['coconut', 'moon', 'fish', 'crab', 'crate', 'hammer', 'storm', 'fire', 'axe', 'raft'] as const;
 export type QuestIcon = (typeof QUEST_ICONS)[number];
 
 export interface Quest {
@@ -22,6 +22,8 @@ export interface Quest {
   count?: number;
   /** Starts as soon as the quest before is done, not the next morning. */
   now?: boolean;
+  /** Starts in the night after the quest before is done: the survivor is woken by it (the storm). */
+  night?: boolean;
   /** The weather on every day the quest runs (else a fair one). */
   weather?: Kind;
   /** What the sea leaves on the beach when the quest starts. */

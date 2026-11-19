@@ -92,16 +92,16 @@
   "de": "Überall Nebel. Ich sehe kaum das Meer."
  },
  "wood": {
-  "en": "Dry wood",
-  "de": "Trockenes Holz"
+  "en": "Stick",
+  "de": "Stock"
  },
  "fire": {
   "en": "Fire",
   "de": "Feuer"
  },
  "think.wood": {
-  "en": "Dry driftwood. It would burn well.",
-  "de": "Trockenes Treibholz. Das würde gut brennen."
+  "en": "A dry stick. Handy for a tool.",
+  "de": "Ein trockener Stock. Praktisch für ein Werkzeug."
  },
  "think.woodFire": {
   "en": "A dry stick. I could light it at the burning palm.",
@@ -112,8 +112,8 @@
   "de": "Der Blitz hat die Palme getroffen! Sie brennt! Mit einem Stock könnte ich das Feuer zu einem Lagerfeuer tragen."
  },
  "think.gotFire": {
-  "en": "A torch! Now to light some dry wood…",
-  "de": "Eine Fackel! Jetzt noch trockenes Holz anzünden…"
+  "en": "A torch! Now to light some driftwood…",
+  "de": "Eine Fackel! Jetzt noch Treibholz anzünden…"
  },
  "think.haveFire": {
   "en": "My torch is already burning.",
@@ -792,8 +792,8 @@
   "de": "Schwer… Mit einem Stein bekäme ich sie auf."
  },
  "think.smashed": {
-  "en": "Smashed it! A rope, and boards to burn or build with.",
-  "de": "Zerschlagen! Ein Seil und Bretter zum Bauen oder Feuern."
+  "en": "Smashed it! A rope, and boards to build with.",
+  "de": "Zerschlagen! Ein Seil und Bretter zum Bauen."
  },
  "quest.eat": {
   "en": "I’m starving… There are coconuts under the palms.",
@@ -816,8 +816,8 @@
   "de": "Regen… und ein Hammer ist angespült! Treibholz für Wände, Palmblätter fürs Dach: eine Hütte um meine Decke."
  },
  "quest.storm": {
-  "en": "A storm is coming. Tonight I sleep in the hut.",
-  "de": "Ein Sturm zieht auf. Heute Nacht schlafe ich in der Hütte."
+  "en": "Thunder! A storm broke in the night. Good thing I have the hut — I’ll sleep it out under the roof.",
+  "de": "Donner! In der Nacht ist ein Sturm losgebrochen. Gut, dass ich die Hütte habe — ich schlafe ihn unterm Dach aus."
  },
  "quest.fire": {
   "en": "The storm is moving off… one last flash over the palms.",
@@ -834,5 +834,17 @@
  "quest.rest": {
   "en": "Done for today. I’ll sleep on it — who knows what the sea brings tomorrow.",
   "de": "Für heute geschafft. Ich schlafe drüber — wer weiß, was das Meer morgen bringt."
+ },
+ "drift": {
+  "en": "Driftwood",
+  "de": "Treibholz"
+ },
+ "think.drift": {
+  "en": "Bleached driftwood. Good for building — or for a fire.",
+  "de": "Ausgeblichenes Treibholz. Gut zum Bauen — oder für ein Feuer."
+ },
+ "quest.crab": {
+  "en": "Listen to that wind… On windy nights crabs come up the beach. With my spear I could catch one.",
+  "de": "Hör dir den Wind an… In windigen Nächten kommen Krebse den Strand herauf. Mit dem Speer könnte ich einen fangen."
  }
 }

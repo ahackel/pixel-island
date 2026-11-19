@@ -49,4 +49,9 @@ test('what a task needs only comes with its own quest', () => {
   assert.equal(stonesOut(of('fish') - 1), false);
   assert.equal(stonesOut(of('fish')), true);
   assert.equal(QUESTS.findIndex((q) => q.strike), of('fire'));
+  // Crabs come out only on windy nights: the crab quest's, and none before it.
+  assert.equal(QUESTS.findIndex((q) => q.weather === 'windy'), of('crab'));
+  // The storm comes in the night the hut is done.
+  assert.equal(QUESTS[of('storm') - 1].id, 'hut');
+  assert.equal(QUESTS[of('storm')].night, true);
 });

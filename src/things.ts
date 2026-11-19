@@ -1,11 +1,13 @@
 // Small hand-drawn pictures for the week's new things: palm leaves, the vine, the stone axe, what the
 // crate held, logs, the raft at each stage of building; and the hut, laid from the engine's building pieces.
-import { PALETTE } from '@pixel/engine/core/palette.ts';
+import { PALETTE, PALETTE_KEYS } from '@pixel/engine/core/palette.ts';
+import { rgb } from '@pixel/engine/world/ocean.ts';
 import { lookOf, type State } from '@pixel/engine/character/character.ts';
 import { STAND } from '@pixel/engine/core/poses.ts';
 import { drawCharacter, PART_COLORS, SPRITE_H, SPRITE_W } from '@pixel/engine/core/puppet.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
-import type { Thing } from '@pixel/engine/world/world.ts';
+import { rasterOf, type Thing } from '@pixel/engine/world/world.ts';
+import { TURNS } from '@pixel/engine/flora/flora.ts';
 import { tool } from './fire.ts';
 import { STONE } from './fishing.ts';
 import { HUT_AT, HUT_PLAN } from './crafts.ts';
@@ -31,6 +33,16 @@ export const VINE: Rows = { rows: ['.gGGg...', 'g....g..', '.g..GGg.', '..gg...g
 export const ROPE: Rows = { rows: ['.rRRr..', 'r.rr.r.', 'r.r.rr.', '.rRRr.r', '......r'], colors: { r: '#a8844e', R: '#d8b87e' } };
 export const CLOTH: Rows = { rows: ['.dddddd.', 'dCCCCCCd', 'dccccccd', '.dddddd.'], colors: { C: '#efe6d2', c: '#d8ccb2', d: '#a89e88' } };
 export const LOG: Rows = { rows: ['.bbbbbbbbbR.', 'bbbbbbbbbbRr', 'aaaaaaaaaarr', '.aaaaaaaaar.'], colors: BARK };
+const DRIFT_COLORS = { L: PALETTE.driftwood.light, D: PALETTE.driftwood.base, d: PALETTE.driftwood.shade };
+/** A piece of driftwood in the bag: a bleached branch, forked at one end. */
+export const DRIFT: Rows = { rows: ['.........LL.', '..LLLLLLDDd.', 'LDDDDDDDd...', '.ddddddd....', '.....dd.....'], colors: DRIFT_COLORS };
+/** Driftwood lying on the ground: the engine's bleached log or forked branch, small, turned by where it lies. */
+export function driftThing(spot: Thing['spot']): Thing {
+  const n = Math.floor(spot.i * 7 + spot.j * 13);
+  const r = rasterOf({ plant: n % 2 ? 'plant-driftwood-1' : 'plant-driftwood-0', seed: n, size: 0.5, turn: n % TURNS }, 0);
+  if (!r) return thing(DRIFT)(spot);
+  return { spot, picture: r, w: r.w, h: r.h, foot: r.origin };
+}
 /** The axe in the bag: a stick, a big stone lashed across its top. */
 export const AXE_IN_BAG: Rows = {
   rows: ['....LLs..', '...LLssd.', '....csdd.', '...W.....', '..W......', '.W.......', 'w........'],
@@ -51,6 +63,35 @@ export const RAFT_ICON: Rows = {
   rows: ['....W....', '....WCC..', '....WCCC.', '....WCCcc', '....W....', 'bbbbbbbbR', 'aaaaaaaar', 'bbbbbbbbR', 'aaaaaaaar'],
   colors: { ...BARK, ...WOOD, C: '#efe6d2', c: '#d8ccb2' },
 };
+/** The palette colour, and whether its shade, nearest a colour: held things are painted in the palette. */
+function nearest(hex: string): [string, boolean] {
+  const [r, g, b] = rgb(hex);
+  let best: [string, boolean] = ['wood', false], d = Infinity;
+  for (const key of PALETTE_KEYS) for (const shade of [false, true]) {
+    const [r2, g2, b2] = rgb(PALETTE[key][shade ? 'shade' : 'base']);
+    const e = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2;
+    if (e < d) [best, d] = [[key, shade], e];
+  }
+  return best;
+}
+/** A bag thing held in one hand, hanging from it: its bag picture repainted in palette colours. */
+export function heldOf(name: string, r: Rows): ReturnType<typeof tool> {
+  const letters = Object.keys(r.colors);
+  const legend: Record<string, string> = {};
+  const map: Record<string, string> = {};
+  letters.forEach((ch, n) => {
+    const [key, shade] = nearest(r.colors[ch]);
+    const letter = String.fromCharCode(65 + n);
+    legend[letter] = key;
+    map[ch] = shade ? letter.toLowerCase() : letter;
+  });
+  const rows = r.rows.map((row) => [...row].map((ch) => map[ch] ?? '.').join(''));
+  // The fist is round row 35: the thing hangs just below it, so it is seen.
+  return tool(name, rows, legend, { bottom: 37 + rows.length, hold: 'carry' });
+}
+
+/** The hammer held upright in one hand, like the axe: its iron head on top of the handle. */
+export const HAMMER_HELD = tool('Hammer', ['.SSSSS.', 'SSSSSSs', '.ssWss.', ...Array.from({ length: 8 }, (_, y) => (y === 7 ? '...w...' : '...W...'))], { S: 'steel' });
 /** The axe held upright in one hand, its stone head on top. */
 export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({ length: 11 }, (_, y) => (y === 10 ? '...w...' : '...W...'))], { S: 'stone' });
 
@@ -109,13 +150,13 @@ export const PIECE_KINDS: Record<string, PieceKind> = {
 /** Wall height, in levels: about the survivor's height. */
 const HUT_HEIGHT = 4;
 
-/** The hut as laid in its first `stage` stages, on the map. */
-export function hutBuilding(stage: number): Building {
-  const b = emptyBuilding(HUT_HEIGHT);
+/** The hut as laid in its first `stage` stages, on the map; `low`, its walls knee-high and no roof, to see behind it. */
+export function hutBuilding(stage: number, low = false): Building {
+  const b = emptyBuilding(low ? 1 : HUT_HEIGHT);
   const i0 = HUT_AT.i - 1, j0 = HUT_AT.j - 1;
   for (const s of HUT_PLAN.slice(0, stage)) {
     if (s === 'roof') {
-      for (let j = j0; j < j0 + 2; j++) for (let i = i0; i < i0 + 2; i++) b.cells.set(cellKey(i, j), { kind: 'thatch', i, j });
+      if (!low) for (let j = j0; j < j0 + 2; j++) for (let i = i0; i < i0 + 2; i++) b.cells.set(cellKey(i, j), { kind: 'thatch', i, j });
     } else {
       for (const w of s) {
         const edge = { axis: w.axis, i: i0 + w.i, j: j0 + w.j };

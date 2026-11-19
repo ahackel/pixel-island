@@ -2,9 +2,10 @@
  { "id": "eat", "goal": "eat", "weather": "sunny", "icon": "coconut", "thought": "quest.eat" },
  { "id": "sleep", "goal": "sleep", "now": true, "weather": "sunny", "icon": "moon", "thought": "quest.sleep" },
  { "id": "fish", "goal": "fish", "stones": 3, "icon": "fish", "thought": "quest.fish" },
- { "id": "crate", "goal": "open", "weather": "windy", "washUps": ["crate"], "icon": "crate", "thought": "quest.crate" },
+ { "id": "crab", "goal": "crab", "weather": "windy", "icon": "crab", "thought": "quest.crab" },
+ { "id": "crate", "goal": "open", "washUps": ["crate"], "icon": "crate", "thought": "quest.crate" },
  { "id": "hut", "goal": "hut", "weather": "rain", "washUps": ["hammer"], "icon": "hammer", "thought": "quest.hut" },
- { "id": "storm", "goal": "stormSleep", "weather": "storm", "icon": "storm", "thought": "quest.storm" },
+ { "id": "storm", "goal": "stormSleep", "night": true, "weather": "storm", "icon": "storm", "thought": "quest.storm" },
  { "id": "fire", "goal": "campfire", "strike": true, "icon": "fire", "thought": "quest.fire" },
  { "id": "axe", "goal": "log", "count": 4, "washUps": ["vine"], "icon": "axe", "thought": "quest.axe" },
  { "id": "raft", "goal": "sail", "washUps": ["cloth"], "icon": "raft", "thought": "quest.raft" }

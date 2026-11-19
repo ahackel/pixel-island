@@ -1,10 +1,10 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
 // in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
 
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
-/** Bag items that can also lie on the ground to be picked up (wash-ups, what the crate held, logs). */
-export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer'] as const;
+/** Bag items that can also lie on the ground to be picked up (wash-ups, driftwood, what the crate held, logs). */
+export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift'] as const;
 export type Loose = (typeof LOOSE)[number];
 
 /** A thing tied from what is in the bag: one dragged onto another, the rest anywhere in the bag. */
@@ -35,10 +35,10 @@ export function recipeFor(hand: BagItem | null, tapped: BagItem, bag: readonly B
 /** A structure built in stages, each taking what it needs from the bag. */
 export const BUILDS = {
   /**
-   * A 2×2 hut of driftwood planks round the blanket, one side at a time (HUT_PLAN), roofed with palm leaves:
+   * A 2×2 hut of driftwood (not sticks) round the blanket, one side at a time (HUT_PLAN), roofed with palm leaves:
    * sleeping in it is dry. Nailed together: the hammer must be in the bag, and stays there.
    */
-  hut: { stages: [['wood'], ['wood'], ['wood'], ['wood'], ['leaf', 'leaf', 'leaf']], on: 'land', tools: ['hammer'] },
+  hut: { stages: [['drift'], ['drift'], ['drift'], ['drift'], ['leaf', 'leaf', 'leaf']], on: 'land', tools: ['hammer'] },
   /** Logs lashed with rope, a stick for a mast and the cloth for a sail: on the beach, to sail away. */
   raft: { stages: [['log', 'log'], ['log', 'log', 'rope'], ['wood', 'cloth']], on: 'beach' },
 } as const satisfies Record<string, { stages: readonly (readonly BagItem[])[]; on: 'land' | 'beach'; tools?: readonly BagItem[] }>;
