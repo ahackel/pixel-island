@@ -46,8 +46,8 @@ export interface Game {
 }
 
 const KEY = 'pixel-island-save';
-/** 3: quests instead of a plan per day; older saves start a new game. */
-const VERSION = 3;
+/** 4: more sea round the island, so every place on it has moved; older saves start a new game. */
+const VERSION = 4;
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);

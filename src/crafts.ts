@@ -62,8 +62,9 @@ export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[])
 }
 
 /** The middle of the hut's 2×2 cells, where the blanket lies, so the hut is built round it. */
-// shortcut: one fixed place on the first island's hilltop; let the player choose once there are more islands.
-export const HUT_AT = { i: 6, j: 7 };
+// shortcut: one fixed place on the first island's hilltop (the island sits four tiles in from the map's edge,
+// see island.ts); let the player choose once there are more islands.
+export const HUT_AT = { i: 10, j: 11 };
 /** A wall on a cell edge, relative to the hut's first cell (see engine/world/building). */
 export interface HutWall { axis: 'H' | 'V'; i: number; j: number }
 /** What each of the hut's stages lays: the back, the two sides, the front with its doorway on the left, the roof. */

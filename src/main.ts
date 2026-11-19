@@ -13,7 +13,7 @@ import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { along, GLOWING, light, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
-import { flashAt, lightning, overcast } from '@pixel/engine/world/weather.ts';
+import { flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
 import { footOf, type Picture } from '@pixel/engine/world/island.ts';
 import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
@@ -64,11 +64,11 @@ const FADE = { out: 1200, hold: 1000, in: 1200 };
 const WOOD_LYING = 4;
 const DRIFT_LYING = 3;
 /** How many fish swim round the island; the ones caught are back by the next morning. */
-const FISH_COUNT = 7;
+const FISH_COUNT = 14;
 /** How near a fish must swim to be speared, in metres. */
 const SPEAR_REACH = 1.8;
 /** How many sharks cruise the deep water, and how near one has to pass for the survivor in the water to see it. */
-const SHARK_COUNT = 3;
+const SHARK_COUNT = 4;
 const SHARK_SEEN = 5;
 /** How many crabs come out on a windy day; how near one must be to grab it by hand, and how often that works. */
 const CRAB_NIGHT = 5;
@@ -1101,23 +1101,24 @@ const byHut = (at: { i: number; j: number }) => Math.hypot(at.i - HUT_AT.i, at.j
 const wantsFire = () => questNow().goal === 'campfire' && !game.quest.done;
 const fireByHut = () => game.fires.some(byHut);
 
-/** How far a fire scares animals off, in metres. */
+/** How far a fire scares animals off, in metres: a fire burning on the ground, and a torch carried about. */
 const FIRE_FEAR = 3.5;
-/** Every fire burning now: the campfires, the palm lightning left alight, and the torch in the survivor's hand. */
-function burning(): { i: number; j: number }[] {
+const TORCH_FEAR = 1.6;
+/** Every fire burning now, and how far each one frightens: the campfires, the palm lightning left alight, the torch in hand. */
+function burning(): { i: number; j: number; fear: number }[] {
   return [
-    ...game.fires,
-    ...(game.struck === null ? [] : [palms[game.struck]]),
-    ...(hand === 'fire' && present ? [{ i: actor.i, j: actor.j }] : []),
+    ...game.fires.map((f) => ({ ...f, fear: FIRE_FEAR })),
+    ...(game.struck === null ? [] : [{ i: palms[game.struck].i, j: palms[game.struck].j, fear: FIRE_FEAR }]),
+    ...(hand === 'fire' && present ? [{ i: actor.i, j: actor.j, fear: TORCH_FEAR }] : []),
   ];
 }
 /** The fire nearest an animal, if one is near enough to frighten it. */
-function fireNear(at: { i: number; j: number }, lit: readonly { i: number; j: number }[]): { i: number; j: number } | null {
+function fireNear(at: { i: number; j: number }, lit: readonly { i: number; j: number; fear: number }[]): { i: number; j: number } | null {
   let best: { i: number; j: number } | null = null;
-  let bestD = FIRE_FEAR;
+  let bestD = Infinity;
   for (const f of lit) {
     const d = Math.hypot(f.i - at.i, f.j - at.j);
-    if (d <= bestD) [best, bestD] = [f, d];
+    if (d <= f.fear && d < bestD) [best, bestD] = [f, d];
   }
   return best;
 }
@@ -1330,6 +1331,27 @@ function lamps(rect: { x: number; y: number }, me: Thing | null): Lamp[] {
   ];
 }
 
+/** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
+function nightfall(t: number): number {
+  const { phase, k } = phaseAt(t);
+  return phase === 'dusk' ? k : phase === 'night' ? 1 : 0;
+}
+/**
+ * The weather the world is shown: by day as it is, but at night without its cloud, since the moon throws shadows
+ * as hard as a sunny day's and a grey sky is nothing to see in the dark. Fog is left alone: it swallows shadows
+ * whatever the hour.
+ */
+function asSeen(w: Weather, night: number): Weather {
+  return night <= 0 || w.fog > 0 ? w : { ...w, cloud: w.cloud * (1 - night) };
+}
+/** Night fog: not the pale grey of a foggy morning but a dark blue bank, which this light over the whole picture makes of it. */
+const FOG_NIGHT: Tint = { r: 34, g: 52, b: 118, amount: 0.62 };
+/** The light the weather leaves: the engine's overcast grey, turning to a dark blue where fog lies at night. */
+function weatherLight(w: Weather, night: number): Tint {
+  const grey = overcast(w);
+  return w.fog > 0 && night > 0 ? mixTint(grey, FOG_NIGHT, night * w.fog) : grey;
+}
+
 function tintAt(time: number): Tint {
   const { phase, k } = phaseAt(time);
   // Every morning the sun comes up: from dusk's purple through sunset's warmth to day.
@@ -1461,7 +1483,8 @@ function frame(ms: number): void {
   scuttle(crabs, world, paused ? 0 : dt, fishRandom, sleeping ? null : actor);
   // Before the survivor is on the island (the menu, the editor, the fade in), a sunny sea, not the last game's weather.
   const weather = !present || editing || sleeping?.intro ? weatherAt('sunny', 'sunny', 0) : weatherAt(kindNow(), kindTomorrow(), time);
-  world.setWeather(weather);
+  const night = nightfall(time);
+  world.setWeather(asSeen(weather, night));
   const flashNow = flashAt(ms, weather);
   // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
   if (game.struck !== null) strikeNow = false;
@@ -1500,7 +1523,7 @@ function frame(ms: number): void {
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
-  light(image, overcast(weather));
+  light(image, weatherLight(weather, night));
   // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
   const flash = (striking ? 1 : flashNow) * (1 - fade);
   const tint = tintAt(time);

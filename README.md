@@ -22,7 +22,7 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 - `src/main.ts` — the page, input and the game loop.
 - `src/clock.ts` — day phases and survival needs as plain numbers (tested in `clock.test.ts`).
-- `src/island.ts` — the first island, the same every time from a seed.
+- `src/island.ts` — the first island, the same every time from a seed, and the sea bed shelving away round it.
 - `src/save.ts` — the saved game, written on waking and checked when read back.
 - `src/ui.ts` — the interface as pixel art (HUD, buttons, bag slots), on the engine's `shared/pixel-font.ts` and `shared/pixel-ui.ts`.
 - `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.
