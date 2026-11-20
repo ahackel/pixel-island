@@ -163,20 +163,29 @@ Open:
 
 ## Island 2: the rocky island
 
-The raft from the first island lands here. The goal is a **map of the area** showing more islands, so the survivor knows where to go next. The survivor leaves on the **smuggler's boat**: he has one but is too scared to sail it alone, so with the map they sail on together, and he stays in the story.
+The raft from the first island lands here and breaks apart on the rocks, so the survivor is stranded again. The goal is a **map of the area** showing more islands, so the survivor knows where to go next. The survivor leaves on the **smuggler's boat**: he has one but is too scared to sail it alone, so with the map they sail on together, and he stays in the story.
 
 **The island:**
-- About 5 times the size of the first island, in distinct zones: the beach where the raft lands, cliffs, a strip of forest, and a cave system.
-- **Zones open by story:** the smuggler tells of places as the favours go on, and each one opens when a quest leads there.
-- Rocky, with several cave mouths. The smuggler's camp sits in a cove.
-- **Animals:** bats live in the caves. Spiders:
+- About 5 times the size of the first island, in distinct zones.
+- **Shape:** a crescent bay. The raft breaks up in the sandy bay, between two rocky arms.
+- **Heights:** 2–3 levels: the beach, a plateau, and the cliff top, joined by paths and ramps. Caves open in the cliff faces.
+- **Zones:**
+  - **Beach:** the landing bay.
+  - **Forest:** in a sheltered valley behind the beach, with coconuts for the crab stew.
+  - **Cliffs:** they ring the outside of the island.
+  - **Caves:** small caves under the cliffs, near the surface (the spiders, the dog, mushrooms), plus one deep system that holds the stash.
+  - **Cove:** the smuggler's camp and boat, on the opposite side of the island. Reaching it is a small journey.
+  - **Lookout:** the cliff top, the highest point. Once the map is in hand, the next island can be seen far off from here.
+- **Zones open by story,** in this order: beach → forest → cove → small caves → deep cave → cliff top. The smuggler tells of each place as the favours go on, and it opens when a quest leads there.
+- **The smuggler's entrance:** he saw the raft crash and came over to scout. He hides and watches, and the smell of the first meal finally brings him out.
+- **Animals:** bats live in the caves. Seabirds nest on the plateau's rocky ledges, below the cliff top: they give eggs and steal food left lying out. Spiders:
   - Their webs block cave passages and are burned away with a torch or the lantern.
-  - Their silk is a strong thread for crafting.
+  - Their silk makes a net or trap that catches crabs or fish while the survivor does something else.
   - A big cave spider is a mild threat: it scares the survivor off, so they drop what they hold or run back. It is never deadly.
   - The smuggler is terrified of them.
 - **Survival:** the same rules as the first island, but cooked food fills a lot, so hunger matters less and exploring matters more.
 - **Skull and skeleton:**
-  - A skull is a loose prop lying about.
+  - A skull is a loose prop. It can be picked up, for a joke: shown to the smuggler, it makes him panic.
   - The skeleton is built as a character setup, so it can be posed (slumped against a wall, lying in a trap, sitting by the chest). It is mostly placed as decoration.
   - They belong in the caves and by the smuggler's traps, as a warning and for a bit of spooky fun. The smuggler has a nervous story about each one.
 
@@ -184,8 +193,12 @@ The raft from the first island lands here. The goal is a **map of the area** sho
 - A cowardly braggart who is scared of the dark, the caves and spiders, so he needs the survivor. He is the comic relief.
 - There is a hint that he knows more about the wreck than he says. This is the first hook into the mystery.
 - **Cooking brings him out:** he can't cook, and the smell of the survivor's first meal draws him from his cove.
-- He trades in **favours**, not goods: the survivor does tasks, and he pays in items or information. The favours are:
-  - **Cook for him:** he's hungry and fussy, and wants particular dishes, which teaches the recipes.
+- He trades in **favours**, not goods: the survivor does tasks, and he pays with the **lantern** (for the first dish), the **shovel** (for a cave fetch), **recipe hints** (dishes "his mum" made) and **wreck gossip** (a line of story each time, building the mystery hook). The favours are:
+  - **Cook for him:** he's hungry and fussy, and wants particular dishes, which teaches the recipes:
+    - **fish soup** (the first, easy one);
+    - **crab stew** (crab and coconut from the forest strip);
+    - **bird egg omelette** (eggs from the nests on the plateau);
+    - **mushroom stew** (cave mushrooms, so only after the caves).
   - **Fetch from the caves:** things he's too scared to get himself, which leads the survivor deeper step by step.
   - **Scare off pests:** something keeps getting into his supplies, such as spiders in his camp. The survivor solves it without hurting anything.
 - The map is in his **hidden stash, a treasure chest in the deepest cave**, guarded by his own old traps.
@@ -196,7 +209,7 @@ The raft from the first island lands here. The goal is a **map of the area** sho
 
 **New mechanics:**
 - **Lantern:** a safe light that never goes out, and works in wind, rain and the caves. Unlike the torch, the caves need it.
-- **Digging:** craft a shovel. The dog marks where treasure is buried. Digging without the dog is blind and turns up mostly junk.
+- **Digging:** the smuggler pays a favour with his old shovel. The dog marks where treasure is buried. Digging without the dog is blind and turns up mostly junk.
 - **Treasure:** buried finds and hidden caches, with the map chest as the big one.
 - **Cooking:** a pot washes up from the wreck. A campfire plus the pot makes a cooking setup, and combining ingredients makes better meals, found by experimenting the same way as tying things in the bag.
 - **Grid building:** the first free building is a **camp with a kitchen**, a shelter with a cooking corner.
@@ -210,7 +223,7 @@ The raft from the first island lands here. The goal is a **map of the area** sho
 
 | # | Quest | Teaches |
 |---|-------|---------|
-| 1 | Land the raft; a pot washes up | the new island |
+| 1 | The raft breaks on the rocks; a pot washes up | the new island |
 | 2 | Light a fire and cook a first meal | cooking |
 | 3 | The smell draws the smuggler out: meet him | a person to talk to |
 | 4 | Cook the dish he wants (first favour), and he pays with the lantern | favours, recipes |
@@ -218,16 +231,12 @@ The raft from the first island lands here. The goal is a **map of the area** sho
 | 6 | Clear the spiders from his camp | spiders, webs and fire |
 | 7 | Fetch something from the first cave, and find the trapped dog | caves, dark |
 | 8 | Free the dog and feed it a cooked meal | the pet |
-| 9 | Make a shovel and dig where the dog marks | digging, treasure |
+| 9 | Fetch something from a cave for the smuggler's shovel, then dig where the dog marks | digging, treasure |
 | 10 | Get through the smuggler's traps to the deepest cave and open the chest | cave puzzles |
 | 11 | Bring him the map, catch a hint about the wreck, and sail off on his boat | the next island |
 
 Open for this island:
-- The exact dishes, and what each favour pays.
-- Whether the shovel needs something new (an iron blade from the caves?).
-- What silk makes.
-- Whether the skull can be picked up or used (a puzzle piece, or a favour?), or is only decoration.
-- What the raft becomes once the survivor leaves on the boat.
+- Which favour pays which reward, past the lantern and the shovel.
 
 ## Survivor
 
