@@ -18,7 +18,7 @@ import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
 import { footOf, type Picture } from '@pixel/engine/world/island.ts';
 import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
-import { rockWall } from '@pixel/engine/world/building/pieces/rock-wall.ts';
+import { caveLamps as caveOwnLamps, caveThings, caveTint, flicker, setUpCave } from '@pixel/engine/world/cave.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
@@ -39,7 +39,7 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, CRYSTAL, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, MUSHROOM, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, Burst, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -91,11 +91,7 @@ island.pieceKinds = PIECE_KINDS;
 const cave = rocky && (() => {
   const c = caveScene();
   const w = new World(c.scene);
-  w.void = true;
-  w.trackSpots = true;
-  w.shadowDepth = 2.4;
-  w.pieceKinds = { rock: rockWall({ tones: PALETTE.cave, cap: 3 }) };
-  w.buildings = [c.walls];
+  setUpCave(w);
   return { ...c, world: w };
 })();
 /** The scene and world the survivor is in: the island, or the cave. */
@@ -1404,26 +1400,19 @@ function lamps(rect: { x: number; y: number }, me: Thing | null, ms: number): La
   ];
 }
 /**
- * The cave's lights, tile by tile (see `World.lightField`): the daylight at its open side, its crystals and mushrooms,
- * and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
+ * The cave's lights, tile by tile (see `World.lightField`): its own (the daylight at its open side, its crystals,
+ * mushrooms and torches), and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
  */
-/** How much a flame's reach breathes at this moment, about 1: a few percent either way, never in a steady beat. */
-const flicker = (ms: number, phase = 0) => 1 + 0.04 * Math.sin(ms / 83 + phase) + 0.03 * Math.sin(ms / 31 + 1.7 + phase * 2.3);
 function caveLamps(ms: number): TileLamp[] {
   if (!cave) return [];
   const f = flicker(ms);
   const carried = hand === 'lantern' || hand === 'fire';
   return [
-    { ...cave.exit, r: 2.6, color: CAVE_DAY, amount: 0.8 },
-    ...cave.glows.map((g) => (g.kind === 'crystal' ? { ...g, r: 2.4, color: '#5fe6ff', amount: 0.55 } : { ...g, r: 1.6, color: '#8cf06a', amount: 0.4 })),
+    ...caveOwnLamps(cave.world, ms),
     ...(carried && present ? [{ i: actor.i, j: actor.j, r: (hand === 'lantern' ? 4.2 : 3) * f, amount: Math.min(1, f) }] : []),
   ];
 }
-const CRYSTAL_THING = thing(CRYSTAL);
-const MUSHROOM_THING = thing(MUSHROOM);
-/** The dark of the cave: a deep blue-violet, whatever the hour; the daylight coming in at its open side, cool; and how far the lantern lights, in pixels. */
-const CAVE_DARK: Tint = { r: 8, g: 14, b: 80, amount: 0.9 };
-const CAVE_DAY = '#c8d4e8';
+/** How far the lantern lights, in pixels. */
 const LANTERN_REACH = 64;
 
 /** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
@@ -1612,7 +1601,7 @@ function frame(ms: number): void {
     hutParts = island.buildingThings(actor);
   }
   // The island's own things lie on the island: none of them show in the cave.
-  const things: Thing[] = inCave() ? [...plants, ...world.buildingThings(actor), ...cave!.glows.map((g) => (g.kind === 'crystal' ? CRYSTAL_THING : MUSHROOM_THING)(at(g)))] : [
+  const things: Thing[] = inCave() ? [...plants, ...caveThings(world, actor), ...world.decorThings()] : [
     ...(rocky ? [mouthThing(at(rocky.face))] : []),
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),
@@ -1622,7 +1611,7 @@ function frame(ms: number): void {
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
-  if (inCave()) lightByTile(image, CAVE_DARK, fade, world.spots!, world.lightField(caveLamps(ms)));
+  if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(ms)));
   else {
     light(image, weatherLight(weather, night));
     // A flash lights the world as bright as day for a moment, at night too, then shows it stark.

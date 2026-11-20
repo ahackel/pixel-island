@@ -1,7 +1,6 @@
 // Small hand-drawn pictures for the week's new things: palm leaves, the vine, the stone axe, what the
 // crate held, logs, the raft at each stage of building; and the hut, laid from the engine's building pieces.
 import { PALETTE, PALETTE_KEYS } from '@pixel/engine/core/palette.ts';
-import { GLOWING } from '@pixel/engine/world/daylight.ts';
 import { rgb } from '@pixel/engine/world/ocean.ts';
 import { lookOf, type State } from '@pixel/engine/character/character.ts';
 import { STAND } from '@pixel/engine/core/poses.ts';
@@ -237,16 +236,3 @@ export function mouthThing(spot: Thing['spot']): Thing {
 }
 
 /** Cave crystals and glowing mushrooms. Their colours glow (the dark leaves them as drawn), so the cave has lights of its own. */
-const CRYSTAL_COLORS = { b: '#c4fbff', a: '#5fe6ff', c: '#2a9fd6' };
-const MUSHROOM_GLOW = { b: '#e2ffb8', a: '#8cf06a', c: '#4fb04a' };
-for (const hex of [...Object.values(CRYSTAL_COLORS), ...Object.values(MUSHROOM_GLOW)]) GLOWING.add(hex);
-/** A cluster of crystals growing out of the floor, lit on their left faces. */
-export const CRYSTAL: Rows = {
-  rows: ['....b....', '...bac...', 'b..bac...', 'ba.bac..b', 'bacbac.ba', 'bacbacbac', '.acbacbac', '..cbac.c.'],
-  colors: CRYSTAL_COLORS,
-};
-/** A glowing mushroom: a bright cap on a pale stem. */
-export const MUSHROOM: Rows = {
-  rows: ['..bbb..', '.baaab.', 'baaaaac', '..dsd..', '...s...'],
-  colors: { ...MUSHROOM_GLOW, s: '#cfc6b0', d: '#8a8070' },
-};

@@ -2,12 +2,12 @@
 // The island is shaped in a square of its own and set in the middle of a larger map, with the sea bed
 // round it laid by hand (see `seaBed`), so there is open water on every side. Driftwood is the game's
 // own, to pick up (see fire.ts), so it is not among the decorations.
-import { createScene, type PlacedPlant, type Scene } from '@pixel/engine/world/scene.ts';
+import { createScene, readSceneFile, type PlacedPlant, type Scene } from '@pixel/engine/world/scene.ts';
+import caveFile from './content/cave.json';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { createHeightMap, generateIsland, levelAt, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, surfaceAt, type HeightMap } from '@pixel/engine/world/terrain.ts';
 import { grows } from '@pixel/engine/world/world.ts';
 import { rng } from '@pixel/shared/random.ts';
-import { edgeKey, emptyBuilding, type Building } from '@pixel/engine/world/building/building.ts';
 
 /** How an island is made: the square it is shaped in, the map it is set in the middle of, its seed and its hills. */
 interface Shape { island: number; size: number; seed: number; peak: number; land: number }
@@ -100,7 +100,6 @@ const ROCKY: Shape = { island: 28, size: 38, seed: 11, peak: 3, land: 0.6 };
 const HILL = 4;
 const HILL_UP = 4;
 const ROCK = PAINTS.indexOf('rock') + 1;
-const CAVE_GROUND = PAINTS.indexOf('cave') + 1;
 
 /** The rocky island and the cave mouth in its hill: where to stand to go in, at the foot of the hill's front cliff. */
 export function rockyIsland(): { scene: Scene; mouth: { i: number; j: number }; face: { i: number; j: number } } {
@@ -123,105 +122,17 @@ export function rockyIsland(): { scene: Scene; mouth: { i: number; j: number }; 
 }
 
 /** The cave's map, in tiles; its floor's level; and how high its walls rise over the floor, in levels. */
-const CAVE = 14;
-const CAVE_FLOOR = SEA_LEVEL + 1;
-export const CAVE_WALL = 5;
-const CAVE_SEED = 3;
-/** What stands about in the cave, from the flora catalogue: stalagmites in the open, boulders against the walls. */
-const STALAGMITES = ['plant-rocks-6', 'plant-rocks-7', 'plant-rocks-6', 'plant-rocks-7', 'plant-rocks-6'];
-const BOULDERS = ['plant-rocks-8', 'plant-rocks-8', 'plant-rocks-8', 'plant-rocks-8'];
-/** Rubble at the walls' feet: the catalogue's cave rubble, and how many wall edges get a cluster of it. */
-const RUBBLE_ROCK = 'plant-rocks-9';
-const RUBBLE = 0.45;
-/** How many crystal clusters, and patches of glowing mushrooms, a cave has. */
-const CRYSTALS = 3;
-const MUSHROOMS = 2;
-
+/** A cave, made in the scene editor (a cave scene, exported) and kept with the game's content. */
 export interface Cave {
   scene: Scene;
-  /** Its rock walls, on the back edges of the floor (none on the front, so the cave is seen into). */
-  walls: Building;
-  /** Where the survivor stands on coming in, and the daylight at the front that is the way out. */
+  /** Where the survivor stands on coming in, and the daylight at its open side that is the way out. */
   entry: { i: number; j: number };
   exit: { i: number; j: number };
-  /** Crystals and glowing mushrooms: the cave's own small lights. */
-  glows: { kind: 'crystal' | 'mushroom'; i: number; j: number }[];
 }
 
-/**
- * A cave: an irregular rock floor with nothing round it (the world draws it as `void`), rock walls along its back
- * edges, stalagmites in the open and boulders against the walls. Its front tip is the way out.
- */
+/** The rocky island's cave, from `content/cave.json`. */
 export function caveScene(): Cave {
-  const scene = createScene('Cave', CAVE, CAVE, false, CAVE_SEED);
-  const random = rng(CAVE_SEED);
-  // The floor's outline: a wobbly ring round the middle, a little toward the back so the front tip is near the edge.
-  const c = { i: CAVE / 2 - 0.5, j: CAVE / 2 - 0.5 };
-  const p1 = random() * 6, p2 = random() * 6;
-  const reach = (a: number) => 4.4 + 1.1 * Math.sin(2 * a + p1) + 0.6 * Math.sin(3 * a + p2);
-  const floor = (i: number, j: number) => {
-    if (i < 1 || j < 1 || i >= CAVE - 1 || j >= CAVE - 1) return false;
-    const di = i + 0.5 - c.i, dj = j + 0.5 - c.j;
-    return Math.hypot(di, dj) < reach(Math.atan2(dj, di));
-  };
-  const cells: { i: number; j: number }[] = [];
-  for (let j = 0; j < CAVE; j++) for (let i = 0; i < CAVE; i++) {
-    const on = floor(i, j);
-    scene.levels[j * CAVE + i] = on ? CAVE_FLOOR : MIN_LEVEL;
-    scene.paint[j * CAVE + i] = CAVE_GROUND;
-    if (on) cells.push({ i, j });
-  }
-  // A wall on every back edge of the floor: where the cell behind it (toward -j or -i) is not floor.
-  const walls = emptyBuilding(CAVE_WALL);
-  const wall = (axis: 'H' | 'V', i: number, j: number) => walls.edges.set(edgeKey({ axis, i, j }), { kind: 'rock', edge: { axis, i, j } });
-  for (const { i, j } of cells) {
-    if (!floor(i, j - 1)) wall('H', i, j);
-    if (!floor(i - 1, j)) wall('V', i, j);
-  }
-  // The way out is the floor's front tip, nearest the viewer; the survivor comes in a step behind it.
-  const tip = cells.reduce((a, b) => (b.i + b.j > a.i + a.j || (b.i + b.j === a.i + a.j && Math.abs(b.i - b.j) < Math.abs(a.i - a.j)) ? b : a));
-  const exit = { i: tip.i + 0.8, j: tip.j + 0.8 };
-  const entry = floor(tip.i - 1, tip.j - 1) ? { i: tip.i - 0.5, j: tip.j - 0.5 } : { i: tip.i + 0.5, j: tip.j + 0.5 };
-  scene.spawn = entry;
-  // Stalagmites stand in the open, boulders lie against the walls; none in the way in.
-  const clear = (i: number, j: number, room: number) =>
-    Math.hypot(i - entry.i, j - entry.j) > 2.2 && !scene.plants.some((p) => Math.hypot(p.i - i, p.j - j) < room);
-  const nearWall = (p: { i: number; j: number }) => !floor(p.i, p.j - 1) || !floor(p.i - 1, p.j);
-  const place = (kinds: string[], where: { i: number; j: number }[], size: number, room: number) => {
-    for (let tries = 0, n = 0; n < kinds.length && tries < 300; tries++) {
-      const cell = where[Math.floor(random() * where.length)];
-      const i = cell.i + 0.3 + random() * 0.4, j = cell.j + 0.3 + random() * 0.4;
-      if (!clear(i, j, room)) continue;
-      scene.plants.push({ plant: kinds[n++], i, j, seed: Math.floor(random() * 4), size, turn: Math.floor(random() * 8) });
-    }
-  };
-  place(BOULDERS, cells.filter(nearWall), 0.8, 1.6);
-  // Rubble at the foot of the walls, in clusters: big pieces against the rock, smaller ones further out.
-  for (const { edge } of walls.edges.values()) {
-    if (random() > RUBBLE) continue;
-    const along = 0.15 + random() * 0.7;
-    for (const [d, size] of [[0.22, 0.85], [0.5, 0.55], [0.8, 0.35]]) {
-      if (random() < 0.3) break;
-      const off = along + (random() - 0.5) * 0.3;
-      const i = edge.axis === 'H' ? edge.i + off : edge.i + d;
-      const j = edge.axis === 'H' ? edge.j + d : edge.j + off;
-      if (!clear(i, j, 0.35)) continue;
-      scene.plants.push({ plant: RUBBLE_ROCK, i, j, seed: Math.floor(random() * 4), size, turn: Math.floor(random() * 8) });
-    }
-  }
-  place(STALAGMITES, cells.filter((p) => !nearWall(p)), 1, 1.8);
-  // Crystals against the walls, mushrooms in small patches out on the floor.
-  const glows: Cave['glows'] = [];
-  const glow = (kind: 'crystal' | 'mushroom', where: { i: number; j: number }[], n: number, patch: number) => {
-    for (let tries = 0, k = 0; k < n && tries < 200; tries++) {
-      const cell = where[Math.floor(random() * where.length)];
-      const i = cell.i + 0.3 + random() * 0.4, j = cell.j + 0.3 + random() * 0.4;
-      if (!clear(i, j, 0.9) || glows.some((g) => Math.hypot(g.i - i, g.j - j) < 1.6)) continue;
-      for (let m = 0; m < patch; m++) glows.push({ kind, i: i + (random() - 0.5) * 0.6 * Math.min(1, m), j: j + (random() - 0.5) * 0.6 * Math.min(1, m) });
-      k++;
-    }
-  };
-  glow('crystal', cells.filter(nearWall), CRYSTALS, 1);
-  glow('mushroom', cells.filter((p) => !nearWall(p)), MUSHROOMS, 3);
-  return { scene, walls, entry, exit, glows };
+  const scene = readSceneFile(JSON.stringify(caveFile));
+  const exit = scene.cave?.exits[0] ?? scene.spawn;
+  return { scene, entry: scene.spawn, exit };
 }
