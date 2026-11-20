@@ -1,0 +1,15 @@
+{
+  "name": "pixel-island",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "postCreateCommand": ".devcontainer/setup.sh",
+  "forwardPorts": [8330, 8331],
+  "portsAttributes": {
+    "8330": { "label": "game (npm run dev)", "onAutoForward": "notify" },
+    "8331": { "label": "engine / preview", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": { "typescript.tsdk": "node_modules/typescript/lib" }
+    }
+  }
+}

@@ -14,6 +14,8 @@ npm run dev
 
 Open http://localhost:8330. `npm test` runs the clock and needs tests, `npm run build` type-checks and builds into `dist/`.
 
+`.devcontainer/` does the same in a container, for a machine where the two folders cannot sit side by side: open the repo as a GitHub Codespace, or in VS Code with Docker as *Reopen in Container*. `.devcontainer/setup.sh` clones the engine into `../pixel-art/pixel-art` and installs both sides, and port 8330 is forwarded, so the game plays in the browser as it does on a laptop. The script can be run again at any time; it only fast-forwards an engine it already cloned.
+
 The story is a chain of quests in `src/content/quests.json`, edited by hand: each has a goal, and can bring weather, wash-ups, stones or lightning when it starts. Texts are in `src/content/loca.json` by id; `npm test` checks both.
 
 Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` starts a new game (not saved until the first sleep), `?quest=5` plays a new game from the fifth quest, with what the quests before it brought, and never saves (the real save stays), `?cheats` shows a row of orange cheat buttons (fill needs, hungry, tired, fill the bag, jump to sunset or night, next morning, finish the quest, clock ×10). `?island=2` plays the first try at the rocky island: a rock hill with a cave mouth, a dark cave to walk into, and a lantern in the bag; it never saves. `?cave` starts there straight inside the cave, lantern in hand, with no menu or intro; with `?cheats`, the CAVE button goes in and out. Options combine: `?cheats&speed=5`.
