@@ -20,6 +20,7 @@ import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
 import { footOf, type Picture } from '@pixel/engine/world/island.ts';
 import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
+import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { caveLamps as caveOwnLamps, caveThings, caveTint, flicker, setUpCave } from '@pixel/engine/world/cave.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
@@ -326,7 +327,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Objec
 const app = document.getElementById('app')!;
 
 type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true }
-  | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true };
+  | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -822,6 +823,12 @@ if (params.has('cheats')) {
       for (let n = 0; n < (questNow().count ?? 1) && !game.quest.done; n++) reach(questNow().goal);
       think(questThought());
     }),
+    // The survivor as bones, and back; looks are kept per mood, so they are dropped.
+    cheat('SKELETON', () => {
+      game.who = { ...game.who, skeleton: game.who.skeleton ? undefined : true };
+      looks.clear();
+      dress();
+    }),
     cheat('X10', () => (fast = fast === 1 ? 10 : 1)),
     // The ways of lying, to compare: the survivor lies down awake as each one.
     {
@@ -879,8 +886,12 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // map (a tile is 32 by 16 pixels, map +i is screen right and down), so only the direction counts.
     const dx = p.x - foot.x, dy = p.y - foot.y;
     if (dx || dy) actor.lookAt(dx / 32 + dy / 16, dy / 16 - dx / 32);
-    // In the cave there is nothing of the island's to pick: only ground to walk on.
-    if (inCave()) return walkTo(p);
+    // In the cave nothing of the island's is to pick, only a torch off a wall (its picture stands on the wall, a stick
+    // and flame some 8 to 22 pixels over the floor).
+    if (inCave()) {
+      const torch = world.scene.decor.find((d) => d.decor === 'torch' && near(p, d, 7, 15));
+      return torch ? goTo(torch, false, { torch }) : walkTo(p);
+    }
     // The cave mouth: walked into.
     if (rocky && near(p, rocky.face, 9, 8)) return goTo(rocky.mouth, false);
     // A crab: grabbed or speared if near enough, else walked up to, stopping just near enough.
@@ -994,6 +1005,17 @@ function arrive(pick: Pick): void {
     const c = pick.crab;
     if (crabs.includes(c) && Math.hypot(c.i - actor.i, c.j - actor.j) <= crabReach() + 0.2) return catchCrab(c);
     return think('think.missed');
+  }
+  // A torch taken down off a cave wall: into the bag, and into the hand if it is empty.
+  if ('torch' in pick) {
+    if (!world.scene.decor.includes(pick.torch)) return;
+    if (game.bag.length >= BAG_SLOTS) return think('think.full');
+    world.scene.decor = world.scene.decor.filter((d) => d !== pick.torch);
+    game.bag.push('fire');
+    actor.emote('use', performance.now());
+    if (!hand) hold('fire');
+    else showBag();
+    return think('think.wallTorch');
   }
   // Once on the blanket, the sleep button shows, by day too: sleep then lasts till the next morning.
   if ('blanket' in pick) return;
@@ -1614,7 +1636,7 @@ function frame(ms: number): void {
     hutParts = island.buildingThings(actor);
   }
   // The island's own things lie on the island: none of them show in the cave.
-  const things: Thing[] = inCave() ? [...plants, ...caveThings(world, actor), ...world.decorThings(), ...scene.people.map((p) => propThing(p, ms))] : [
+  const things: Thing[] = inCave() ? [...plants, ...world.itemThings(), ...caveThings(world, actor), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))] : [
     ...(rocky ? [mouthThing(at(rocky.face))] : []),
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),

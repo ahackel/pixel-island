@@ -6,24 +6,14 @@ import { rgb } from '@pixel/engine/world/ocean.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { compileSprite } from '@pixel/engine/character/items.ts';
+import { FLAME_COLORS, FLAMES, flameFrame, shaft, torchRows } from '@pixel/engine/world/flame.ts';
 
 /** Rows of letters as a picture, '.' empty. */
 const picture = (rows: readonly string[], colors: Record<string, string>): Picture => ({ get: (x, y) => colors[rows[y]?.[x]] ?? null });
 
-/**
- * A flame's colours: the palette's fire tones, which glow (the same by day and night, in any
- * weather), so the torch in hand burns with the same flame.
- */
-const FLAME_COLORS: Record<string, string> = { W: PALETTE.blaze.base, y: PALETTE.flare.base, o: PALETTE.flame.base, r: PALETTE.flame.shade };
-/** A small flame, three frames of flicker, 7 wide. */
-const FLAMES = [
-  ['...y...', '..yo...', '..ooy..', '.oyyo..', '.oyWyo.', 'oyWWyo.', 'oyWWyyo', '.ryyyr.'],
-  ['....y..', '...oy..', '..oyo..', '..oyyo.', '.oyWyo.', '.oyWWyo', 'oyWWyyo', '.ryyyr.'],
-  ['.......', '..y....', '..oy...', '.oyyo..', '.oyWyo.', 'oyWWyo.', 'oyyWWyo', '.ryyyr.'],
-];
 const FLAME_PICTURES = FLAMES.map((rows) => picture(rows, FLAME_COLORS));
-/** One of a flame's frames at a time: every fire flickers at the same pace, `salt` putting one out of step. */
-const flicker = <T>(frames: readonly T[], ms: number, salt = 0) => frames[Math.floor(ms / 140 + salt) % frames.length];
+/** One of a flame's frames at a time, the same pace as the engine's (the torches on cave walls). */
+const flicker = flameFrame;
 
 // A stick lying on the ground: the one held in hand (STICK), laid down along the ground's slope,
 // in the same wood with its darker end.
@@ -48,12 +38,9 @@ export function tool(name: string, rows: string[], more: Record<string, string> 
   const legend = { W: 'wood', F: 'flame', Y: 'flare', B: 'blaze', ...more };
   return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: o.hold ?? 'pole' }).item;
 }
-/** A stick `n` rows long, not quite straight: its top bends aside, a stub of a twig halfway down. */
-const shaft = (n: number) => Array.from({ length: n }, (_, y) =>
-  y === n - 1 ? '...w...' : y < Math.round(n / 4) ? '....W..' : y === Math.round(n / 2) ? '..wW...' : '...W...');
 export const STICK = tool('Stick', shaft(14));
 /** The torch, one item per frame of the flame on the stump: in the palette's letters (B blaze, Y flare, F flame, f its shade). */
-const TORCHES = FLAMES.map((rows) => tool('Torch', [...rows.map((r) => r.replace(/[Wyor]/g, (c) => ({ W: 'B', y: 'Y', o: 'F', r: 'f' })[c]!)), ...shaft(10)]));
+const TORCHES = FLAMES.map((rows) => tool('Torch', torchRows(rows, 10)));
 export const torchAt = (ms: number) => flicker(TORCHES, ms);
 // Fire carried in the bag: the same burning stick.
 export const TORCH_ROWS = [...FLAMES[0], ...shaft(4)];
