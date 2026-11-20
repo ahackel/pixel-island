@@ -1,6 +1,7 @@
 // Small hand-drawn pictures for the week's new things: palm leaves, the vine, the stone axe, what the
 // crate held, logs, the raft at each stage of building; and the hut, laid from the engine's building pieces.
 import { PALETTE, PALETTE_KEYS } from '@pixel/engine/core/palette.ts';
+import { GLOWING } from '@pixel/engine/world/daylight.ts';
 import { rgb } from '@pixel/engine/world/ocean.ts';
 import { lookOf, type State } from '@pixel/engine/character/character.ts';
 import { STAND } from '@pixel/engine/core/poses.ts';
@@ -200,3 +201,52 @@ const RAFT = [1, 2, 3].map((s) => thing(raftRows(s)));
 
 /** The raft as built so far (at least one stage). */
 export const raftThing = (stage: number, spot: Thing['spot']): Thing => RAFT[Math.min(RAFT.length, stage) - 1](spot);
+
+/**
+ * A hurricane lantern: a wire handle over an olive cap, a round glass globe glowing yellow behind its cage, and a
+ * stepped foot. Wind and rain don't put it out. The globe is in the fire tones, so it glows and lights the dark.
+ */
+export const LANTERN: Rows = {
+  rows: [
+    '..hkkkh..',
+    '.h.....h.',
+    'h..mmm..h',
+    '.kkkkkkk.',
+    'kyWWkWWyk',
+    'kyWWkWWyk',
+    'kkkkkkkkk',
+    'kyWWkWWyk',
+    '.kyWkWyk.',
+    '..mmmmm..',
+    'kkkkkkkkk',
+  ],
+  colors: { h: '#c8c8c8', k: '#3b3a1e', m: '#6e6c48', y: PALETTE.flare.base, W: PALETTE.blaze.base },
+};
+
+/** The arch of a cave mouth, upright, before it is laid on the cliff face. */
+const ARCH = ['...rrrr...', '..rddddr..', '.rddddddr.', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr'];
+/**
+ * A cave mouth in a cliff face that looks down the screen to the left (the side toward +j): the arch is sheared down
+ * half a pixel per pixel to the right, the way that face runs, and its foot is the middle of its bottom edge.
+ */
+export function mouthThing(spot: Thing['spot']): Thing {
+  const w = ARCH[0].length, h = ARCH.length + Math.floor(w / 2);
+  const colors: Record<string, string> = { r: '#4e463e', d: '#120e0c' };
+  const at = (x: number, y: number) => ARCH[y - Math.floor(x / 2)]?.[x];
+  return { spot, picture: { get: (x, y) => colors[at(x, y) ?? ''] ?? null }, w, h, foot: { x: Math.floor(w / 2), y: h - 1 - Math.floor(w / 4) } };
+}
+
+/** Cave crystals and glowing mushrooms. Their colours glow (the dark leaves them as drawn), so the cave has lights of its own. */
+const CRYSTAL_COLORS = { b: '#c4fbff', a: '#5fe6ff', c: '#2a9fd6' };
+const MUSHROOM_GLOW = { b: '#e2ffb8', a: '#8cf06a', c: '#4fb04a' };
+for (const hex of [...Object.values(CRYSTAL_COLORS), ...Object.values(MUSHROOM_GLOW)]) GLOWING.add(hex);
+/** A cluster of crystals growing out of the floor, lit on their left faces. */
+export const CRYSTAL: Rows = {
+  rows: ['....b....', '...bac...', 'b..bac...', 'ba.bac..b', 'bacbac.ba', 'bacbacbac', '.acbacbac', '..cbac.c.'],
+  colors: CRYSTAL_COLORS,
+};
+/** A glowing mushroom: a bright cap on a pale stem. */
+export const MUSHROOM: Rows = {
+  rows: ['..bbb..', '.baaab.', 'baaaaac', '..dsd..', '...s...'],
+  colors: { ...MUSHROOM_GLOW, s: '#cfc6b0', d: '#8a8070' },
+};

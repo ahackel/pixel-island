@@ -12,12 +12,13 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
-import { along, GLOWING, light, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
-import { flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
+import { along, GLOWING, light, lightByTile, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
+import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
 import { footOf, type Picture } from '@pixel/engine/world/island.ts';
 import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/engine/world/terrain.ts';
-import { World, type Thing } from '@pixel/engine/world/world.ts';
+import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
+import { rockWall } from '@pixel/engine/world/building/pieces/rock-wall.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
@@ -30,7 +31,7 @@ import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
-import { firstIsland } from './island.ts';
+import { caveScene, firstIsland, rockyIsland } from './island.ts';
 import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { advance, next, QUESTS, stonesOut, type Goal, type Progress, type QuestIcon } from './quests.ts';
@@ -38,7 +39,7 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer } from '@pixel/shared/cheats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
-import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LEAF, LOG, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, CRYSTAL, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, MUSHROOM, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { breakOf, Burst, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -57,6 +58,10 @@ function endTryout(): void {
   const rest = `${params}`.replace(/=(?=&|$)/g, '');
   history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
 }
+/** Debug: `?island=2` plays the first try at the rocky island and its cave, with a lantern in the bag; never saved. */
+/** `?cave` starts it straight in the cave, lantern in hand, with no menu, editor or intro. */
+const CAVE_START = params.has('cave');
+const ISLAND2 = params.get('island') === '2' || CAVE_START;
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -77,19 +82,36 @@ const GRAB_LUCK = 0.25;
 
 // ------------------------------------------------------------------ the world
 
-const scene = firstIsland();
-const world = new World(scene);
-world.pieceKinds = PIECE_KINDS;
+const rocky = ISLAND2 ? rockyIsland() : null;
+const islandScene = rocky?.scene ?? firstIsland();
+/** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
+const island = new World(islandScene);
+island.pieceKinds = PIECE_KINDS;
+/** A cave in the island, a world of its own with nothing beyond its rock: walked into at the mouth, out at the daylight. */
+const cave = rocky && (() => {
+  const c = caveScene();
+  const w = new World(c.scene);
+  w.void = true;
+  w.trackSpots = true;
+  w.shadowDepth = 2.4;
+  w.pieceKinds = { rock: rockWall({ tones: PALETTE.cave, cap: 3 }) };
+  w.buildings = [c.walls];
+  return { ...c, world: w };
+})();
+/** The scene and world the survivor is in: the island, or the cave. */
+let scene = islandScene;
+let world = island;
+const inCave = () => world !== island;
 const fishRandom = rng(Date.now());
-world.fish = spawnFish(world.floor, FISH_COUNT, fishRandom);
+island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
 /** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
-const sharks = spawnSharks(world.floor, SHARK_COUNT, fishRandom);
+const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
-const palms = [...scene.plants];
+const palms = [...islandScene.plants];
 /** The tall palms can be felled and draw lightning; the sapling is too small. */
 const tall = (k: number) => palms[k].plant !== 'plant-palms-2';
 /** Shows (and lets block the way) only the palms not cut down. */
-const keepStanding = () => (scene.plants = palms.filter((_, k) => !game.felled.includes(k)));
+const keepStanding = () => (islandScene.plants = palms.filter((_, k) => !game.felled.includes(k)));
 /** The crabs out today, and how many have come out so far; all gone by the next morning. */
 let crabs: Crab[] = [];
 let crabsOut = 0;
@@ -145,6 +167,7 @@ function newGame(who = firstWho()): Game {
     day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [],
     builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
   };
+  if (ISLAND2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
   for (let n = 0; n < 2; n++) dropCoconuts(g);
   washWood(g);
@@ -225,7 +248,7 @@ function washWood(g: Game): void {
   if (beach.length && g.lying.filter((l) => l.item === 'drift').length < DRIFT_LYING) g.lying.push({ item: 'drift', ...onBeach() });
 }
 
-const saved = params.has('new') || TRYOUT ? null : loadGame(scene.w, palms.length);
+const saved = params.has('new') || TRYOUT || ISLAND2 ? null : loadGame(scene.w, palms.length);
 let game = saved ?? newGame();
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
@@ -337,7 +360,7 @@ function hold(item: BagItem | null): void {
 const BAG_PICTURES = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
   stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG[0], wrasse: FISH_IN_BAG[1], snapper: FISH_IN_BAG[2], crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT,
+  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN,
 };
 /** The quests' pictures in the corner. */
 const QUEST_PICTURES: Record<QuestIcon, { rows: readonly string[]; colors: Record<string, string> }> = {
@@ -666,7 +689,7 @@ function startNew(who: State): void {
   ended = null;
   questShown = '';
   showQuest();
-  if (!TRYOUT) saveGame(game);
+  if (!TRYOUT && !ISLAND2) saveGame(game);
   hold(null);
 }
 
@@ -776,7 +799,7 @@ if (params.has('cheats')) {
     }),
     {
       words: 'GIVE',
-      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift'] as const).map((it) => cheat(it.toUpperCase(), () => {
+      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern'] as const).map((it) => cheat(it.toUpperCase(), () => {
         if (game.bag.length < BAG_SLOTS) game.bag.push(it);
         showBag();
       })),
@@ -784,6 +807,7 @@ if (params.has('cheats')) {
     cheat('SUNSET', () => (time = DAY_S - SUNSET_S)),
     cheat('NIGHT', () => (time = DAY_S + DUSK_S)),
     cheat('MORNING', () => sleep(false, true)),
+    ...(cave ? [cheat('CAVE', () => (inCave() ? leaveCave() : goInto(cave.world, cave.entry)))] : []),
     // The current quest done, as if its goal had happened as often as it needs.
     cheat('QUEST+', () => {
       for (let n = 0; n < (questNow().count ?? 1) && !game.quest.done; n++) reach(questNow().goal);
@@ -846,6 +870,10 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // map (a tile is 32 by 16 pixels, map +i is screen right and down), so only the direction counts.
     const dx = p.x - foot.x, dy = p.y - foot.y;
     if (dx || dy) actor.lookAt(dx / 32 + dy / 16, dy / 16 - dx / 32);
+    // In the cave there is nothing of the island's to pick: only ground to walk on.
+    if (inCave()) return walkTo(p);
+    // The cave mouth: walked into.
+    if (rocky && near(p, rocky.face, 9, 8)) return goTo(rocky.mouth, false);
     // A crab: grabbed or speared if near enough, else walked up to, stopping just near enough.
     const crab = crabAt(world, crabs, p, 7);
     if (crab) {
@@ -857,7 +885,7 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // A shark's fin, while it shows: nothing to be done about it but keep out of the water.
     if (sharks.some((s) => finShows(s, performance.now()) && near(p, s, 7, 4))) return think('think.sharks');
     // With the spear in hand, a tap on a fish swimming near spears it.
-    const fish = hand === 'spear' ? world.fishAt(p, 8) : null;
+    const fish = hand === 'spear' ? island.fishAt(p, 8) : null;
     if (fish) {
       if (Math.hypot(fish.i - actor.i, fish.j - actor.j) <= SPEAR_REACH) return spear(fish);
       think('think.missed');
@@ -884,10 +912,34 @@ function press(p: { x: number; y: number }, start: boolean): void {
     if (k >= 0) return goTo(nearSide(palms[k]), false, { palm: k });
   }
   if (target?.pick || onSelf) return;
+  walkTo(p);
+}
+/** Walks to the tile under a ground pixel, running if it is far. */
+function walkTo(p: { x: number; y: number }): void {
   const tile = world.tileAt(p.x, p.y);
   if (!tile) return;
   const far = Math.hypot(tile.i + 0.5 - actor.i, tile.j + 0.5 - actor.j) > 4;
   goTo({ i: tile.i + 0.5, j: tile.j + 0.5 }, far && speedOf(game) === 1);
+}
+
+/** Into another world (the cave, or back out onto the island), standing at a spot of it. */
+function goInto(to: World, at: { i: number; j: number }): void {
+  world = to;
+  scene = to.scene;
+  actor.i = at.i;
+  actor.j = at.j;
+  target = null;
+  centerOn(actor);
+}
+/** Out of the cave, a step in front of its mouth. */
+function leaveCave(): void {
+  if (rocky) goInto(island, { i: rocky.mouth.i, j: rocky.mouth.j + 0.8 });
+}
+/** Walked onto the cave mouth, the survivor goes in; onto the daylight at the cave's open side, out. */
+function throughCave(): void {
+  if (!rocky || !cave || !present || sleeping) return;
+  if (!inCave() && Math.hypot(actor.i - rocky.mouth.i, actor.j - rocky.mouth.j) < 0.4) goInto(cave.world, cave.entry);
+  else if (inCave() && Math.hypot(actor.i - cave.exit.i, actor.j - cave.exit.j) < 1) leaveCave();
 }
 
 /** Where a thing's picture starts on the ground image. */
@@ -1013,12 +1065,12 @@ function arrive(pick: Pick): void {
 }
 
 /** A thrust of the spear at a fish near enough: caught, into the bag, if there is room. */
-function spear(fish: (typeof world.fish)[number]): void {
+function spear(fish: (typeof island.fish)[number]): void {
   target = null;
   actor.lookAt(fish.i - actor.i, fish.j - actor.j);
   actor.emote('use', performance.now());
   if (game.bag.length >= BAG_SLOTS) return think('think.full');
-  world.fish.splice(world.fish.indexOf(fish), 1);
+  island.fish.splice(island.fish.indexOf(fish), 1);
   game.bag.push(FISH_ITEMS[fish.kind % FISH_ITEMS.length]);
   showBag();
   think('think.caught');
@@ -1146,7 +1198,7 @@ function fleeFire(dt: number): void {
     const f = fireNear(c, lit);
     if (f) scare(c, f);
   }
-  for (const fish of world.fish) {
+  for (const fish of island.fish) {
     const f = fireNear(fish, lit);
     if (!f) continue;
     // Round to the heading straight away from the fire, the short way about.
@@ -1211,6 +1263,8 @@ function eat(slot: number): void {
 let stormWoken = false;
 function sleep(fainted: boolean, anywhere = false): void {
   if (sleeping || ended) return;
+  // The night is the island's: a faint in the cave wakes the survivor outside its mouth.
+  if (inCave()) leaveCave();
   const chosen = !fainted && !anywhere;
   if (chosen && !dry(actor)) return think('think.wet');
   // In the rain the survivor sleeps only under the hut's roof.
@@ -1251,7 +1305,7 @@ function morning(fainted: boolean): void {
   // A palm only drops a new coconut once the last one has been eaten.
   if (!game.coconuts.length && !game.bag.includes('coconut')) dropCoconuts(game);
   washWood(game);
-  world.fish.push(...spawnFish(world.floor, FISH_COUNT - world.fish.length, fishRandom));
+  island.fish.push(...spawnFish(island.floor, FISH_COUNT - island.fish.length, fishRandom));
   crabs = [];
   crabsOut = 0;
   // A done quest gives way to the next, which brings what it needs; else the morning's own thought.
@@ -1259,7 +1313,7 @@ function morning(fainted: boolean): void {
   const thought = after !== game.quest ? startQuest(after) : morningThought();
   if (stonesOut(game.quest.quest)) for (let n = stonesAbout(game); n < STONES_OUT; n++) layStone(game);
   showQuest();
-  if (!TRYOUT) saveGame(game);
+  if (!TRYOUT && !ISLAND2) saveGame(game);
   setTimeout(() => tell(thought), FADE.hold + FADE.in);
 }
 
@@ -1330,20 +1384,44 @@ function flameAt(me: Thing): { x: number; y: number } | null {
   const foot = footOf(world.ground, me.spot);
   return { x: foot.x + sx / n - me.foot.x, y: foot.y + sy / n - me.foot.y };
 }
-/** The fires as lamps lighting the dark round them, in the view's pixels: campfires, the burning stump, the torch in hand. */
+/**
+ * The lights in the dark, in the view's pixels: on the island its fires (campfires, the burning stump); in the cave
+ * the daylight at its open side; and wherever the survivor is, the torch or the lantern in hand.
+ */
 function lamps(rect: { x: number; y: number }, me: Thing | null): Lamp[] {
-  const lamp = (at: { i: number; j: number }, up: number, r: number): Lamp => {
+  const lamp = (at: { i: number; j: number }, up: number, r: number, color?: string): Lamp => {
     const p = world.screenOf(at.i, at.j);
-    return { x: p.x - rect.x, y: p.y - up - rect.y, r };
+    return { x: p.x - rect.x, y: p.y - up - rect.y, r, color };
   };
-  // Every lamp sits on a flame: the torch's is found in the survivor's own picture.
-  const torch = hand === 'fire' && me ? flameAt(me) : null;
+  // Every lamp sits on a flame: the torch's or the lantern's is found in the survivor's own picture.
+  const flame = (hand === 'fire' || hand === 'lantern') && me ? flameAt(me) : null;
+  const carried = flame ? [{ x: flame.x - rect.x, y: flame.y - rect.y, r: hand === 'lantern' ? LANTERN_REACH : 28 }] : [];
   return [
     ...game.fires.map((f) => lamp(f, 5, 46)),
     ...(game.struck === null ? [] : [lamp(palms[game.struck], 14, 40)]),
-    ...(torch ? [{ x: torch.x - rect.x, y: torch.y - rect.y, r: 28 }] : []),
+    ...carried,
   ];
 }
+/**
+ * The cave's lights, tile by tile (see `World.lightField`): the daylight at its open side, its crystals and mushrooms,
+ * and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
+ */
+function caveLamps(ms: number): TileLamp[] {
+  if (!cave) return [];
+  const flicker = 1 + 0.04 * Math.sin(ms / 83) + 0.03 * Math.sin(ms / 31 + 1.7);
+  const carried = hand === 'lantern' || hand === 'fire';
+  return [
+    { ...cave.exit, r: 2.6, color: CAVE_DAY, amount: 0.8 },
+    ...cave.glows.map((g) => (g.kind === 'crystal' ? { ...g, r: 2.4, color: '#5fe6ff', amount: 0.55 } : { ...g, r: 1.6, color: '#8cf06a', amount: 0.4 })),
+    ...(carried && present ? [{ i: actor.i, j: actor.j, r: (hand === 'lantern' ? 4.2 : 3) * flicker, amount: Math.min(1, flicker) }] : []),
+  ];
+}
+const CRYSTAL_THING = thing(CRYSTAL);
+const MUSHROOM_THING = thing(MUSHROOM);
+/** The dark of the cave: a deep blue-violet, whatever the hour; the daylight coming in at its open side, cool; and how far the lantern lights, in pixels. */
+const CAVE_DARK: Tint = { r: 8, g: 14, b: 80, amount: 0.9 };
+const CAVE_DAY = '#c8d4e8';
+const LANTERN_REACH = 64;
 
 /** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
 function nightfall(t: number): number {
@@ -1482,34 +1560,37 @@ function frame(ms: number): void {
   actor.update(world, paused || telling() ? 0 : dt * speedOf(game), di, dj, run, ms);
   // A target that cannot be reached is given up rather than walked against forever.
   if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
+  throughCave();
 
-  if (!paused && !sleeping && !telling()) fleeFire(dt);
-  swim(world.fish, world.floor, dt, fishRandom);
-  cruise(sharks, world.floor, paused || sleeping ? 0 : dt, fishRandom);
+  if (!paused && !sleeping && !telling() && !inCave()) fleeFire(dt);
+  swim(island.fish, island.floor, dt, fishRandom);
+  cruise(sharks, island.floor, paused || sleeping ? 0 : dt, fishRandom);
   land(ms);
   // On a windy day the crabs walk up out of the sea from the morning on, one every so often; only the wind drives them up the beach.
   if (!paused && !sleeping && !telling() && kindNow() === 'windy' && crabsOut < CRAB_NIGHT && fishRandom() < dt / 8) {
-    const c = spawnCrab(world, fishRandom);
+    const c = spawnCrab(island, fishRandom);
     if (c) crabs.push(c);
     crabsOut++;
   }
-  scuttle(crabs, world, paused ? 0 : dt, fishRandom, sleeping ? null : actor);
+  scuttle(crabs, island, paused ? 0 : dt, fishRandom, sleeping || inCave() ? null : actor);
   // Before the survivor is on the island (the menu, the editor, the fade in), a sunny sea, not the last game's weather.
   const weather = !present || editing || sleeping?.intro ? weatherAt('sunny', 'sunny', 0) : weatherAt(kindNow(), kindTomorrow(), time);
   const night = nightfall(time);
-  world.setWeather(asSeen(weather, night));
+  island.setWeather(asSeen(weather, night));
+  // No weather in the cave.
+  if (inCave()) world.setWeather(CLEAR);
   const flashNow = flashAt(ms, weather);
   // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
   if (game.struck !== null) strikeNow = false;
   // The bolt comes as the survivor steps out of the hut, so they see it strike.
-  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered();
+  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered() && !inCave();
   if (striking) {
     strikeNow = false;
     strike();
   }
   const plants = world.plantThings(Math.floor((ms / 1000) * 6) % FRAMES);
   // The scene draws only the standing palms, so the struck one's place among them.
-  const struckAt = game.struck === null ? -1 : scene.plants.indexOf(palms[game.struck]);
+  const struckAt = game.struck === null || inCave() ? -1 : islandScene.plants.indexOf(palms[game.struck]);
   if (striking && struckAt >= 0) {
     const palm = plants[struckAt];
     const foot = world.screenOf(palm.spot.i, palm.spot.j);
@@ -1519,15 +1600,17 @@ function frame(ms: number): void {
   if (struckAt >= 0) plants.splice(struckAt, 1, ...stumpThings(plants[struckAt], ms));
   const at = (p: { i: number; j: number }) => ({ i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) });
   const hutBuild = game.builds.find((b) => b.kind === 'hut');
-  world.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
+  island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const me = present ? actor.thing(world, ms) : null;
-  let hutParts = world.buildingThings(actor);
+  let hutParts = inCave() ? [] : island.buildingThings(actor);
   // Behind the hut, its walls come down to knee height and the roof off, so the survivor is seen.
-  if (hutBuild && hides(hutParts, me)) {
-    world.buildings = [hutBuilding(hutBuild.stage, true)];
-    hutParts = world.buildingThings(actor);
+  if (hutBuild && !inCave() && hides(hutParts, me)) {
+    island.buildings = [hutBuilding(hutBuild.stage, true)];
+    hutParts = island.buildingThings(actor);
   }
-  const things: Thing[] = [
+  // The island's own things lie on the island: none of them show in the cave.
+  const things: Thing[] = inCave() ? [...plants, ...world.buildingThings(actor), ...cave!.glows.map((g) => (g.kind === 'crystal' ? CRYSTAL_THING : MUSHROOM_THING)(at(g)))] : [
+    ...(rocky ? [mouthThing(at(rocky.face))] : []),
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),
     ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms)),
@@ -1536,12 +1619,15 @@ function frame(ms: number): void {
   const rect = view.rect();
   const image = world.compose(rect, things, undefined, false, ms);
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
-  light(image, weatherLight(weather, night));
-  // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
-  const flash = (striking ? 1 : flashNow) * (1 - fade);
-  const tint = tintAt(time);
-  light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me));
-  lightning(image, flash);
+  if (inCave()) lightByTile(image, CAVE_DARK, fade, world.spots!, world.lightField(caveLamps(ms)));
+  else {
+    light(image, weatherLight(weather, night));
+    // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
+    const flash = (striking ? 1 : flashNow) * (1 - fade);
+    const tint = tintAt(time);
+    light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me));
+    lightning(image, flash);
+  }
   sparks.draw(image, rect, ms);
   strikeFx?.draw(image, rect, ms);
   if (strikeFx?.done(ms)) strikeFx = null;
@@ -1552,12 +1638,12 @@ function frame(ms: number): void {
   // The page around the picture.
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
-  sleepButton.hidden = !!ended || !onBlanket();
+  sleepButton.hidden = !!ended || inCave() || !onBlanket();
   // In the rain the survivor sleeps only under the hut's roof, and after the storm only once a campfire burns by it.
   // Looks disabled but still takes a press, which says why not.
   sleepButton.setAttribute('aria-disabled', String((weather.rain > 0.4 && !sheltered()) || (wantsFire() && !fireByHut())));
-  for (const k of BUILD_KINDS) buildButtons[k].hidden = !!ended || !buildable(k);
-  sailButton.hidden = !!ended || !canSail();
+  for (const k of BUILD_KINDS) buildButtons[k].hidden = !!ended || inCave() || !buildable(k);
+  sailButton.hidden = !!ended || inCave() || !canSail();
   veil.style.opacity = String(fade);
   // A new day's title; thunder waking the survivor in the same night gets none.
   if (fade >= 1 && veilDay !== game.day && !ended && !sleeping?.wakes) {
@@ -1576,3 +1662,12 @@ function frame(ms: number): void {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// `?cave`: a default survivor, straight into the cave with the lantern in hand, playing at once.
+if (CAVE_START && cave) {
+  startNew(firstWho());
+  hold('lantern');
+  goInto(cave.world, cave.entry);
+  started = true;
+  setPaused(false);
+}

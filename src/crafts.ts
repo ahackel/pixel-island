@@ -1,7 +1,7 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
 // in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
 
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift'] as const;
+export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift', 'lantern'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 /** Bag items that can also lie on the ground to be picked up (wash-ups, driftwood, what the crate held, logs). */
 export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift'] as const;
