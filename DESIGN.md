@@ -273,6 +273,7 @@ Based on what pixel-art and this repo have today. Engine work is anything anothe
 | Feature | What it means |
 |---|---|
 | Cave interiors | A second map per cave mouth, with a transition in and out. It is pitch dark there apart from carried and placed lights. |
+| Cave editor | Caves made by hand in the scene editor rather than by code. See below. |
 | Lantern light | A carried light that wind and rain don't put out. Probably a type of the existing lamp. |
 | Bigger maps | An island 5 times the size: camera limits, and drawing only what's on screen if that becomes slow. |
 | Skeleton | A character setup that can be posed as a still prop, plus a loose skull prop. |
@@ -283,6 +284,22 @@ Based on what pixel-art and this repo have today. Engine work is anything anothe
 | Context menu | Tapping a creature shows a small menu of commands (the dog's). |
 | Ground marks | Dig marks, and dug holes that stay in the ground. |
 | New flora and animals | Rocky-island plants, bats, seabirds and spiders; webs as a prop that burns away. |
+
+**Cave editor (spec).** A cave scene kind in the existing scene editor (`tools/scene`):
+- **New → Cave** starts a map that is all solid rock. The map is made of 1×1 m cells, as for islands.
+- **Carve and Fill tools:**
+  - Carve drags open floor with the brush size, where size 1 is one cell. Fill drags rock back.
+  - Rock walls appear by themselves on the edges the camera looks at, with their black caps. The front of a room has no walls and just ends at black.
+  - Undo covers carve and fill.
+- **Flat floor for now,** at one level. Steps and ramps come later.
+- **Auto-dress:** rubble appears along the wall foot as you carve. Stalagmites, boulders, crystals and mushrooms are placed by hand.
+  - Placing uses the existing Plant and Decor tools.
+  - Crystals and mushrooms move from the game into engine decor: they glow, and they light the cells around them.
+- **Wall torch:** a placeable torch on a wall that lights the cave.
+- **Exit marker:** set on the cave's open edge. It lets daylight in and leads out. The island scene names which cave its mouth opens into.
+- **Edit view:** lit as in the game, with a Bright toggle that lights everything evenly while carving. Play walks it with the lantern.
+- **Settings:** size, darkness and tint (how dark and what colour the unlit cave is), and rubble amount.
+- **The game loads its cave from an exported cave scene,** instead of generating it in `caveScene()`.
 
 **Game work (this repo):**
 - Islands as content: a second island's map, quests and texts, with the first island's ending leading on to it.
