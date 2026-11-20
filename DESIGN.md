@@ -2,11 +2,65 @@
 
 A shipwreck survivor stranded on a tiny sand island with a few palms. Quest by quest, the sea brings something new. The survivor learns to eat and fish, builds a hut, gets fire from a storm, makes an axe, cuts down palms, and finally builds a raft and sails away. Setting sail ends the demo (see **First week**).
 
+## Vision
+
+- **Audience:** everyone from 10 years up: casual players, adventure fans, and fans of retro games.
+- **What makes it fun (pillars):**
+  1. **Story:** the sea brings something new each quest, and later there are other people to meet.
+  2. **Cute art:** a small survivor, animals, a living island.
+  3. **Retro feel:** like the old point-and-click adventures, with a modern touch.
+  4. **Exploration:** islands, caves and a volcano to discover.
+- **Crafting** plays a big role: there will be many items and recipes (the full list is still to be written).
+- **Animals** are part of the world: fish, crabs and sharks so far, with more to come.
+- **Price:** free. No monetisation.
+
+## Art direction
+
+- Retro pixel art inspired by the classic LucasArts adventures, with a modern touch.
+- Low resolution on purpose, but the colours are rich and not held to a strict palette.
+- Smooth gradients where they help, such as lighting and water. No dithering, and hard pixel edges everywhere else.
+- Isometric view. Characters face 8 directions.
+- Real-time shadows from the sun and the moon.
+
+## Story and world
+
+- **Structure:** a chain of islands. Each island ends with a way to reach the next one, as the raft does in the demo.
+- **Goal:** a mystery. The wreck was no accident: someone caused it. Clues on the islands, in the caves and from the people met point to who did it and why.
+- **Each island is different:** its own layout and features, its own biome (plants and animals), and its own person to meet.
+- **Carry-over:** only what fits in the bag and on the boat travels on. Each island starts mostly fresh, and islands left behind are not visited again.
+- **People:** fellow castaways from the same wreck, scattered over the islands; a hermit who teaches skills; and traders or pirates passing by ship, who trade or cause trouble.
+- **Length:** 5–10 hours for the whole game.
+- **Guidance:** strict, one quest at a time on the first island, so it teaches. Later islands open up, with several goals at once.
+- **Failure is gentle:** the survivor never dies. Fainting costs the rest of the day, as it does now.
+
+## Crafting and animals
+
+- Recipes are found by experimenting: drag one thing onto another in the bag, as now. The survivor's thoughts hint at what might fit. There is no recipe book.
+- Animals give materials (shells, feathers, hides) as well as food.
+- **Pets:** different islands offer different pets, each with its own ability. A pet follows the survivor and finds things, digging up or pointing to hidden items and clues. It also reaches places the survivor can't: a parrot flies, a monkey climbs.
+- Some animals are threats, like sharks, boars or snakes. Because failure is gentle, a threat costs time or items, never the survivor's life.
+
+## Sound
+
+Ambient and sparse: mostly waves, wind and birds, with a gentle melody now and then and simple effects.
+
+## Scope
+
+- **Demo:** one small island, the first week (done; see **First week**).
+- **Next:** more and bigger islands, and new features (to be decided). Ideas so far:
+  - **Caves:**
+    - They are pitch dark, so a torch or lamp is needed; this builds on the fire and light systems.
+    - They hold resources not found above ground (ore, crystals, clay) for new crafting.
+    - They hold story clues: paintings, relics, hidden rooms.
+    - They have adventure-style puzzles: levers, tides, blocked passages.
+  - **An island with a volcano.**
+  - **Bigger buildings, with walls placed freely:** walls, doors, roofs and floors snap to the iso grid, and each piece costs materials. This replaces the fixed hut plan.
+  - **Other people** to meet (see **Story and world**).
+
 ## Platform
 
 - Runs in the browser, on desktop and iPad. Tap or click to walk there. Pinch or the wheel zooms, with a limited zoom-out. Two fingers pan.
 - Rotation (the scene editor's quarter turns) may come later; it is not in v1.
-- Sound and music, later: waves, ambience, simple effects.
 - Text in English and German, following the tools' `i18n.ts` convention.
 
 ## Repos and the split
@@ -43,7 +97,7 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 - **Energy:** drains with time and work, and sleep refills it.
 - Low needs make the survivor slower. At zero they faint and wake the next morning, losing the rest of the day.
 - At first, anywhere on the island that is not water is a safe place to sleep. The hut gives a better rest later.
-- Saving is automatic when the survivor sleeps. Reloading resumes that morning.
+- Saving is automatic when the survivor sleeps. Reloading resumes that morning. There is one save, with no slots and no cloud.
 
 ## Interaction
 
@@ -61,15 +115,7 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
   - combining items (stick + stone → axe);
   - events (lightning → burning tree → fire).
 - **Building:** structures come first (hut, fire pit, rack, boat). Growing the island itself may come later.
-- **Rough arc:**
-  1. Coconuts and driftwood.
-  2. Stone tools.
-  3. Shelter.
-  4. Fire, from the storm.
-  5. Fishing.
-  6. Felling palms.
-  7. The boat (hull, sail).
-  8. Departure.
+- **Arc of the demo:** food → sleep → fishing with a spear → crabs → the crate → shelter → the storm → fire → the axe and logs → the raft and departure (see **First week**).
 
 ## First week
 
@@ -109,11 +155,79 @@ Rules this sets:
 
 Open:
 
-- How many logs the raft needs, and how many palms the island can lose (fewer palms, fewer coconuts).
+- How many palms the island can lose (fewer palms, fewer coconuts). The raft takes 4 logs, which is two palms.
 - Whether the hut also shelters the campfire from rain.
 - Whether a shark ever does more than show its fin.
 - Setting sail only fades to the end card; the raft does not drift off yet.
 - What the night crabs give besides food.
+
+## Island 2: the rocky island
+
+The raft from the first island lands here. The goal is a **map of the area** showing more islands, so the survivor knows where to go next. The survivor leaves on the **smuggler's boat**: he has one but is too scared to sail it alone, so with the map they sail on together, and he stays in the story.
+
+**The island:**
+- About 5 times the size of the first island, in distinct zones: the beach where the raft lands, cliffs, a strip of forest, and a cave system.
+- **Zones open by story:** the smuggler tells of places as the favours go on, and each one opens when a quest leads there.
+- Rocky, with several cave mouths. The smuggler's camp sits in a cove.
+- **Animals:** bats live in the caves. Spiders:
+  - Their webs block cave passages and are burned away with a torch or the lantern.
+  - Their silk is a strong thread for crafting.
+  - A big cave spider is a mild threat: it scares the survivor off, so they drop what they hold or run back. It is never deadly.
+  - The smuggler is terrified of them.
+- **Survival:** the same rules as the first island, but cooked food fills a lot, so hunger matters less and exploring matters more.
+- **Skull and skeleton:**
+  - A skull is a loose prop lying about.
+  - The skeleton is built as a character setup, so it can be posed (slumped against a wall, lying in a trap, sitting by the chest). It is mostly placed as decoration.
+  - They belong in the caves and by the smuggler's traps, as a warning and for a bit of spooky fun. The smuggler has a nervous story about each one.
+
+**The smuggler:**
+- A cowardly braggart who is scared of the dark, the caves and spiders, so he needs the survivor. He is the comic relief.
+- There is a hint that he knows more about the wreck than he says. This is the first hook into the mystery.
+- **Cooking brings him out:** he can't cook, and the smell of the survivor's first meal draws him from his cove.
+- He trades in **favours**, not goods: the survivor does tasks, and he pays in items or information. The favours are:
+  - **Cook for him:** he's hungry and fussy, and wants particular dishes, which teaches the recipes.
+  - **Fetch from the caves:** things he's too scared to get himself, which leads the survivor deeper step by step.
+  - **Scare off pests:** something keeps getting into his supplies, such as spiders in his camp. The survivor solves it without hurting anything.
+- The map is in his **hidden stash, a treasure chest in the deepest cave**, guarded by his own old traps.
+
+**The dog:**
+- A stray from the wreck, trapped in a cave. Free it and feed it, and it follows the survivor from then on.
+- It sniffs out and marks spots to dig, and it squeezes through gaps the survivor can't.
+
+**New mechanics:**
+- **Lantern:** a safe light that never goes out, and works in wind, rain and the caves. Unlike the torch, the caves need it.
+- **Digging:** craft a shovel. The dog marks where treasure is buried. Digging without the dog is blind and turns up mostly junk.
+- **Treasure:** buried finds and hidden caches, with the map chest as the big one.
+- **Cooking:** a pot washes up from the wreck. A campfire plus the pot makes a cooking setup, and combining ingredients makes better meals, found by experimenting the same way as tying things in the bag.
+- **Grid building:** the first free building is a **camp with a kitchen**, a shelter with a cooking corner.
+- **Favours:** the smuggler's tasks, as the island's way of trading.
+- **Cave puzzles:**
+  - **Blocked passages:** rockfalls and spider webs.
+  - **Dog puzzles:** the dog squeezes through a gap to fetch a key or pull a lever.
+  - **The smuggler's traps:** guarding the stash, with riddle locks whose clues are spread around the island.
+
+**Draft quest chain** (one way it could go; open to change):
+
+| # | Quest | Teaches |
+|---|-------|---------|
+| 1 | Land the raft; a pot washes up | the new island |
+| 2 | Light a fire and cook a first meal | cooking |
+| 3 | The smell draws the smuggler out: meet him | a person to talk to |
+| 4 | Cook the dish he wants (first favour), and he pays with the lantern | favours, recipes |
+| 5 | Build a camp with a kitchen on the grid | grid building |
+| 6 | Clear the spiders from his camp | spiders, webs and fire |
+| 7 | Fetch something from the first cave, and find the trapped dog | caves, dark |
+| 8 | Free the dog and feed it a cooked meal | the pet |
+| 9 | Make a shovel and dig where the dog marks | digging, treasure |
+| 10 | Get through the smuggler's traps to the deepest cave and open the chest | cave puzzles |
+| 11 | Bring him the map, catch a hint about the wreck, and sail off on his boat | the next island |
+
+Open for this island:
+- The exact dishes, and what each favour pays.
+- Whether the shovel needs something new (an iron blade from the caves?).
+- What silk makes.
+- Whether the skull can be picked up or used (a puzzle piece, or a favour?), or is only decoration.
+- What the raft becomes once the survivor leaves on the boat.
 
 ## Survivor
 
@@ -121,20 +235,20 @@ Open:
 - Later, players dress their own survivor in a simplified wardrobe.
 - Clothes can wear out over the days through the engine's `wear.ts`.
 
-## Milestone 1: one day loop
+## Numbers (now)
 
-1. A small sand island with a few palms, made in the scene editor.
-2. The fixed survivor walks where the player taps. Touch zoom and pan work.
-3. Palms drop coconuts each morning. Tap a coconut to pick it up and eat it. Hunger and energy bars.
-4. Day (10 minutes) → sunset → night, with tint. After 5 minutes of night, tired and slow.
-5. Sleep command → fade to black → save → next morning, with one scripted wash-up item.
-6. A debug time-scale switch, so a day doesn't have to take 10 real minutes while developing.
+From `src/clock.ts` and `src/save.ts`; tune them there.
 
-Engine work this needs: the time-of-day tint, the touch camera and the fade. Everything else is game code.
+- Day: 10 minutes, the last minute of it sunset, then 30 s of dusk.
+- Hunger empties in 15 minutes, energy in 20. Below 25% the survivor walks at half speed; at 0 they faint.
+- A coconut gives 35% hunger, a fish 50%.
+- The bag has 6 slots.
 
 ## Open questions
 
-- Sunset: for now the last minute of the 10-minute day, then 30 s of dusk (`src/clock.ts`).
-- How fast hunger and energy drain, and how many coconuts a day.
-- The exact size of the bag.
 - What the night creatures do for the game (food? materials?).
+- What exactly a threat costs when it gets the survivor (time, items, an injury that slows them?).
+- Who caused the wreck and why, and how the clues are spread over the islands.
+- What the volcano does: a threat, a resource, the finale?
+- How many islands, and which biome and person each one has.
+- Whether the numbers above feel right over a whole week.
