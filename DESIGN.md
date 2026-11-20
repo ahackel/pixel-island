@@ -106,6 +106,8 @@ Decided per tool: the generic editors live in pixel-art and load and save JSON. 
 - To use a tool: **select an item in the inventory, then tap the target** (axe + palm = chop).
 - Carrying: one item in the hand (drawn on the character, as with the wardrobe's held item) and a bag of a few slots. A crate gives more storage later.
 - The survivor's thoughts appear as short speech bubbles and emotes and serve as hints ("I could split this with a sharp stone…").
+- **Talking to people** is a classic adventure dialogue: tap a character, and they talk in bubbles. The player taps one of 2–3 replies, and some replies are just for fun.
+- **Building on the grid** has its own build mode. A build button switches to a top-down grid overlay. The player picks a piece (wall, door, floor or roof) and taps to place it, and its cost comes out of the bag.
 
 ## Progression
 
@@ -183,6 +185,7 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
   - Their silk makes a net or trap that catches crabs or fish while the survivor does something else.
   - A big cave spider is a mild threat: it scares the survivor off, so they drop what they hold or run back. It is never deadly.
   - The smuggler is terrified of them.
+- **Time** keeps running in the caves, so coming out late means coming out into the dark.
 - **Survival:** the same rules as the first island, but cooked food fills a lot, so hunger matters less and exploring matters more.
 - **Skull and skeleton:**
   - A skull is a loose prop. It can be picked up, for a joke: shown to the smuggler, it makes him panic.
@@ -205,11 +208,18 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 
 **The dog:**
 - A stray from the wreck, trapped in a cave. Free it and feed it, and it follows the survivor from then on.
-- It sniffs out and marks spots to dig, and it squeezes through gaps the survivor can't.
+- It trots after the survivor, and lies down when they rest or sleep.
+- It chases off seabirds stealing food, but is scared of the big spider.
+- It squeezes through gaps the survivor can't.
+- **Commands:** tapping the dog shows a small menu:
+  - **Go / fetch:** then tap a gap, a lever or an item. The dog goes there and fetches the item or pulls the lever.
+  - **Stay / follow:** the dog waits where it is (on a pressure plate, say) or follows again.
+  - **Sniff:** it searches around, circles and barks, and marks any buried spot nearby with a dig mark.
+  - **Pet:** no use. It wags its tail and a little heart shows.
 
 **New mechanics:**
 - **Lantern:** a safe light that never goes out, and works in wind, rain and the caves. Unlike the torch, the caves need it.
-- **Digging:** the smuggler pays a favour with his old shovel. The dog marks where treasure is buried. Digging without the dog is blind and turns up mostly junk.
+- **Digging:** the smuggler pays a favour with his old shovel. Told to sniff, the dog marks where treasure is buried. Digging without the dog is blind and turns up mostly junk.
 - **Treasure:** buried finds and hidden caches, with the map chest as the big one.
 - **Cooking:** a pot washes up from the wreck. A campfire plus the pot makes a cooking setup, and combining ingredients makes better meals, found by experimenting the same way as tying things in the bag.
 - **Grid building:** the first free building is a **camp with a kitchen**, a shelter with a cooking corner.
