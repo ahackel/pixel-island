@@ -257,6 +257,52 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 
 Open for this island: nothing right now.
 
+### Island 2: what it needs
+
+Based on what pixel-art and this repo have today. Engine work is anything another game could use; the rest stays here.
+
+**Already there to build on:**
+- **Heights and cliffs:** the terrain height map, with slopes, cliffs and walking blocked across cliffs (`engine/world/terrain.ts`, `path.ts`).
+- **Pieces on the grid:** buildings made of wall pieces on cell edges and roof pieces on cells (`engine/world/building/`, with the `walls-proto` tool). The hut already uses this.
+- **Lights:** the day tint, and fires lighting a patch around them (`engine/world/daylight.ts`). The torch and campfire already use this.
+- **Animals:** a dog preset (`engine/animals/animal-presets.ts`), and herds with poses and carrying (`herd.ts`).
+- **People:** the character rig and the shared character editor, so the smuggler can be made in it.
+
+**Engine work (pixel-art):**
+
+| Feature | What it means |
+|---|---|
+| Cave interiors | A second map per cave mouth, with a transition in and out. It is pitch dark there apart from carried and placed lights. |
+| Lantern light | A carried light that wind and rain don't put out. Probably a type of the existing lamp. |
+| Bigger maps | An island 5 times the size: camera limits, and drawing only what's on screen if that becomes slow. |
+| Skeleton | A character setup that can be posed as a still prop, plus a loose skull prop. |
+| Dialogue UI | Speech bubbles for other characters, and 2–3 tappable replies (pixel-ui). |
+| Build mode UI | A top-down grid overlay, a palette of pieces showing their costs, and tap to place. |
+| More pieces | Doors, floors, and a kitchen corner (fire pit and pot), alongside the plank wall and thatch roof. |
+| Companion | An animal that follows a character, lies down with it, and takes go, stay and fetch orders; built on the herd and path code. |
+| Context menu | Tapping a creature shows a small menu of commands (the dog's). |
+| Ground marks | Dig marks, and dug holes that stay in the ground. |
+| New flora and animals | Rocky-island plants, bats, seabirds and spiders; webs as a prop that burns away. |
+
+**Game work (this repo):**
+- Islands as content: a second island's map, quests and texts, with the first island's ending leading on to it.
+- The smuggler: his dialogues, favours and reactions (to the skull, to spiders).
+- Cooking: the pot and recipes, as a cooking table beside `crafts.ts`.
+- The net trap's overnight catch, digging finds, the treasure chest and the map.
+- Zones that open by story, the hidden door, the locked gates and their key.
+- The dog's rules: when it barks, what it chases off and what it is scared of.
+- Seabirds stealing food left out.
+- Splitting `src/main.ts` (about 1,600 lines) so that each island's rules don't pile up in one file.
+
+**Suggested order:**
+1. Cave interiors and the lantern.
+2. The smuggler and dialogue.
+3. The dog as a companion with commands.
+4. Build mode.
+5. Cooking.
+6. Digging and treasure.
+7. Content and polish.
+
 ## Survivor
 
 - For now, one fixed character made once in the wardrobe.
