@@ -1388,14 +1388,15 @@ function flameAt(me: Thing): { x: number; y: number } | null {
  * The lights in the dark, in the view's pixels: on the island its fires (campfires, the burning stump); in the cave
  * the daylight at its open side; and wherever the survivor is, the torch or the lantern in hand.
  */
-function lamps(rect: { x: number; y: number }, me: Thing | null): Lamp[] {
+function lamps(rect: { x: number; y: number }, me: Thing | null, ms: number): Lamp[] {
+  // Each fire flickers out of step with the others, by where it stands.
   const lamp = (at: { i: number; j: number }, up: number, r: number, color?: string): Lamp => {
     const p = world.screenOf(at.i, at.j);
-    return { x: p.x - rect.x, y: p.y - up - rect.y, r, color };
+    return { x: p.x - rect.x, y: p.y - up - rect.y, r: r * flicker(ms, at.i * 3.1 + at.j * 1.7), color };
   };
   // Every lamp sits on a flame: the torch's or the lantern's is found in the survivor's own picture.
   const flame = (hand === 'fire' || hand === 'lantern') && me ? flameAt(me) : null;
-  const carried = flame ? [{ x: flame.x - rect.x, y: flame.y - rect.y, r: hand === 'lantern' ? LANTERN_REACH : 28 }] : [];
+  const carried = flame ? [{ x: flame.x - rect.x, y: flame.y - rect.y, r: (hand === 'lantern' ? LANTERN_REACH : 28) * flicker(ms) }] : [];
   return [
     ...game.fires.map((f) => lamp(f, 5, 46)),
     ...(game.struck === null ? [] : [lamp(palms[game.struck], 14, 40)]),
@@ -1406,14 +1407,16 @@ function lamps(rect: { x: number; y: number }, me: Thing | null): Lamp[] {
  * The cave's lights, tile by tile (see `World.lightField`): the daylight at its open side, its crystals and mushrooms,
  * and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
  */
+/** How much a flame's reach breathes at this moment, about 1: a few percent either way, never in a steady beat. */
+const flicker = (ms: number, phase = 0) => 1 + 0.04 * Math.sin(ms / 83 + phase) + 0.03 * Math.sin(ms / 31 + 1.7 + phase * 2.3);
 function caveLamps(ms: number): TileLamp[] {
   if (!cave) return [];
-  const flicker = 1 + 0.04 * Math.sin(ms / 83) + 0.03 * Math.sin(ms / 31 + 1.7);
+  const f = flicker(ms);
   const carried = hand === 'lantern' || hand === 'fire';
   return [
     { ...cave.exit, r: 2.6, color: CAVE_DAY, amount: 0.8 },
     ...cave.glows.map((g) => (g.kind === 'crystal' ? { ...g, r: 2.4, color: '#5fe6ff', amount: 0.55 } : { ...g, r: 1.6, color: '#8cf06a', amount: 0.4 })),
-    ...(carried && present ? [{ i: actor.i, j: actor.j, r: (hand === 'lantern' ? 4.2 : 3) * flicker, amount: Math.min(1, flicker) }] : []),
+    ...(carried && present ? [{ i: actor.i, j: actor.j, r: (hand === 'lantern' ? 4.2 : 3) * f, amount: Math.min(1, f) }] : []),
   ];
 }
 const CRYSTAL_THING = thing(CRYSTAL);
@@ -1625,7 +1628,7 @@ function frame(ms: number): void {
     // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
     const flash = (striking ? 1 : flashNow) * (1 - fade);
     const tint = tintAt(time);
-    light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me));
+    light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me, ms));
     lightning(image, flash);
   }
   sparks.draw(image, rect, ms);
