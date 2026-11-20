@@ -304,6 +304,16 @@ Based on what pixel-art and this repo have today. Engine work is anything anothe
 - **Settings:** size, darkness and tint (how dark and what colour the unlit cave is), and rubble amount.
 - **The game loads its cave from an exported cave scene,** instead of generating it in `caveScene()`.
 
+**Objects and the treasure chest (spec).** For the scene editor's Object tool and the game:
+- **What can be placed:** every object preset (log, trough, hay, cabinet, cars and the rest) and the objects made in the object editor, in one picker, as the Animal tool offers saved animals and presets.
+- **Rotating:** with the Move tool, select a placed object and turn it a quarter with a button or the R key. New objects face the way the last one was turned.
+- **In the game, objects only stand in the way.** The crate keeps its pick-up and smash, and the chest opens. Nothing else is carried.
+- **The chest looks like a classic pixel chest:** a box of dark planks, a domed lid of planks, grey iron bands round the box and lid, and an iron hasp at the front. It is built from object parts, so it turns all four ways and has an open state.
+- **Opening:**
+  - Its contents are chosen in the editor, from the island game's bag items, kept in a small shared list the editor reads.
+  - A tap walks the survivor to it. The lid swings open over a few frames and then stays open, showing a dark inside.
+  - What was in it goes into the bag. An opened chest stays open in the save.
+
 **Game work (this repo):**
 - Islands as content: a second island's map, quests and texts, with the first island's ending leading on to it.
 - The smuggler: his dialogues, favours and reactions (to the skull, to spiders).

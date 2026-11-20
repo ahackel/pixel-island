@@ -22,7 +22,7 @@ import { heightAt, levelAt, SEA_LEVEL, standingHeight, surfaceAt } from '@pixel/
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { caveLamps as caveOwnLamps, caveThings, caveTint, flicker, setUpCave } from '@pixel/engine/world/cave.ts';
-import type { PlacedItem } from '@pixel/engine/world/props.ts';
+import { openFrames, type PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
@@ -163,7 +163,7 @@ function newGame(who = firstWho()): Game {
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
   const quest: Progress = { quest: START_QUEST, count: 0, done: false };
   const g: Game = {
-    day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], struck: null, fires: [], lying: [], felled: [],
+    day: 1, hunger: 0.5, energy: 1, bag: [], coconuts: [], wood: [], stones: [], items: [], chests: {}, struck: null, fires: [], lying: [], felled: [],
     builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
   };
   if (ISLAND2) g.bag.push('lantern');
@@ -327,7 +327,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Objec
 const app = document.getElementById('app')!;
 
 type Pick = { crab: Crab } | { coconut: { i: number; j: number } } | { wood: { i: number; j: number } } | { stone: { i: number; j: number } } | { item: PlacedItem } | { stump: true }
-  | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor };
+  | { loose: Game['lying'][number] } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -890,7 +890,10 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // and flame some 8 to 22 pixels over the floor).
     if (inCave()) {
       const torch = world.scene.decor.find((d) => d.decor === 'torch' && near(p, d, 7, 15));
-      return torch ? goTo(torch, false, { torch }) : walkTo(p);
+      if (torch) return goTo(torch, false, { torch });
+      // A chest: walked up to, and opened.
+      const chest = world.scene.items.find((it) => openFrames(it.item) && near(p, it, 10, 6));
+      return chest ? goTo(nearSide(chest), false, { chest }) : walkTo(p);
     }
     // The cave mouth: walked into.
     if (rocky && near(p, rocky.face, 9, 8)) return goTo(rocky.mouth, false);
@@ -942,8 +945,31 @@ function walkTo(p: { x: number; y: number }): void {
   goTo({ i: tile.i + 0.5, j: tile.j + 0.5 }, far && speedOf(game) === 1);
 }
 
+/** Where a chest stands, as the save knows it. */
+const chestKey = (it: PlacedItem) => `${it.i},${it.j}`;
+/** Chests opening, and when they began to: the lid swings up a frame at a time. */
+const opening = new Map<PlacedItem, number>();
+const LID_MS = 150;
+
+/** Opens a chest: its lid swings up, and what is in it goes into the bag as far as there is room; the rest stays for later. */
+function openChest(it: PlacedItem): void {
+  const key = chestKey(it);
+  const first = !(key in game.chests);
+  if (first) opening.set(it, performance.now());
+  const inside = first ? (it.loot ?? []).filter((l): l is BagItem => BAG_ITEMS.includes(l as BagItem)) : game.chests[key];
+  const took = inside.slice(0, Math.max(0, BAG_SLOTS - game.bag.length));
+  game.bag.push(...took);
+  game.chests[key] = inside.slice(took.length);
+  actor.emote('use', performance.now());
+  showBag();
+  if (game.chests[key].length) return think('think.full');
+  think(took.length ? 'think.chestLoot' : 'think.chestEmpty');
+}
+
 /** Into another world (the cave, or back out onto the island), standing at a spot of it. */
 function goInto(to: World, at: { i: number; j: number }): void {
+  // Chests opened before stand open.
+  for (const it of to.scene.items) if (chestKey(it) in game.chests && !opening.has(it)) it.open = openFrames(it.item);
   world = to;
   scene = to.scene;
   actor.i = at.i;
@@ -1017,6 +1043,7 @@ function arrive(pick: Pick): void {
     else showBag();
     return think('think.wallTorch');
   }
+  if ('chest' in pick) return openChest(pick.chest);
   // Once on the blanket, the sleep button shows, by day too: sleep then lasts till the next morning.
   if ('blanket' in pick) return;
   // The hat goes straight on the head, not into the bag.
@@ -1634,6 +1661,10 @@ function frame(ms: number): void {
   if (hutBuild && !inCave() && hides(hutParts, me)) {
     island.buildings = [hutBuilding(hutBuild.stage, true)];
     hutParts = island.buildingThings(actor);
+  }
+  for (const [it, t0] of opening) {
+    it.open = Math.min(openFrames(it.item), 1 + Math.floor((ms - t0) / LID_MS));
+    if (it.open >= openFrames(it.item)) opening.delete(it);
   }
   // The island's own things lie on the island: none of them show in the cave.
   const things: Thing[] = inCave() ? [...plants, ...world.itemThings(), ...caveThings(world, actor), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))] : [

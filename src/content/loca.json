@@ -438,5 +438,13 @@
  "think.wallTorch": {
   "en": "A torch, still burning. I'll take it with me.",
   "de": "Eine Fackel, sie brennt noch. Die nehme ich mit."
+ },
+ "think.chestLoot": {
+  "en": "A treasure chest! I took what was inside.",
+  "de": "Eine Schatztruhe! Ich habe alles herausgenommen."
+ },
+ "think.chestEmpty": {
+  "en": "The chest is empty.",
+  "de": "Die Truhe ist leer."
  }
 }

@@ -2,7 +2,7 @@
 // anything, so everything read is checked and a bad save starts a new game.
 import { readStore, writeStore } from '@pixel/shared/files.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
-import { itemById } from '@pixel/engine/world/props.ts';
+import { CARRIED } from '@pixel/engine/world/props.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BAG_ITEMS, BUILDS, BUILD_KINDS, HUT_AT, type BagItem, type Build } from './crafts.ts';
 import { KINDS, QUESTS, type Progress } from './quests.ts';
@@ -43,6 +43,8 @@ export interface Game {
   quest: Progress;
   /** The weather, set when the quest started and the same every day until the next one begins (weather.ts). */
   weather: Kind;
+  /** Chests opened, by where they stand (`i,j` in their scene): what is still in each, left when the bag was full. */
+  chests: Record<string, BagItem[]>;
 }
 
 const KEY = 'pixel-island-save';
@@ -80,13 +82,16 @@ export function loadGame(size: number, palms: number): Game | null {
         .filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && Number.isInteger(b.stage) && num(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
         .map((b: any) => (b.kind === 'hut' ? { kind: b.kind, ...HUT_AT, stage: b.stage } : { kind: b.kind, i: b.i, j: b.j, stage: b.stage }))
       : [],
-    items: g.items.filter((it: any) => spot(it, size) && itemById(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
+    items: g.items.filter((it: any) => spot(it, size) && CARRIED.includes(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
     at: { i: g.at.i, j: g.at.j },
     hat: spot(g.hat, size) ? { i: g.hat.i, j: g.hat.j } : null,
     who: cleanState(g.who),
     quest: { quest: q.quest, count: q.count, done: q.done },
     // Saves from before the weather lasted get the one their quest would have brought.
     weather: KINDS.includes(g.weather) ? g.weather : kindFor(q.quest, g.day),
+    chests: Object.fromEntries(Object.entries(g.chests && typeof g.chests === 'object' ? g.chests : {})
+      .filter(([k, v]) => /^[\d.]+,[\d.]+$/.test(k) && Array.isArray(v))
+      .map(([k, v]) => [k, (v as unknown[]).filter((b): b is BagItem => BAG_ITEMS.includes(b as BagItem))])),
   };
 }
 
