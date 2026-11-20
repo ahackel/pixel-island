@@ -182,7 +182,7 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 - **The smuggler's entrance:** he saw the raft crash and came over to scout. He hides and watches, and the smell of the first meal finally brings him out.
 - **Animals:** bats live in the caves. Seabirds nest on the plateau's rocky ledges, below the cliff top: they give eggs and steal food left lying out. Spiders:
   - Their webs block cave passages and are burned away with a torch or the lantern.
-  - Their silk makes a net or trap that catches crabs or fish while the survivor does something else.
+  - Their silk makes a net trap. Placed in shallow water or on the beach, it holds a fish or a crab the next morning.
   - A big cave spider is a mild threat: it scares the survivor off, so they drop what they hold or run back. It is never deadly.
   - The smuggler is terrified of them.
 - **Time** keeps running in the caves, so coming out late means coming out into the dark.
@@ -196,7 +196,14 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 - A cowardly braggart who is scared of the dark, the caves and spiders, so he needs the survivor. He is the comic relief.
 - There is a hint that he knows more about the wreck than he says. This is the first hook into the mystery.
 - **Cooking brings him out:** he can't cook, and the smell of the survivor's first meal draws him from his cove.
-- He trades in **favours**, not goods: the survivor does tasks, and he pays with the **lantern** (for the first dish), the **shovel** (for a cave fetch), **recipe hints** (dishes "his mum" made) and **wreck gossip** (a line of story each time, building the mystery hook). The favours are:
+- He trades in **favours**, not goods: the survivor does tasks, and he pays with the **lantern** (for the first dish), the **shovel** (for a cave fetch), **recipe hints** (dishes "his mum" made) and **wreck gossip** (a line of story each time, building the mystery hook). Which favour pays what:
+  - fish soup → the lantern;
+  - clearing the spiders from his camp → gossip;
+  - a cave fetch → the shovel;
+  - crab stew and the omelette → recipe hints and gossip;
+  - mushroom stew, the last dish → he tells where the hidden door to his stash is.
+
+  The favours are:
   - **Cook for him:** he's hungry and fussy, and wants particular dishes, which teaches the recipes:
     - **fish soup** (the first, easy one);
     - **crab stew** (crab and coconut from the forest strip);
@@ -204,7 +211,10 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
     - **mushroom stew** (cave mushrooms, so only after the caves).
   - **Fetch from the caves:** things he's too scared to get himself, which leads the survivor deeper step by step.
   - **Scare off pests:** something keeps getting into his supplies, such as spiders in his camp. The survivor solves it without hurting anything.
-- The map is in his **hidden stash, a treasure chest in the deepest cave**, guarded by his own old traps.
+- The map is in his **hidden stash, a treasure chest in the deepest cave**, guarded by his own old traps. They are:
+  - a **hidden door**, found only after he says where it is;
+  - **locked gates**: the key lies beyond a gap too small for the survivor, and the dog fetches it with **Go**;
+  - a corridor behind **thick spider webs**.
 
 **The dog:**
 - A stray from the wreck, trapped in a cave. Free it and feed it, and it follows the survivor from then on.
@@ -227,7 +237,7 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 - **Cave puzzles:**
   - **Blocked passages:** rockfalls and spider webs.
   - **Dog puzzles:** the dog squeezes through a gap to fetch a key or pull a lever.
-  - **The smuggler's traps:** guarding the stash, with riddle locks whose clues are spread around the island.
+  - **The smuggler's traps:** the hidden door, locked gates and the web corridor in front of the stash (see **The smuggler**).
 
 **Draft quest chain** (one way it could go; open to change):
 
@@ -243,10 +253,9 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 | 8 | Free the dog and feed it a cooked meal | the pet |
 | 9 | Fetch something from a cave for the smuggler's shovel, then dig where the dog marks | digging, treasure |
 | 10 | Get through the smuggler's traps to the deepest cave and open the chest | cave puzzles |
-| 11 | Bring him the map, catch a hint about the wreck, and sail off on his boat | the next island |
+| 11 | Take the map up to the lookout and see the next island on the horizon, then sail off on his boat and fade to the end card | the next island |
 
-Open for this island:
-- Which favour pays which reward, past the lantern and the shovel.
+Open for this island: nothing right now.
 
 ## Survivor
 
