@@ -12,6 +12,8 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
+import type { PlacedPerson } from '@pixel/engine/world/scene.ts';
+import { turnFacing } from '@pixel/engine/core/puppet.ts';
 import { along, GLOWING, light, lightByTile, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
 import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, KINDS, weatherAt, type Forced } from './weather.ts';
@@ -251,6 +253,17 @@ let time = 0;
 world.loose = game.items;
 keepStanding();
 const actor = new Actor(lookOf(game.who), game.at);
+/** A character placed in a scene as a prop, held in one frame of a clip (a skeleton slumped in the cave). */
+const props = new WeakMap<object, Actor>();
+function propThing(p: PlacedPerson, ms: number) {
+  let a = props.get(p);
+  if (!a) {
+    props.set(p, (a = new Actor(lookOf(p.state), p)));
+    a.frozen = p.pose ?? null;
+    a.facing = turnFacing(0, 2 * p.turn);
+  }
+  return a.thing(world, ms);
+}
 /** Whether the survivor is on the island: not before the first character is made. */
 let present = !!saved;
 /** How happy the survivor is, 0 to 1: fed and rested. Their face shows it. */
@@ -1601,7 +1614,7 @@ function frame(ms: number): void {
     hutParts = island.buildingThings(actor);
   }
   // The island's own things lie on the island: none of them show in the cave.
-  const things: Thing[] = inCave() ? [...plants, ...caveThings(world, actor), ...world.decorThings()] : [
+  const things: Thing[] = inCave() ? [...plants, ...caveThings(world, actor), ...world.decorThings(), ...scene.people.map((p) => propThing(p, ms))] : [
     ...(rocky ? [mouthThing(at(rocky.face))] : []),
     ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),

@@ -189,7 +189,10 @@ The raft from the first island lands here and breaks apart on the rocks, so the 
 - **Survival:** the same rules as the first island, but cooked food fills a lot, so hunger matters less and exploring matters more.
 - **Skull and skeleton:**
   - A skull is a loose prop. It can be picked up, for a joke: shown to the smuggler, it makes him panic.
-  - The skeleton is built as a character setup, so it can be posed (slumped against a wall, lying in a trap, sitting by the chest). It is mostly placed as decoration.
+  - The skeleton is a full character rig preset in the engine, with every animation a person has. It is mostly placed as decoration: a placed skeleton holds one frozen frame of any animation (a sit, a lie, a stumble), such as slumped against a wall, lying in a trap or sitting by the chest.
+  - Look: bone-white and chunky, but readable. Thin limbs with gaps at the joints and ribs, so it does not read as a solid body. The skull is a part that can come off, and is also the loose skull prop.
+  - The wardrobe works on it (a hat, rags, a held item), so a skeleton can tell a story.
+  - It never moves or reacts when placed. The survivor can be swapped to it in the editor to test the animations; that is not a game feature.
   - They belong in the caves and by the smuggler's traps, as a warning and for a bit of spooky fun. The smuggler has a nervous story about each one.
 
 **The smuggler:**
@@ -276,7 +279,7 @@ Based on what pixel-art and this repo have today. Engine work is anything anothe
 | Cave editor | Caves made by hand in the scene editor rather than by code. See below. |
 | Lantern light | A carried light that wind and rain don't put out. Probably a type of the existing lamp. |
 | Bigger maps | An island 5 times the size: camera limits, and drawing only what's on screen if that becomes slow. |
-| Skeleton | A character setup that can be posed as a still prop, plus a loose skull prop. |
+| Skeleton | A bone-white rig preset with all the character animations and the wardrobe, placeable as a frozen frame; the skull detaches as a loose prop. |
 | Dialogue UI | Speech bubbles for other characters, and 2–3 tappable replies (pixel-ui). |
 | Build mode UI | A top-down grid overlay, a palette of pieces showing their costs, and tap to place. |
 | More pieces | Doors, floors, and a kitchen corner (fire pit and pot), alongside the plank wall and thatch roof. |

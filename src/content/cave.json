@@ -504,7 +504,31 @@
    }
   ],
   "animals": [],
-  "people": [],
+  "people": [
+   {
+    "name": "Skeleton",
+    "state": {
+     "skeleton": true,
+     "hair": null,
+     "wear": 0,
+     "worn": {
+      "top": null,
+      "bottom": null,
+      "shoes": null,
+      "hat": null,
+      "beard": null,
+      "tool": null
+     }
+    },
+    "i": 4.5,
+    "j": 5.5,
+    "turn": 0,
+    "pose": {
+     "clip": "sit",
+     "frame": 0
+    }
+   }
+  ],
   "items": [],
   "spawn": {
    "i": 8.5,
