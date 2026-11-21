@@ -34,7 +34,7 @@ import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/
 import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
-import { caveScene, firstIsland, rockyIsland } from './island.ts';
+import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { advance, next, QUESTS, stonesOut, type Goal, type Progress, type QuestIcon } from './quests.ts';
@@ -65,6 +65,8 @@ function endTryout(): void {
 /** `?cave` starts it straight in the cave, lantern in hand, with no menu, editor or intro. */
 const CAVE_START = params.has('cave');
 const ISLAND2 = params.get('island') === '2' || CAVE_START;
+/** Debug: `?scene=<name>` plays a scene saved from the editor (`src/content/scenes/<name>.json`) as the island; never saved. */
+const SCENE_TRY = params.get('scene') ? savedScene(params.get('scene')!) : null;
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -86,7 +88,7 @@ const GRAB_LUCK = 0.25;
 // ------------------------------------------------------------------ the world
 
 const rocky = ISLAND2 ? rockyIsland() : null;
-const islandScene = rocky?.scene ?? firstIsland();
+const islandScene = rocky?.scene ?? SCENE_TRY ?? firstIsland();
 /** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
 const island = new World(islandScene);
 island.pieceKinds = PIECE_KINDS;
@@ -247,7 +249,7 @@ function washWood(g: Game): void {
   if (beach.length && g.lying.filter((l) => l.item === 'drift').length < DRIFT_LYING) g.lying.push({ item: 'drift', ...onBeach() });
 }
 
-const saved = params.has('new') || TRYOUT || ISLAND2 ? null : loadGame(scene.w, palms.length);
+const saved = params.has('new') || TRYOUT || ISLAND2 || SCENE_TRY ? null : loadGame(scene.w, palms.length);
 let game = saved ?? newGame();
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
@@ -699,7 +701,7 @@ function startNew(who: State): void {
   ended = null;
   questShown = '';
   showQuest();
-  if (!TRYOUT && !ISLAND2) saveGame(game);
+  if (!TRYOUT && !ISLAND2 && !SCENE_TRY) saveGame(game);
   hold(null);
 }
 
@@ -1375,7 +1377,7 @@ function morning(fainted: boolean): void {
   const thought = after !== game.quest ? startQuest(after) : morningThought();
   if (stonesOut(game.quest.quest)) for (let n = stonesAbout(game); n < STONES_OUT; n++) layStone(game);
   showQuest();
-  if (!TRYOUT && !ISLAND2) saveGame(game);
+  if (!TRYOUT && !ISLAND2 && !SCENE_TRY) saveGame(game);
   setTimeout(() => tell(thought), FADE.hold + FADE.in);
 }
 

@@ -21,6 +21,8 @@ Open http://localhost:8330. The same server also serves the engine's editors at 
 
 The story is a chain of quests in `src/content/quests.json`, edited by hand: each has a goal, and can bring weather, wash-ups, stones or lightning when it starts. Texts are in `src/content/loca.json` by id; `npm test` checks both.
 
+Scenes saved from the scene editor ("Save to project") are files in `src/content/scenes/<name>.json`. The game uses `island.json` there as its island instead of the one made from the seed, and `smuggler-cave.json` as the rocky island's cave; `?scene=<name>` plays any saved scene as the island (never saves). An older saved game of a different island is ignored.
+
 Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` starts a new game (not saved until the first sleep), `?quest=5` plays a new game from the fifth quest, with what the quests before it brought, and never saves (the real save stays), `?cheats` shows a row of orange cheat buttons (fill needs, hungry, tired, fill the bag, jump to sunset or night, next morning, finish the quest, clock ×10). `?island=2` plays the first try at the rocky island: a rock hill with a cave mouth, a dark cave to walk into, and a lantern in the bag; it never saves. `?cave` starts there straight inside the cave, lantern in hand, with no menu or intro; with `?cheats`, the CAVE button goes in and out. Options combine: `?cheats&speed=5`.
 
 ## Layout

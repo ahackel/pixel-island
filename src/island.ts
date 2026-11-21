@@ -3,7 +3,6 @@
 // round it laid by hand (see `seaBed`), so there is open water on every side. Driftwood is the game's
 // own, to pick up (see fire.ts), so it is not among the decorations.
 import { createScene, readSceneFile, type PlacedPlant, type Scene } from '@pixel/engine/world/scene.ts';
-import caveFile from './content/cave.json';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { createHeightMap, generateIsland, levelAt, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, surfaceAt, type HeightMap } from '@pixel/engine/world/terrain.ts';
 import { grows } from '@pixel/engine/world/world.ts';
@@ -41,7 +40,15 @@ function seaBed(map: HeightMap): void {
   }
 }
 
-export const firstIsland = (): Scene => islandOf(FIRST);
+/** Scenes saved from the scene editor ("Save to project" writes `content/scenes/<name>.json`), by file name without `.json`. */
+const SAVED = import.meta.glob('./content/scenes/*.json', { eager: true, import: 'default' });
+export const savedScene = (slug: string): Scene | null => {
+  const file = SAVED[`./content/scenes/${slug}.json`];
+  return file ? readSceneFile(JSON.stringify(file)) : null;
+};
+
+/** The first island: the scene saved as `island` when there is one, else the one made from its seed. */
+export const firstIsland = (): Scene => savedScene('island') ?? islandOf(FIRST);
 
 /** An island of a shape, with `ground` changing its land before the sea bed is laid and the palms placed. */
 function islandOf({ island: ISLAND, size: SIZE, seed: SEED, peak, land }: Shape, name = 'Island', ground?: (map: HeightMap) => void): Scene {
@@ -130,9 +137,9 @@ export interface Cave {
   exit: { i: number; j: number };
 }
 
-/** The rocky island's cave, from `content/cave.json`. */
+/** The rocky island's cave, from `content/scenes/smuggler-cave.json`. */
 export function caveScene(): Cave {
-  const scene = readSceneFile(JSON.stringify(caveFile));
+  const scene = savedScene('smuggler-cave')!;
   const exit = scene.cave?.exits[0] ?? scene.spawn;
   return { scene, entry: scene.spawn, exit };
 }
