@@ -1,5 +1,6 @@
 import '../wardrobe/style.css';
 import './style.css';
+import { saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
@@ -184,6 +185,12 @@ function switchTo(scene: Scene): void {
 
 const statusLine = h('p', { class: 'status', 'aria-live': 'polite' });
 let statusTimer = 0;
+/** Saves the scene as a file of the project (the game's content/scenes), for committing. */
+async function saveScene(): Promise<void> {
+  const name = sceneNow().name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
+  say((await saveToProject(`scenes/${name}.json`, JSON.parse(sceneFile(sceneNow())))) ? t('scene.projectDone').replace('{0}', name) : t('scene.projectFail'));
+}
+
 function say(text: string): void {
   statusLine.textContent = text;
   statusLine.hidden = !text;
@@ -1457,6 +1464,7 @@ function render(): void {
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.settings'), icon: 'sliders', run: () => sceneDialog('settings') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
+      { label: t('scene.project'), icon: 'download', run: () => void saveScene() },
       { label: t('scene.import'), icon: 'upload', run: () => void importScene() },
       { label: t('scene.delete'), icon: 'trash', run: deleteScene, danger: true },
     ],
