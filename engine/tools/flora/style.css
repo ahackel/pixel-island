@@ -60,13 +60,6 @@
 .recipe__status[data-kind='error'] {
   color: #b3262d;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .recipe__status[data-kind='warn'] { color: #e0b060; }
-  :root:not([data-theme='light']) .recipe__status[data-kind='error'] { color: #ff8a8a; }
-}
-:root[data-theme='dark'] .recipe__status[data-kind='warn'] { color: #e0b060; }
-:root[data-theme='dark'] .recipe__status[data-kind='error'] { color: #ff8a8a; }
-
 /* The island, in its own tab. */
 .scene__frame {
   display: grid;

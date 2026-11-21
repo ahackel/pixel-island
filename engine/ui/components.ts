@@ -19,9 +19,9 @@ export function iconPicture(name: string, scale = S): HTMLCanvasElement {
   return canvas;
 }
 
-export interface ButtonFace { icon?: string; words?: string; dark?: boolean; lit?: boolean; pressed?: boolean }
+export interface ButtonFace { icon?: string; words?: string; dark?: boolean; lit?: boolean; pressed?: boolean; flat?: boolean }
 
-/** A flat button with an icon, words, or an icon then words. `dark`: the night's own button; `lit`: the one chosen of a row; `pressed`: an on/off button that is on (shown lit). */
+/** A button with an icon, words, or an icon then words. `flat`: no shadow, for a bar of the same paper. `dark`: the night's own button; `lit`: the one chosen of a row; `pressed`: an on/off button that is on (shown lit). */
 export function pixelButton(label: string, face: ButtonFace, on: () => void): HTMLButtonElement {
   const icon = face.icon ? iconRows(face.icon) : null;
   const iconW = icon ? icon[0].length : 0;
@@ -29,8 +29,8 @@ export function pixelButton(label: string, face: ButtonFace, on: () => void): HT
   const wordsW = words ? textWidth(words) : 0;
   const w = words ? 4 + iconW + (icon ? 3 : 0) + wordsW + 4 : 13;
   const h = 13;
-  const { canvas, ctx } = pixelCanvas(w, h + 1, S);
-  panel(ctx, 0, 0, w, h, face.dark ? C.night : face.lit || face.pressed ? C.lit : C.paper, C.shadow);
+  const { canvas, ctx } = pixelCanvas(w, face.flat ? h : h + 1, S); // no shadow row when flat, so it centres
+  panel(ctx, 0, 0, w, h, face.dark ? C.night : face.lit || face.pressed ? C.lit : C.paper, face.flat ? undefined : C.shadow);
   if (icon) drawRows(ctx, icon, words ? 4 : Math.floor((w - iconW) / 2), 2, PAINT);
   if (words) text(ctx, words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
   const b = el('button', 'pbtn');
@@ -245,7 +245,7 @@ export type Look = 'arrows' | 'buttons' | 'colors' | 'list';
 const faceOf = (o: Option): ButtonFace => ({ icon: o.icon, words: o.icon ? undefined : o.words });
 
 /** A button that opens a panel of `content` under it; a tap outside or inside (given `close`) shuts it. */
-function opener(label: string, face: ButtonFace, content: (close: () => void) => Node): HTMLElement {
+export function opener(label: string, face: ButtonFace, content: (close: () => void) => Node): HTMLElement {
   const wrap = el('span', 'upopwrap');
   let pop: HTMLElement | null = null;
   const away = (e: Event) => { if (pop && !wrap.contains(e.target as Node)) close(); };
@@ -291,7 +291,7 @@ function groupLook(label: string, options: Option[], current: string | null, pic
  * The one component to choose a value of a list, however it looks (see `Look`). `get` reads the current id (null: none) and
  * is asked again at every redraw; `pick` is called with a chosen id. `width` is in pixels, for arrows, colors and list.
  */
-export function choice(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, look: Look = 'arrows', width = 60): Live {
+export function choice(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, look: Look = 'arrows', width = 60, flat = false): Live {
   const index = () => Math.max(0, options.findIndex((o) => o.id === get()));
   if (look === 'colors') return colorsLook(label, options.filter((o) => o.color).map((o) => ({ value: o.id, color: o.color! })), get, pick, width);
   if (look === 'arrows') {
@@ -302,7 +302,7 @@ export function choice(label: string, options: Option[], get: () => string | nul
   if (look === 'buttons') {
     self.redraw = () => self.replaceChildren(groupLook(label, options, get(), (id) => { pick(id); self.redraw(); }));
   } else {
-    self.redraw = () => self.replaceChildren(opener(label, faceOf(options[index()]), (close) => {
+    self.redraw = () => self.replaceChildren(opener(label, { ...faceOf(options[index()]), flat }, (close) => {
       const list = el('div', 'urow');
       list.append(...options.map((o) => pixelButton(o.words ?? o.icon ?? o.id, { ...faceOf(o), lit: o.id === get() }, () => { pick(o.id); close(); self.redraw(); })));
       return list;
@@ -368,10 +368,10 @@ export function textField(label: string, value: string, change: (value: string) 
 }
 
 /** A button that opens a panel of icon buttons, one per action. */
-export function menu(label: string, items: { icon: string; label: string; on: () => void }[], icon = 'menu'): HTMLElement {
-  return opener(label, { icon }, (close) => {
+export function menu(label: string, items: { icon: string; label: string; on: () => void; danger?: boolean; disabled?: boolean }[], icon = 'menu', flat = false): HTMLElement {
+  return opener(label, { icon, flat }, (close) => {
     const list = el('div', 'urow');
-    list.append(...items.map((i) => pixelButton(i.label, { icon: i.icon }, () => { close(); i.on(); })));
+    list.append(...items.map((i) => Object.assign(pixelButton(i.label, { icon: i.icon, dark: i.danger }, () => { close(); i.on(); }), { disabled: !!i.disabled })));
     return list;
   });
 }
@@ -421,4 +421,58 @@ export function numberField(name: Name, value: number, change: (value: number) =
   paint();
   wrap.append(canvas, grab, typed);
   return wrap;
+}
+
+// ------------------------------------------------------------------ page header
+
+/** What the header of a tool page holds; every part but the tool switcher is optional. */
+export interface HeaderOptions {
+  /** The pages to switch between, the current one by `tool`; `href` is where a pick goes. */
+  tools: { id: string; icon: string; name: string; href: string }[];
+  tool: string;
+  about?: string[];
+  more?: { icon: string; label: string; on: () => void; danger?: boolean; disabled?: boolean }[];
+  /** Short status text next to the menu (saved, an error). */
+  status?: Node;
+  /** Old-style controls the page still brings itself (a picker of its things). */
+  things?: Node;
+  undo?: () => void;
+  redo?: () => void;
+  shuffle?: () => void;
+  extra?: Node;
+  languages?: { current: string; ids: string[]; pick: (id: string) => void };
+  labels?: { about: string; more: string; undo: string; redo: string; shuffle: string; language: string; tools: string };
+}
+
+/** The header of every tool page: switcher, about, menu, status, then undo, redo and language at the right. */
+export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null } {
+  const t = { about: 'About', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle', language: 'Language', tools: 'Tools', ...o.labels };
+  const bar = el('header', 'uheader');
+  const pages: Option[] = o.tools.map((x) => ({ id: x.id, icon: x.icon, words: x.name }));
+  const left = el('span', 'urow');
+  left.append(choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true));
+  if (o.about) {
+    const paras = o.about;
+    left.append(opener(t.about, { icon: 'info', flat: true }, () => {
+      const text = el('div', 'uabout');
+      text.append(...paras.map((p) => Object.assign(el('p', ''), { textContent: p })));
+      return text;
+    }));
+  }
+  if (o.more) left.append(menu(t.more, o.more, 'more', true));
+  if (o.things) left.append(o.things);
+  if (o.status) left.append(o.status);
+  const right = el('span', 'urow');
+  const undo = o.undo ? pixelButton(t.undo, { icon: 'undo', flat: true }, o.undo) : null;
+  const redo = o.redo ? pixelButton(t.redo, { icon: 'redo', flat: true }, o.redo) : null;
+  if (undo) right.append(undo);
+  if (redo) right.append(redo);
+  if (o.shuffle) right.append(pixelButton(t.shuffle, { icon: 'dice', flat: true }, o.shuffle));
+  if (o.extra) right.append(o.extra);
+  if (o.languages) {
+    const l = o.languages;
+    right.append(choice(t.language, l.ids.map((id) => ({ id, icon: id })), () => l.current, l.pick, 'list', 60, true));
+  }
+  bar.append(left, right);
+  return { bar, undo, redo };
 }

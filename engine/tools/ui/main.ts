@@ -1,8 +1,9 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, dialog, field, fields, hud, numberField, iconPicture, menu, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, dialog, field, fields, header, hud, numberField, iconPicture, menu, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
+import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
 import { C, PAINT, S } from '../../ui/theme.ts';
 
@@ -57,6 +58,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ['status', [() => status.canvas]],
   ['label', [() => label('LABEL', C.paper, S * 2)]],
   ['speech bubble', [() => speechBubble('Hello', { ink: C.ink, paper: C.paper, shadow: C.shadow }, S)]],
+  ['header', [() => header({ tools: TOOLS.map((x) => ({ ...x, href: toolHref(x.id) })), tool: 'ui', about: ['What this page is.'], more: [{ icon: 'download', label: 'Save', on: noop }, { icon: 'trash', label: 'Delete', on: noop, danger: true }], undo: noop, redo: noop, languages: { current: 'en', ids: ['en', 'de'], pick: noop } }).bar]],
   ['dialog', [() => dialog('Hello there, this is a dialog.', portrait, 90)]],
 ];
 

@@ -27,7 +27,7 @@ canvas {
 .shell {
   height: 100dvh;
   display: grid;
-  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
@@ -219,9 +219,6 @@ canvas {
 }
 .mi--danger {
   color: #d9473b;
-}
-@media (prefers-color-scheme: dark) {
-  .mi--danger { color: #ff9a8f; }
 }
 
 /* ---- segmented control: every pick-one row, always one line */

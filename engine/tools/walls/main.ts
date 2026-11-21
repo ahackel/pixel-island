@@ -19,7 +19,8 @@ import { plankWall } from '../../engine/world/building/pieces/plank-wall.ts';
 import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { button, checkbox, h, history, icon, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
+import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word, button, icon } from '../../shared/shell.ts';
+import { choice, numberField, pixelButton, type Option } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
@@ -42,11 +43,11 @@ const undo = history(() => ({ id: prefs.id, w: wall() }), (v) => {
   grids = null;
   render();
 });
-function changed(change: Parameters<typeof changeWall>[1]): void {
+function changed(change: Parameters<typeof changeWall>[1], keepPanel = false): void {
   message = changeWall(prefs.id, change) ? '' : L('Could not save: this browser refuses storage here.', 'Nicht gespeichert: Dieser Browser erlaubt hier keinen Speicher.');
   undo.commit();
   benchDirty = true;
-  render();
+  if (keepPanel) renderBar(); else render();
 }
 function pick(id: string): void {
   prefs.id = id;
@@ -106,14 +107,9 @@ function drawBench(ms: number): void {
 
 // ------------------------------------------------------------------ panels
 
-function slider(title: string, value: number, min: number, max: number, set: (v: number) => void): HTMLElement {
-  const input = h('input', { type: 'range', class: 'slider', min: String(min), max: String(max), step: '1', 'aria-label': title });
-  input.value = String(value);
-  const out = h('b', {}, String(value));
-  input.addEventListener('input', () => { out.textContent = input.value; });
-  input.addEventListener('change', () => set(Number(input.value)));
-  return row(title, input, out);
-}
+const num = (icon: string, tip: string, value: number, min: number, max: number, set: (v: number) => void) =>
+  numberField({ icon, tip }, value, set, { min, max, width: 24 });
+const pb = (label: string, face: { icon: string; lit?: boolean; pressed?: boolean }, on: () => void) => pixelButton(label, face, on);
 
 function freezeIt(): void {
   const w = wall();
@@ -129,38 +125,30 @@ function freezeIt(): void {
 
 function panelFor(tab: Tab): (Node | string)[] {
   const w = wall();
+  const freezeLabel = w.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren');
+  const freeze = pb(freezeLabel, { icon: 'freeze' }, freezeIt);
   if (tab === 'rule') {
-    const common = [slider(L('Height (levels)', 'Höhe (Stufen)'), w.height, 1, 8, (v) => {
-      if (w.builtin) { prefs.height = v; savePrefs(); benchDirty = true; render(); } else changed({ height: v });
-    })];
-    if (w.art) {
-      return [section(L('Wall', 'Wand'), ...common, h('p', { class: 'note' }, w.locked
-        ? L('Frozen: drawn from its pixels. Unlock it on the Pixels tab to go back to the rule.', 'Eingefroren: aus seinen Pixeln gezeichnet. Entsperre es im Reiter Pixel, um zur Regel zurückzukehren.')
-        : L('Painted by hand: its look is its pixels. The height is the bench\'s and what a frozen wall is drawn at.', 'Von Hand gemalt: sein Aussehen sind seine Pixel. Die Höhe gilt für die Werkbank und fürs Einfrieren.')))];
-    }
+    const height = num('height', L('Height (levels)', 'Höhe (Stufen)'), w.height, 1, 8, (v) => {
+      if (w.builtin) { prefs.height = v; savePrefs(); benchDirty = true; } else changed({ height: v }, true);
+    });
+    if (w.art) return [height];
     const o = w.rule!.options;
     const set = (next: Partial<typeof o>) => {
       if (w.builtin) return;
-      changed({ rule: { piece: 'plank', options: { ...o, ...next } } });
+      changed({ rule: { piece: 'plank', options: { ...o, ...next } } }, true);
     };
-    return [section(L('Planks', 'Planken'),
-      ...common,
-      w.builtin ? h('p', { class: 'note' }, L('A wall of the engine, as the island game builds its hut. Duplicate it to change the rule, or freeze it to paint over it.', 'Eine Wand der Engine, wie das Inselspiel seine Hütte baut. Dupliziere sie, um die Regel zu ändern, oder friere sie ein, um sie zu übermalen.')) : '',
-      ...(w.builtin ? [] : [
-        slider(L('Overhang (px)', 'Überstand (px)'), o.overhang, 0, 6, (v) => set({ overhang: v })),
-        row(L('Top', 'Oberkante'), segmented(L('Top', 'Oberkante'), [{ id: 'slope', label: L('Slope', 'Schräg') }, { id: 'stepped', label: L('Stepped', 'Gestuft') }, { id: 'flat', label: L('Flat', 'Flach') }], o.top, (v) => set({ top: v as typeof o.top }))),
-        slider(L('Pattern', 'Muster'), o.seed, 0, 99, (v) => set({ seed: v })),
-      ]),
-      h('div', { class: 'toggles' },
-        w.builtin ? button({ class: 'toggle' }, duplicate, L('Duplicate to edit', 'Zum Bearbeiten duplizieren')) : '',
-        button({ class: 'toggle' }, freezeIt, w.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren'))))];
+    const tops: Option[] = [{ id: 'slope', icon: 'slope', words: L('Slope', 'Schräg') }, { id: 'stepped', icon: 'steps', words: L('Stepped', 'Gestuft') }, { id: 'flat', icon: 'flat', words: L('Flat', 'Flach') }];
+    return [
+      h('div', { class: 'urow' }, height,
+        ...(w.builtin ? [] : [
+          num('wall', L('Overhang (px)', 'Überstand (px)'), o.overhang, 0, 6, (v) => set({ overhang: v })),
+          num('grid', L('Pattern', 'Muster'), o.seed, 0, 99, (v) => set({ seed: v })),
+          choice(L('Top', 'Oberkante'), tops, () => o.top, (v) => set({ top: v as typeof o.top }), 'buttons'),
+        ])),
+      h('div', { class: 'urow' }, ...(w.builtin ? [pb(L('Duplicate to edit', 'Zum Bearbeiten duplizieren'), { icon: 'copy' }, duplicate)] : []), freeze),
+    ];
   }
-  if (!w.art) {
-    return [section(L('Pixels', 'Pixel'), h('p', { class: 'note' }, L(
-      'Drawn by rule. Freezing draws it once on flat ground and keeps every column, from its foot up, to polish by hand. On slopes each column still stands on the ground under it.',
-      'Nach Regeln gezeichnet. Einfrieren zeichnet sie einmal auf ebenem Boden und behält jede Spalte, vom Fuß aufwärts, zum Nacharbeiten. Am Hang steht jede Spalte weiter auf dem Boden darunter.')),
-    button({ class: 'btn' }, freezeIt, icon('lock'), h('span', { class: 'btn__label' }, w.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren'))))];
-  }
+  if (!w.art) return [freeze];
   const art = w.art;
   grids ??= gridsOf(art);
   const g = grids;
@@ -189,17 +177,15 @@ function panelFor(tab: Tab): (Node | string)[] {
     keys: ['driftwood', 'wood', 'bark', 'tan', 'stone', 'basalt', 'grey'],
   });
   return [
-    section(L('Pixels', 'Pixel'), editor.el, h('p', { class: 'note' }, L(
-      'Blue: the foot, where each column meets the ground, and the two ends of the edge. Red: the wall\'s height. Columns past the ends poke out over the corner.',
-      'Blau: der Fuß, wo jede Spalte den Boden trifft, und die beiden Enden der Kante. Rot: die Höhe der Wand. Spalten jenseits der Enden ragen über die Ecke.'))),
-    w.locked ? section(L('Locked', 'Gesperrt'), button({ class: 'toggle' }, () => {
+    editor.el,
+    w.locked ? pb(L('Unlock', 'Entsperren'), { icon: 'unlock' }, () => {
       if (!confirm(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?'))) return;
       unlockWall(w.id);
       grids = null;
       undo.reset();
       benchDirty = true;
       render();
-    }, L('Unlock', 'Entsperren'))) : '',
+    }) : '',
   ];
 }
 
@@ -221,7 +207,7 @@ const under = h('div', { class: 'props__under' });
 const name = nameTag();
 name.onRename((n) => { if (n.trim() && !wall().builtin) changed({ name: n.trim() }); });
 
-const TABS: [Tab, string, string, IconName][] = [['rule', 'Wall', 'Wand', 'wall'], ['pixels', 'Pixels', 'Pixel', 'pencil']];
+const TABS: Option[] = [{ id: 'rule', icon: 'wall', words: L('Wall', 'Wand') }, { id: 'pixels', icon: 'pencil', words: L('Pixels', 'Pixel') }];
 
 function renderBar(): void {
   const w = wall();
@@ -233,6 +219,7 @@ function renderBar(): void {
         'Die Teile, aus denen Gebäude bestehen: Wände auf den Kanten der Kartenfelder. Jede wird auf einem kleinen Testgelände mit Hütte, Rampe und Klippe gezeigt, mit oder ohne Strohdach.'),
       L('Freeze a rule-drawn wall to keep its pixels and polish them by hand. A frozen built-in wall is locked: games build with the painted one (wallKind in engine/world/building/walls.ts).',
         'Friere eine regelgezeichnete Wand ein, um ihre Pixel zu behalten und von Hand nachzuarbeiten. Eine eingefrorene eingebaute Wand ist gesperrt: Spiele bauen mit der gemalten (wallKind in engine/world/building/walls.ts).'),
+      L('In the Pixels tab, blue marks the foot and the two ends of the edge, red the wall\'s height.', 'Im Reiter Pixel markiert Blau den Fuß und die Enden der Kante, Rot die Höhe der Wand.'),
       L('Rock walls for caves are drawn by the cave code; they join this list once that code is in the engine.', 'Felswände für Höhlen zeichnet der Höhlen-Code; sie kommen in diese Liste, sobald dieser Code in der Engine ist.'),
     ],
     more: [
@@ -275,10 +262,11 @@ function render(): void {
     h('span', { class: 'props__badges' },
       h('span', { class: `props__badge props__badge--${k.art ? 'painted' : 'built'}` }, k.art ? L('Painted', 'Gemalt') : L('Rule', 'Regel')),
       k.locked ? h('span', { class: 'props__badge props__badge--locked' }, icon('lock')) : null))));
-  under.replaceChildren(h('div', { class: 'toggles props__stagetools' },
-    checkbox(L('Thatch roof on the hut', 'Strohdach auf der Hütte'), prefs.roof, (on) => { prefs.roof = on; savePrefs(); benchDirty = true; }),
-    segmented(L('Zoom', 'Zoom'), [2, 3, 4].map((z) => ({ id: String(z), label: `${z}×` })), String(prefs.zoom), (z) => { prefs.zoom = Number(z); savePrefs(); benchDirty = true; render(); })));
-  tabSlot.replaceChildren(tabs(L('Sections', 'Bereiche'), TABS.map(([id, en, de, ic]) => ({ id, label: L(en, de), icon: ic })), prefs.tab, (id) => { prefs.tab = id; savePrefs(); render(); }));
+  const zooms: Option[] = [2, 3, 4].map((z) => ({ id: String(z), words: `${z}×` }));
+  under.replaceChildren(h('div', { class: 'urow props__stagetools' },
+    pb(L('Thatch roof on the hut', 'Strohdach auf der Hütte'), { icon: 'roof', pressed: prefs.roof }, () => { prefs.roof = !prefs.roof; savePrefs(); benchDirty = true; render(); }),
+    choice(L('Zoom', 'Zoom'), zooms, () => String(prefs.zoom), (z) => { prefs.zoom = Number(z); savePrefs(); benchDirty = true; }, 'buttons')));
+  tabSlot.replaceChildren(choice(L('Sections', 'Bereiche'), TABS, () => prefs.tab, (id) => { prefs.tab = id as Tab; savePrefs(); render(); }, 'buttons'));
   const scroll = panel.scrollTop;
   panel.replaceChildren(...panelFor(prefs.tab));
   panel.scrollTop = scroll;

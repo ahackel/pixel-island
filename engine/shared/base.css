@@ -1,5 +1,6 @@
-/* Colour tokens and element defaults shared by every tool. The stage keeps its sand ground in both themes. */
+/* Colour tokens and element defaults shared by every tool. Bright theme only. */
 :root {
+  color-scheme: light;
   --bg: #f1f5f4;
   --panel: #ffffff;
   --fg: #16262b;
@@ -15,35 +16,6 @@
   --font-display: 'Pixelify Sans', ui-monospace, 'Courier New', monospace;
   --font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #0f191b;
-    --panel: #172527;
-    --fg: #e3eeed;
-    --muted: #9bb1b1;
-    --line: #2a3d3f;
-    --well: #1f3033;
-    --accent: #5fcfd2;
-    --accent-ink: #0b1a1c;
-    --ink: #0b1a1c;
-    --bar: #132022;
-    color-scheme: dark;
-  }
-}
-:root[data-theme='dark'] {
-  --bg: #0f191b;
-  --panel: #172527;
-  --fg: #e3eeed;
-  --muted: #9bb1b1;
-  --line: #2a3d3f;
-  --well: #1f3033;
-  --accent: #5fcfd2;
-  --accent-ink: #0b1a1c;
-  --ink: #0b1a1c;
-  --bar: #132022;
-  color-scheme: dark;
-}
-
 body {
   margin: 0;
   background: var(--bg);

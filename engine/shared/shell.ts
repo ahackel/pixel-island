@@ -3,6 +3,8 @@
 // A tool only declares its tabs, preview rows and what Shuffle does.
 import './ui.css';
 import { currentLang, LANGS, setLang, type Lang } from './lang.ts';
+import { header } from '../ui/components.ts';
+import { TOOLS, toolHref, type ToolId } from './tools.ts';
 
 // ------------------------------------------------------------------ elements
 
@@ -163,31 +165,20 @@ export function flag(lang: Lang): SVGSVGElement {
 const WORDS = {
   en: {
     tools: 'Tools', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', parts: 'Parts',
-    animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
+    icons: 'Icons', ui: 'Interface', animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
     name: 'Name', rollName: 'Roll a name', picture: 'Save a picture', rollTab: 'Shuffle this tab', lock: 'Keep this tab when shuffling all',
     pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones',
   },
   de: {
     tools: 'Werkzeuge', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', parts: 'Teile',
-    animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
+    icons: 'Symbole', ui: 'Oberfläche', animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
     name: 'Name', rollName: 'Namen würfeln', picture: 'Bild speichern', rollTab: 'Diesen Reiter würfeln', lock: 'Beim Würfeln behalten',
     pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln',
   },
 } satisfies Record<Lang, Record<string, string>>;
 export const word = (key: keyof typeof WORDS.en): string => WORDS[currentLang()][key];
 
-export type ToolId = 'home' | 'wardrobe' | 'parts' | 'animals' | 'props' | 'objects' | 'flora' | 'walls' | 'scene';
-const TOOLS: { id: ToolId; href: string; icon: IconName }[] = [
-  { id: 'home', href: '../../', icon: 'home' },
-  { id: 'wardrobe', href: '../wardrobe/', icon: 'shirt' },
-  { id: 'parts', href: '../parts/', icon: 'scissors' },
-  { id: 'animals', href: '../animals/', icon: 'paw' },
-  { id: 'props', href: '../props/', icon: 'props' },
-  { id: 'objects', href: '../objects/', icon: 'armchair' },
-  { id: 'flora', href: '../flora/', icon: 'sprout' },
-  { id: 'walls', href: '../walls/', icon: 'wall' },
-  { id: 'scene', href: '../scene/', icon: 'mountain' },
-];
+export { type ToolId } from './tools.ts';
 
 // ------------------------------------------------------------------ popovers
 
@@ -249,42 +240,14 @@ export interface TopBar {
 export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null; pops: HTMLElement[] } {
   // F2 goes to where the dev server starts: the game when a game serves the tools, else the start page.
   if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/'));
-  const me = TOOLS.find((x) => x.id === o.tool)!;
-  const switcher = h('button', { type: 'button', class: 'switch', 'aria-label': `${o.title}, ${word('tools')}` },
-    h('span', { class: 'switch__icon' }, icon(me.icon)), h('h1', {}, o.title), icon('chevron'));
-  const tools = h('nav', { class: 'pop', 'aria-label': word('tools') },
-    // Links are written from a tool's folder; the start page sits one level up.
-    ...TOOLS.map((x) => h('a', { class: 'mi', href: o.tool === 'home' ? x.href.replace('../', './') : x.href, ...(x.id === o.tool ? { 'aria-current': 'page' } : {}) }, icon(x.icon), word(x.id))));
-  attachPopover(switcher, tools);
-
-  const info = h('button', { type: 'button', class: 'ib bar__info', 'aria-label': word('about'), title: word('about') }, icon('info'));
-  const about = h('div', { class: 'pop pop--text', role: 'dialog', 'aria-label': word('about') }, ...o.about.map((p) => h('p', {}, p)));
-  attachPopover(info, about);
-
-  const moreButton = h('button', { type: 'button', class: 'ib bar__more', 'aria-label': word('more'), title: word('more') }, icon('more'));
-  const more = menu(word('more'), o.more);
-  attachPopover(moreButton, more);
-
-  const undo = o.undo ? button({ class: 'ib', 'aria-label': word('undo'), title: word('undo') }, o.undo, icon('undo')) : null;
-  const redo = o.redo ? button({ class: 'ib', 'aria-label': word('redo'), title: word('redo') }, o.redo, icon('redo')) : null;
-  const me2 = LANGS.find((l) => l.id === currentLang())!;
-  const langButton = h('button', { type: 'button', class: 'lang bar__langs', 'aria-label': `${word('language')}: ${me2.name}`, title: word('language') }, flag(me2.id), icon('chevron'));
-  const langMenu = h('div', { class: 'pop', role: 'menu', 'aria-label': word('language') },
-    ...LANGS.map((l) => button({ class: 'mi', role: 'menuitemradio', 'aria-checked': String(l.id === me2.id), lang: l.id }, () => {
-      langMenu.hidePopover();
-      if (l.id === currentLang()) return;
-      setLang(l.id);
-      o.relabel();
-    }, flag(l.id), l.name)));
-  attachPopover(langButton, langMenu);
-
-  const bar = h('header', { class: 'bar' },
-    switcher, info, h('span', { class: 'bar__sep' }), o.things, moreButton, o.status, h('span', { class: 'bar__break' }),
-    h('span', { class: 'bar__spacer' }), undo, redo,
-    o.shuffle && button({ class: 'btn', title: word('shuffle') }, o.shuffle, icon('die'), h('span', { class: 'btn__label' }, word('shuffle'))),
-    o.extra, langButton,
-  );
-  return { bar, undo, redo, pops: [tools, about, more, langMenu] };
+  const tools = TOOLS.map((x) => ({ ...x, name: word(x.id as keyof typeof WORDS.en), href: toolHref(x.id) }));
+  const { bar, undo, redo } = header({
+    tools, tool: o.tool, about: o.about, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
+    more: o.more.map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
+    languages: { current: currentLang(), ids: LANGS.map((l) => l.id), pick: (id) => { setLang(id as Lang); o.relabel(); } },
+    labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools') },
+  });
+  return { bar, undo, redo, pops: [] };
 }
 
 // ------------------------------------------------------------------ inspector parts
