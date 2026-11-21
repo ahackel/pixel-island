@@ -13,3 +13,16 @@ export async function saveToProject(name: string, data: unknown): Promise<boolea
     return false;
   }
 }
+
+/** Saves what editors keep on this device under these store keys into the project (`store/<key>.json`); a key with nothing kept yet is skipped. True when at least one was written and none failed. */
+export async function saveStores(keys: string[]): Promise<boolean> {
+  let wrote = false;
+  for (const key of keys) {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(key); } catch { /* no storage: nothing to save */ }
+    if (raw === null) continue;
+    if (!(await saveToProject(`store/${key}.json`, JSON.parse(raw)))) return false;
+    wrote = true;
+  }
+  return wrote;
+}

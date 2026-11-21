@@ -17,7 +17,7 @@ To take a newer engine: `git subtree pull --prefix=engine https://github.com/aha
 npm run dev
 ```
 
-Open http://localhost:8330. The same server also serves the engine's editors at `/engine/tools/*`: F2 (or the EDITOR cheat) jumps from the game to the scene editor, and F2 in any editor jumps back. What an editor saves with "Save to project" is written into `src/content/` to commit. The editors exist only on the dev server; the published build has none of them. `npm test` runs the clock and needs tests, `npm run build` type-checks and builds into `dist/`.
+Open http://localhost:8330. The same server also serves the engine's editors at `/engine/tools/*`: F2 (or the EDITOR cheat) jumps from the game to the scene editor, and F2 in any editor jumps back. What an editor saves with "Save to project" is written into `src/content/` (stores such as walls, props, parts and flora under `src/content/store/`) to commit; the game reads them when the browser has no edits of its own. The editors exist only on the dev server; the published build has none of them. `npm test` runs the clock and needs tests, `npm run build` type-checks and builds into `dist/`.
 
 The story is a chain of quests in `src/content/quests.json`, edited by hand: each has a goal, and can bring weather, wash-ups, stones or lightning when it starts. Texts are in `src/content/loca.json` by id; `npm test` checks both.
 

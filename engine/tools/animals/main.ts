@@ -1,6 +1,7 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
+import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
   isShadow, MARKS, NUMBERS, PLANS, readAnimalFile, ROLES, savedAnimals, sizeClassOf, TAILS,
@@ -447,6 +448,7 @@ function renderBar(): void {
         changed();
       } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${fileName}.json`, animalFile(fileName, animal)) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([ANIMAL_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       { label: expert ? L('Expert tools: on', 'Expertenwerkzeuge: an') : L('Expert tools: off', 'Expertenwerkzeuge: aus'), icon: 'sliders', run: () => {
         expert = !expert;

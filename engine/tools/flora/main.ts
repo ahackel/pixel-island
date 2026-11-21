@@ -12,6 +12,7 @@ import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
 import { button, cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
+import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
 
 // ------------------------------------------------------------------ state
@@ -381,6 +382,7 @@ function shuffle(): void {
 }
 
 function renderBar(): void {
+  const status = h('span', { class: 'bar__status', 'aria-live': 'polite' });
   const total = FLORA.length + FLORA_REJECTED.length;
   const repaired = FLORA.filter((e) => e.repairs.length).length;
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
@@ -391,6 +393,9 @@ function renderBar(): void {
       repaired: repaired ? t('foot.repaired', { n: repaired }) : '',
     }), t('foot.rules')],
     more: [
+      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([FLORA_STORE]).then((ok) => {
+        status.textContent = ok ? (currentLang() === 'de' ? 'Im Projekt gespeichert (src/content/store).' : 'Saved to the project (src/content/store).') : (currentLang() === 'de' ? 'Nichts gespeichert: ändere erst etwas.' : 'Nothing saved: change something first.');
+      }) },
       { label: currentLang() === 'de' ? 'Neu beginnen' : 'Start over', icon: 'reset', run: () => {
         state = defaultState();
         panelTab = state.tab;
@@ -408,7 +413,7 @@ function renderBar(): void {
         render();
       } },
     ],
-    status: h('span', { class: 'bar__status' }),
+    status,
     undo: undo.undo,
     redo: undo.redo,
     shuffle,

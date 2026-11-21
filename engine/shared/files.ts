@@ -2,11 +2,22 @@
 
 export const newId = () => Math.random().toString(36).slice(2, 10);
 
-/** A value kept on this device as JSON, or the fallback when there is none or the browser has no storage here. */
+/** What the game's project holds for each store, saved from an editor with "Save to project" (`src/content/store/<key>.json`). */
+const project: Record<string, unknown> = {};
+try {
+  for (const [file, value] of Object.entries(import.meta.glob('/src/content/store/*.json', { eager: true, import: 'default' }))) project[file.slice(file.lastIndexOf('/') + 1, -5)] = value;
+} catch {
+  // Plain Node has no import.meta.glob; scripts then see no project files.
+}
+
+/** The project's value for a store key, for the few readers that keep their own storage. */
+export const projectStore = <T>(key: string): T | undefined => project[key] as T | undefined;
+
+/** A value kept on this device as JSON, else the project's saved one, else the fallback (also when the browser has no storage here). */
 export function readStore<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw === null ? fallback : JSON.parse(raw);
+    return raw === null ? (key in project ? (project[key] as T) : fallback) : JSON.parse(raw);
   } catch {
     return fallback;
   }

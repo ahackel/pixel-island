@@ -8,7 +8,7 @@ import {
 import { CATALOG, entryById, recolor, type Entry } from './catalog.ts';
 import { HAIR_KEYS, PALETTE, SKIN_KEYS, type PaletteKey } from '../core/palette.ts';
 import { BUILDS, type Item, type Look, type Slot } from '../core/puppet.ts';
-import { newId } from '../../shared/files.ts';
+import { newId, projectStore } from '../../shared/files.ts';
 import { BONE, boneHead, PELVIS, RIBS, skullFaces } from './skeleton.ts';
 import { WEAR_MAX, weathered, type Wear } from './wear.ts';
 
@@ -186,7 +186,7 @@ export function lookOf(source: State, underwear = true): Look {
 
 export interface Saved { id: string; name: string; state: State }
 
-const ROSTER_KEY = 'castaway-characters';
+export const ROSTER_KEY = 'castaway-characters';
 /** The wardrobe's working character from before characters had names. */
 const DRAFT_KEY = 'castaway-wardrobe';
 const FILE_TYPE = 'castaway-character';
@@ -214,7 +214,7 @@ export function pickCharacter(id: string | null): void {
 /** Characters saved on this device. The first time, the wardrobe's working character becomes the first one. */
 export function loadRoster(): Saved[] {
   try {
-    const raw = localStorage.getItem(ROSTER_KEY);
+    const raw = localStorage.getItem(ROSTER_KEY) ?? (projectStore(ROSTER_KEY) === undefined ? null : JSON.stringify(projectStore(ROSTER_KEY)));
     if (raw === null) {
       const draft = localStorage.getItem(DRAFT_KEY);
       if (!draft) return [];
