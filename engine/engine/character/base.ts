@@ -346,7 +346,9 @@ export const BROW_STATES = ['plain', 'surprised', 'angry', 'sad'] as const;
 export type BrowState = (typeof BROW_STATES)[number];
 export const browState = (mood: Mood): BrowState => (mood === 'surprised' || mood === 'angry' || mood === 'sad' ? mood : 'plain');
 /** Live: the shape editor changes these in place and the faces are built again. */
-export const FACE_SHAPES = structuredClone(shapesFile) as FaceShapes;
+// A game's own face shapes (what its wardrobe saved into src/content) replace the engine's. The glob is empty where there are none.
+const gameShapes = Object.values(import.meta.glob('/src/content/face-shapes.json', { eager: true, import: 'default' }))[0];
+export const FACE_SHAPES = structuredClone(gameShapes ?? shapesFile) as FaceShapes;
 /** Where each stamp sits on the 21-wide head grid: column, row, width, height. */
 export const FACE_REGIONS: Record<'eyes' | 'mouths' | 'brows', Record<FaceView, [number, number, number, number]>> = {
   eyes: { diagonal: [8, 11, 9, 4], front: [6, 11, 9, 4], side: [13, 11, 4, 4] },

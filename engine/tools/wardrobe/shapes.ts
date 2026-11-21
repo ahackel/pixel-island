@@ -4,6 +4,7 @@
 // through the dev server, which only exists while developing.
 import { browState, BROWS, EYE_SHAPES, eyeState, FACE_REGIONS, FACE_SHAPES, faceRows, headRows, type FaceOptions, type FaceView, type Mood } from '../../engine/character/base.ts';
 import { download, pickFile } from '../../shared/files.ts';
+import { saveToProject } from '../../shared/project.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { button, h, icon, row, segmented, type IconName } from '../../shared/shell.ts';
 import { t, type Key } from './i18n.ts';
@@ -41,18 +42,12 @@ const tell = (text: string) => {
   if (statusNode) statusNode.textContent = text;
 };
 
-/** Writes the shapes into engine/character/face-shapes.json, one save after another. */
+/** Saves the shapes into the project (face-shapes.json in the game's content), one save after another. */
 function save(): void {
   if (!import.meta.env.DEV) return tell(t('shapes.devOnly'));
   tell(t('shapes.saving'));
   saving = saving.then(async () => {
-    try {
-      const response = await fetch('/__face-shapes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(FACE_SHAPES) });
-      if (!response.ok) throw new Error(await response.text());
-      tell(t('shapes.saved'));
-    } catch {
-      tell(t('shapes.failed'));
-    }
+    tell(t((await saveToProject('face-shapes.json', FACE_SHAPES)) ? 'shapes.saved' : 'shapes.failed'));
   });
 }
 
