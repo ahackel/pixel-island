@@ -13,6 +13,7 @@ import { STONE } from './fishing.ts';
 import { HUT_AT, HUT_PLAN } from './crafts.ts';
 import { cellKey, edgeKey, emptyBuilding, type Building, type PieceKind } from '@pixel/engine/world/building/building.ts';
 import { plankWall } from '@pixel/engine/world/building/pieces/plank-wall.ts';
+import { wallKind } from '@pixel/engine/world/building/walls.ts';
 import { thatchRoof } from '@pixel/engine/world/building/pieces/thatch-roof.ts';
 
 type Rows = { rows: string[]; colors: Record<string, string> };
@@ -144,7 +145,8 @@ export function hatThing(who: State): (spot: Thing['spot']) => Thing {
 
 /** How the hut's pieces look: driftwood planks and a hipped roof of palm thatch. */
 export const PIECE_KINDS: Record<string, PieceKind> = {
-  plank: plankWall({ overhang: 3, top: 'slope', seed: 1 }),
+  // The planks as frozen and painted over in the wall editor, when they are locked there.
+  plank: wallKind('plank', plankWall({ overhang: 3, top: 'slope', seed: 1 })),
   thatch: thatchRoof({ rise: 3, eaves: 0.3, seed: 1 }),
   // The same thatch under another name: neighbouring cells of one kind are roofed as one rectangle, so a lone third
   // leaf beside the back two takes this, to be a small roof of its own rather than the whole roof at once.
