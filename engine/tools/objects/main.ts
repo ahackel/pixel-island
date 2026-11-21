@@ -1,6 +1,7 @@
 // The object editor: pick a thing, then change its size, parts and colours, see it in all four
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
+import { tileGrid, confirmDialog, section as pixelSection } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, isShadow, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
@@ -11,8 +12,7 @@ import { download, newId, pickFile, readStore, writeStore } from '../../shared/f
 import { type PaletteKey } from '../../engine/core/palette.ts';
 import {
   checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, topBar, undoKeys, word,
-  type IconName,
-} from '../../shared/shell.ts';
+  type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
 
@@ -131,9 +131,9 @@ function renameThing(name: string): void {
   } else addThing(name, prop);
   render();
 }
-function remove(): void {
+async function remove(): Promise<void> {
   const saved = current();
-  if (!saved || !confirm(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`))) return;
+  if (!saved || !(await confirmDialog(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`)))) return;
   roster = roster.filter((s) => s !== saved);
   setCurrent(null);
   storeRoster(L(`Deleted "${saved.name}".`, `„${saved.name}“ gelöscht.`));
@@ -184,19 +184,8 @@ const buildContext = (): BuildContext => ({
 function panelFor(id: TabId): HTMLElement[] {
   switch (id) {
     case 'things': {
-      const grid = h('div', { class: 'grid' });
-      for (const preset of OBJECT_PRESETS) {
-        const card = h('button', { type: 'button', class: 'card', 'aria-pressed': String(JSON.stringify(preset.prop) === JSON.stringify(prop)) },
-          h('span', { class: 'card__picture' }, thumbnail(preset.prop)),
-          h('span', { class: 'card__label' }, preset.name),
-        );
-        card.addEventListener('click', () => {
-          prop = structuredClone(preset.prop);
-          selected = 0;
-          changed();
-        });
-        grid.append(card);
-      }
+      const grid = tileGrid(OBJECT_PRESETS.map((p, i) => ({ id: String(i), picture: thumbnail(p.prop), words: p.name })), String(OBJECT_PRESETS.findIndex((p) => JSON.stringify(p.prop) === JSON.stringify(prop))),
+        (id) => { prop = structuredClone(OBJECT_PRESETS[Number(id)].prop); selected = 0; changed(); });
       return [section(L('Things', 'Dinge'), grid, h('p', { class: 'note' }, L(
         'The furniture, devices, fountain and cars of Animal Hospital, built from parts. Pick one, then change its size, parts and colours.',
         'Die Möbel, Geräte, der Brunnen und die Autos aus Animal Hospital, aus Teilen gebaut. Wähle eines und ändere Größe, Teile und Farben.')))];
@@ -212,9 +201,9 @@ const root = document.getElementById('objects')!;
 const stage = h('div', { class: 'stage' });
 const hero = h('canvas', { class: 'stage__sprite', style: 'cursor: crosshair' });
 const stageTag = h('span', { class: 'stage__tag' });
-const sideSlider = h('input', { type: 'range', class: 'slider', min: '0', max: '3', step: '1' });
+const sideSlider = rangeInput({ min: '0', max: '3', step: '1' });
 const sideValue = h('b');
-const previewRows = h('div', { class: 'sec__body' });
+const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'library__body', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
@@ -347,8 +336,7 @@ function mount(): void {
   document.title = L('Object Editor', 'Objekt-Editor');
   sideSlider.setAttribute('aria-label', L('Turn', 'Drehung'));
   stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))));
-  const preview = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  preview.open = true;
+  const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   root.replaceChildren(
     h('div', { class: 'shell' },
       barSlot,

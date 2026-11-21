@@ -61,7 +61,7 @@ export function swatch(label: string, color: string | null, chosen: boolean, on:
  * A slider from 0 to 1: a track, its filled part and a knob. Drag or tap anywhere on it. It redraws itself while dragged, so
  * the host need not; `format` writes the value as a number beside it.
  */
-export function slider(label: string, value: number, change: (value: number) => void, width = 40, format?: (value: number) => string): HTMLElement {
+export function slider(label: string, value: number, change: (value: number) => void, width = 40, format?: (value: number) => string, done?: () => void): HTMLElement {
   const wrap = el('span', 'uslider');
   const draw = () => {
     const { canvas, ctx } = pixelCanvas(width, 9, S);
@@ -83,6 +83,7 @@ export function slider(label: string, value: number, change: (value: number) => 
   wrap.setAttribute('aria-label', label);
   wrap.addEventListener('pointerdown', (e) => { if ((e.target as HTMLElement).closest('.uslider__track')) { wrap.setPointerCapture(e.pointerId); at(e); } });
   wrap.addEventListener('pointermove', (e) => wrap.hasPointerCapture(e.pointerId) && at(e));
+  wrap.addEventListener('pointerup', () => done?.());
   draw();
   return wrap;
 }
@@ -320,7 +321,7 @@ export interface Name { icon?: string; words?: string; tip?: string }
 const nameOf = (n: Name): HTMLElement => {
   const w = el('span', 'uname');
   w.title = n.tip ?? n.words ?? n.icon ?? '';
-  w.append(n.icon ? iconPicture(n.icon, S) : label_(caps(n.words ?? ''), C.paper, S));
+  w.append(n.icon ? iconPicture(n.icon, S) : label_(caps(n.words ?? ''), C.ink, S));
   return w;
 };
 
@@ -339,13 +340,13 @@ export function fields(...rows: Node[]): HTMLElement {
 }
 
 /** A group with a header (a button that folds it away) over its content. */
-export function section(name: Name, content: Node[], open = true): HTMLElement {
+export function section(name: Name, content: Node[], open = true, onToggle?: (open: boolean) => void): HTMLElement {
   const wrap = el('div', 'usection');
   const body = el('div', 'usection__body');
   body.append(...content);
   const head = el('div', 'urow');
   const draw = () => {
-    head.replaceChildren(pixelButton(name.tip ?? name.words ?? name.icon ?? '', { icon: open ? 'down' : 'right', words: undefined }, () => { open = !open; body.hidden = !open; draw(); }), nameOf(name));
+    head.replaceChildren(pixelButton(name.tip ?? name.words ?? name.icon ?? '', { icon: open ? 'down' : 'right', words: undefined }, () => { open = !open; body.hidden = !open; onToggle?.(open); draw(); }), nameOf(name));
   };
   body.hidden = !open;
   draw();
@@ -423,8 +424,8 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
 }
 
 /** A search box that stretches over its parent: a small magnifier at the left, a cross to clear at the right. */
-export function searchField(label: string, change: (value: string) => void): HTMLElement {
-  return inputWell(label, { change, icon: MAGNIFIER, clearable: true });
+export function searchField(label: string, change: (value: string) => void, value = ''): HTMLElement {
+  return inputWell(label, { change, value, icon: MAGNIFIER, clearable: true });
 }
 
 /**
@@ -571,4 +572,70 @@ export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonEl
   );
   bar.append(left, right);
   return { bar, undo, redo };
+}
+
+// ------------------------------------------------------------------ on / off, tiles, messages
+
+/** An on/off button: lit while on; a tap flips it and tells `change`. */
+export function toggle(label: string, face: Omit<ButtonFace, 'pressed'>, on: boolean, change: (on: boolean) => void): HTMLElement {
+  const wrap = el('span', 'utoggle');
+  const draw = () => wrap.replaceChildren(pixelButton(label, { ...face, pressed: on }, () => { on = !on; draw(); change(on); }));
+  draw();
+  return wrap;
+}
+
+/** What a tile shows: a picture or an icon, and optionally a few words and a small mark (an icon) in the corner. */
+export interface Tile { id: string; picture?: Node; icon?: string; words?: string; mark?: string }
+
+/** A wrapping grid of tiles to pick one from (a library of things); the picked one is lit. Tooltips say the words in full. */
+export function tileGrid(tiles: Tile[], selected: string | null, pick: (id: string) => void): HTMLElement {
+  const grid = el('div', 'utiles');
+  grid.append(...tiles.map((t) => {
+    const b = el('button', `utile${t.id === selected ? ' utile--on' : ''}`);
+    b.title = b.ariaLabel = t.words ?? t.id;
+    b.setAttribute('aria-pressed', String(t.id === selected));
+    const inner = el('span', 'utile__in');
+    inner.append(t.picture ?? (t.icon ? iconPicture(t.icon) : document.createTextNode('')));
+    if (t.words && !t.picture && !t.icon) inner.append(label_(caps(t.words), C.ink, S));
+    if (t.mark) { const m = el('span', 'utile__mark'); m.append(iconPicture(t.mark, S / 2)); inner.append(m); }
+    b.append(inner);
+    b.addEventListener('click', () => pick(t.id));
+    return b;
+  }));
+  return grid;
+}
+
+/** A frame round a preview: its content on the ground, a name tag at the top left and tools at the top right. */
+export function previewFrame(content: Node, options: { tag?: Node; tools?: Node[] } = {}): HTMLElement {
+  const frame = el('div', 'uframe');
+  frame.append(content);
+  if (options.tag) { const t = el('div', 'uframe__tag'); t.append(options.tag); frame.append(t); }
+  if (options.tools?.length) { const t = el('div', 'uframe__tools urow'); t.append(...options.tools); frame.append(t); }
+  return frame;
+}
+
+/** Asks for a yes or a no in a pixel box over the page (check or cross, Escape is no): replaces the browser's own confirm. */
+export function confirmDialog(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const veil = el('div', 'umodal');
+    const text = el('p', 'umodal__text');
+    text.textContent = question;
+    const buttons = el('div', 'urow');
+    const done = (yes: boolean) => { veil.remove(); removeEventListener('keydown', key, true); resolve(yes); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done(false); else if (e.key === 'Enter') done(true); };
+    buttons.append(pixelButton('No', { icon: 'close' }, () => done(false)), pixelButton('Yes', { icon: 'check', lit: true }, () => done(true)));
+    veil.append(box(text, buttons));
+    veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done(false); });
+    addEventListener('keydown', key, true);
+    document.body.append(veil);
+  });
+}
+
+/** A short message in a pixel box at the bottom of the page; it goes by itself. */
+export function toast(message: string, ms = 3000): void {
+  const t = el('div', 'utoast');
+  t.append(box(Object.assign(el('span', ''), { textContent: message })));
+  t.setAttribute('role', 'status');
+  document.body.append(t);
+  setTimeout(() => t.remove(), ms);
 }

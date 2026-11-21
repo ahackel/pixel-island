@@ -3,7 +3,7 @@
 // A tool only declares its tabs, preview rows and what Shuffle does.
 import './ui.css';
 import { currentLang, LANGS, setLang, type Lang } from './lang.ts';
-import { header } from '../ui/components.ts';
+import { choice, field, header, slider as pixelSlider, textField, section as pixelSection, toggle as pixelToggle, pixelButton, type Option as Pick } from '../ui/components.ts';
 import { TOOLS, toolHref, type ToolId } from './tools.ts';
 
 // ------------------------------------------------------------------ elements
@@ -230,6 +230,8 @@ export interface TopBar {
   /** The "My things" picker, if the tool keeps a list. */
   things?: Node;
   more: MenuItem[];
+  /** Buttons for actions on the whole thing (new, duplicate), in their own group of the bar. */
+  actions?: MenuItem[];
   status: HTMLElement;
   undo?: () => void;
   redo?: () => void;
@@ -246,6 +248,7 @@ export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement |
   const { bar, undo, redo } = header({
     tools, tool: o.tool, about: o.about, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
     more: o.more.filter((m) => !m.main).map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
+    actions: o.actions?.map((m) => ({ icon: m.icon, label: m.label, on: m.run, disabled: m.disabled })),
     save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled }))[0],
     languages: { current: currentLang(), ids: LANGS.map((l) => l.id), pick: (id) => { setLang(id as Lang); o.relabel(); } },
     labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools') },
@@ -260,44 +263,83 @@ export interface Option<T extends string> {
   label: string;
   icon?: IconName;
 }
-/** A pick-one row: one segmented bar on one line. Icon options show their label as a tooltip. */
-export function segmented<T extends string>(label: string, options: Option<T>[], value: T, pick: (id: T) => void, className = 'seg'): HTMLElement {
-  return h('div', { class: className, role: 'radiogroup', 'aria-label': label },
-    ...options.map((o) => button({ role: 'radio', 'aria-checked': String(o.id === value), ...(o.icon ? { 'aria-label': o.label, title: o.label } : {}) }, () => pick(o.id), o.icon ? icon(o.icon) : o.label)));
+
+/** The pixel icon of the library for an old shell icon name; none: the words are shown instead. */
+const PIXEL_ICON: Partial<Record<string, string>> = {
+  shirt: 'clothes', body: 'body', face: 'face', scissors: 'scissors', paw: 'paw', props: 'tool', armchair: 'chair', sprout: 'sprout',
+  wall: 'wall', mountain: 'mountain', grid: 'grid', home: 'home', pencil: 'pencil', eye: 'eye', sun: 'sun', moon: 'moon', lock: 'lock', unlock: 'unlock',
+  turnRight: 'redo', turnLeft: 'undo', shapes: 'shapes', sliders: 'sliders', palette: 'palette', spots: 'spots', ear: 'ear', tail: 'tail', box: 'box', pin: 'pin',
+  palm: 'palm', grass: 'grass', cactus: 'cactus', leaf: 'leaf', rock: 'rock', driftwood: 'driftwood', camera: 'camera', die: 'dice', plus: 'plus', trash: 'trash',
+  eraser: 'eraser', line: 'line', male: 'male', female: 'female',
+};
+/** A label shortened for pixel text (it is hard to read at length): up to a colon or bracket, else its first two words. The full label stays the tooltip. */
+const brief = (label: string): string => {
+  const head = label.split(/[:(]/)[0].trim();
+  return head.length <= 14 ? head : head.split(/\s+/).slice(0, 2).join(' ');
+};
+const asPick = <T extends string>(o: Option<T>): Pick => ({ id: o.id, icon: o.icon && PIXEL_ICON[o.icon], words: brief(o.label) });
+
+/** A pick-one row: the pixel `choice` with all options in a row. Options without a pixel icon show their words. */
+export function segmented<T extends string>(label: string, options: Option<T>[], value: T, pick: (id: T) => void, _className = 'seg'): HTMLElement {
+  let current: string = value;
+  return choice(label, options.map(asPick), () => current, (id) => { current = id; pick(id as T); }, 'buttons');
 }
 
-/** A labelled inspector row. `value` is shown under the label, for sliders and icon rows. */
+/** A labelled inspector row: its name, then the control; the value (if any) after the control. */
 export function row(label: string, control: Node, value?: string | HTMLElement): HTMLElement {
-  return h('div', { class: 'row' }, h('span', { class: 'row__label' }, label, value !== undefined && (typeof value === 'string' ? h('b', {}, value) : value)), control);
+  const shown = value === undefined ? control : h('span', { class: 'urow' }, control, typeof value === 'string' ? h('b', {}, value) : value);
+  return field({ words: brief(label), tip: label }, shown);
 }
 
-/** A collapsible section; it remembers being closed for this visit. */
+/** A foldable section of the pixel kit; it remembers being closed for this visit. Consecutive rows line up in one grid. */
 const closed = new Set<string>();
 export function section(title: string, ...children: Child[]): HTMLElement {
-  const details = h('details', { class: 'sec' }, h('summary', {}, title), h('div', { class: 'sec__body' }, ...children));
-  details.open = !closed.has(title);
-  details.addEventListener('toggle', () => (details.open ? closed.delete(title) : closed.add(title)));
-  return details;
+  const nodes: Node[] = [];
+  let grid: HTMLElement | null = null;
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    if (typeof c !== 'string' && c instanceof HTMLElement && c.classList.contains('note')) continue; // pixel pages say little: notes live in the about popup
+    const node = typeof c === 'string' ? document.createTextNode(c) : c;
+    if (node instanceof HTMLElement && node.classList.contains('ufield')) {
+      if (!grid) { grid = h('div', { class: 'ufields' }); nodes.push(grid); }
+      grid.append(node);
+    } else { grid = null; nodes.push(node); }
+  }
+  return pixelSection({ words: brief(title), tip: title }, nodes, !closed.has(title), (open) => (open ? closed.delete(title) : closed.add(title)));
 }
 
-/** A plain checkbox with its label, for on/off settings such as whether the preview moves. */
-export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLLabelElement {
-  const input = h('input', { type: 'checkbox' });
-  input.checked = checked;
-  input.addEventListener('change', () => change(input.checked));
-  return h('label', { class: 'check' }, input, label);
+/**
+ * A drop-in for `<input type="range">` (give it the same attributes: min, max, step, value, aria-label) drawn as the pixel
+ * slider. Its `value` is a string like the input's, and it fires `input` while dragged and `change` on release.
+ */
+export function rangeInput(attrs: Record<string, string>): HTMLElement & { value: string } {
+  const min = Number(attrs.min ?? 0), max = Number(attrs.max ?? 100), step = Number(attrs.step ?? 1);
+  let current = Number(attrs.value ?? min);
+  const wrap = h('span', { class: 'urange' }) as HTMLElement & { value: string };
+  const build = () => wrap.replaceChildren(pixelSlider(attrs['aria-label'] ?? '', (current - min) / (max - min || 1), (n) => {
+    const next = Number((Math.round((min + n * (max - min) - min) / step) * step + min).toFixed(6));
+    if (next === current) return;
+    current = next;
+    wrap.dispatchEvent(new Event('input'));
+  }, 40, undefined, () => wrap.dispatchEvent(new Event('change'))));
+  Object.defineProperty(wrap, 'value', { get: () => String(current), set: (v: string) => { if (Number(v) === current) return; current = Number(v); build(); } });
+  build();
+  return wrap;
+}
+
+/** An on/off setting: a button lit while on. */
+export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLElement {
+  return pixelToggle(label, { words: brief(label) }, checked, change);
 }
 
 export function toggle(label: string, pressed: boolean, flip: () => void): HTMLButtonElement {
-  return button({ class: 'toggle', 'aria-pressed': String(pressed) }, flip, label);
+  return pixelButton(label, { words: brief(label), pressed }, flip);
 }
 
-/** Icon tabs with the current tab's name on the right. */
-export function tabs<T extends string>(label: string, list: Option<T>[], current: T, choose: (id: T) => void, locked: ReadonlySet<T> = new Set(), tools: Node[] = []): HTMLElement {
-  const name = list.find((x) => x.id === current)?.label ?? '';
-  return h('nav', { class: 'tabs', role: 'tablist', 'aria-label': label },
-    ...list.map((x) => button({ class: locked.has(x.id) ? 'tab tab--locked' : 'tab', role: 'tab', 'aria-selected': String(x.id === current), 'aria-label': x.label, title: x.label }, () => choose(x.id), icon(x.icon ?? 'more'))),
-    h('span', { class: 'tabs__name', 'aria-hidden': 'true' }, name), ...tools);
+/** Tabs: the pixel `choice` of icon buttons (words where the library has no icon yet), then the tab's tools. */
+export function tabs<T extends string>(label: string, list: Option<T>[], current: T, choose: (id: T) => void, _locked: ReadonlySet<T> = new Set(), tools: Node[] = []): HTMLElement {
+  const wrap = h('div', { class: 'urow' }, segmented(label, list, current, choose), ...tools);
+  return wrap;
 }
 
 // ------------------------------------------------------------------ undo
@@ -364,23 +406,17 @@ export function cheer(stage: HTMLElement): void {
  * editing ends, so a half-typed name is not saved.
  */
 export function nameTag(): { el: HTMLElement; set: (name: string, placeholder: string) => void; onRename: (fn: (name: string) => void) => void } {
-  const input = h('input', { type: 'text', class: 'name__input', 'aria-label': word('name'), maxlength: '40', enterkeyhint: 'done' });
+  const el = h('div', { class: 'name' });
   let rename: (name: string) => void = () => {};
-  const done = () => {
-    const name = input.value.trim();
-    if (name) rename(name);
-  };
-  input.addEventListener('change', done);
-  input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
-  const roll = button({ class: 'name__roll', 'aria-label': word('rollName'), title: word('rollName') }, () => {
-    input.value = pick(NAMES.filter((n) => n !== input.value));
-    done();
-  }, icon('die'));
   return {
-    el: h('div', { class: 'name' }, input, roll),
+    el,
+    // A pixel text field with a die; redrawn on every set, so typing in it is not interrupted by a render only when it has focus.
     set: (name, placeholder) => {
-      if (document.activeElement !== input) input.value = name;
-      input.placeholder = placeholder;
+      if (el.contains(document.activeElement)) return;
+      el.replaceChildren(textField(word('name'), name, () => {}, {
+        placeholder, width: 50, dice: () => pick(NAMES.filter((n) => n !== name)),
+        done: (v) => { if (v.trim()) rename(v.trim()); },
+      }));
     },
     onRename: (fn) => (rename = fn),
   };
@@ -401,14 +437,14 @@ export function savePicture(canvas: HTMLCanvasElement, name: string, scale = 8):
 }
 
 export function snapButton(take: () => void): HTMLButtonElement {
-  return button({ class: 'stage__button', 'aria-label': word('picture'), title: word('picture') }, take, icon('camera'));
+  return Object.assign(pixelButton(word('picture'), { icon: 'camera' }, take), { className: 'pbtn stage__button' });
 }
 
 /** Die and lock beside the tab name: shuffle only this tab, or keep it when shuffling all. */
 export function tabTools(roll: () => void, locked = false, toggleLock?: () => void): Node[] {
   return [
-    button({ class: 'ib', 'aria-label': word('rollTab'), title: word('rollTab') }, roll, icon('die')),
-    toggleLock ? button({ class: 'ib', 'aria-pressed': String(locked), 'aria-label': word('lock'), title: word('lock') }, toggleLock, icon(locked ? 'lock' : 'unlock')) : null,
+    pixelButton(word('rollTab'), { icon: 'dice' }, roll),
+    toggleLock ? pixelButton(word('lock'), { icon: locked ? 'lock' : 'unlock', pressed: locked }, toggleLock) : null,
   ].filter((n): n is HTMLButtonElement => !!n);
 }
 

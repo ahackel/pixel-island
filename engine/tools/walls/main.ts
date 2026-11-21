@@ -19,8 +19,8 @@ import { plankWall } from '../../engine/world/building/pieces/plank-wall.ts';
 import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word, button, icon } from '../../shared/shell.ts';
-import { choice, numberField, pixelButton, type Option } from '../../ui/components.ts';
+import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
+import { choice, numberField, pixelButton, tileGrid, type Option, confirmDialog } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
@@ -178,8 +178,8 @@ function panelFor(tab: Tab): (Node | string)[] {
   });
   return [
     editor.el,
-    w.locked ? pb(L('Unlock', 'Entsperren'), { icon: 'unlock' }, () => {
-      if (!confirm(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?'))) return;
+    w.locked ? pb(L('Unlock', 'Entsperren'), { icon: 'unlock' }, async () => {
+      if (!(await confirmDialog(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?')))) return;
       unlockWall(w.id);
       grids = null;
       undo.reset();
@@ -199,7 +199,7 @@ function duplicate(): void {
 const root = document.getElementById('walls')!;
 const stage = h('div', { class: 'stage props__stage walls__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
-const list = h('div', { class: 'grid grid--small props__grid' });
+const list = h('div', { class: 'props__grid' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'library__body', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
@@ -236,8 +236,8 @@ function renderBar(): void {
           render();
         }
       })() },
-      { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: w.builtin, run: () => {
-        if (!confirm(L(`Delete "${w.name}" from this device?`, `„${w.name}“ von diesem Gerät löschen?`))) return;
+      { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: w.builtin, run: async () => {
+        if (!(await confirmDialog(L(`Delete "${w.name}" from this device?`, `„${w.name}“ von diesem Gerät löschen?`)))) return;
         deleteWall(w.id);
         pick('plank');
       } },
@@ -257,11 +257,7 @@ function render(): void {
   renderBar();
   name.set(w.name, L('Wall', 'Wand'));
   stageTag.textContent = `${w.art ? (w.locked ? L('frozen', 'eingefroren') : L('painted', 'gemalt')) : L('rule', 'Regel')} · ${w.builtin ? prefs.height : w.height} ${L('levels', 'Stufen')}`;
-  list.replaceChildren(...wallKinds().map((k) => button({ class: 'card', 'aria-pressed': String(k.id === prefs.id) }, () => pick(k.id),
-    h('span', { class: 'card__label' }, k.name),
-    h('span', { class: 'props__badges' },
-      h('span', { class: `props__badge props__badge--${k.art ? 'painted' : 'built'}` }, k.art ? L('Painted', 'Gemalt') : L('Rule', 'Regel')),
-      k.locked ? h('span', { class: 'props__badge props__badge--locked' }, icon('lock')) : null))));
+  list.replaceChildren(tileGrid(wallKinds().map((k) => ({ id: k.id, icon: k.art ? 'pencil' : 'wall', words: k.name, mark: k.locked ? 'lock' : undefined })), prefs.id, pick));
   const zooms: Option[] = [2, 3, 4].map((z) => ({ id: String(z), words: `${z}×` }));
   under.replaceChildren(h('div', { class: 'urow props__stagetools' },
     pb(L('Thatch roof on the hut', 'Strohdach auf der Hütte'), { icon: 'roof', pressed: prefs.roof }, () => { prefs.roof = !prefs.roof; savePrefs(); benchDirty = true; render(); }),

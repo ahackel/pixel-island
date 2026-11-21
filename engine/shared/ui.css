@@ -284,6 +284,7 @@ canvas {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
 }
 .library__body {
   overflow: auto;
@@ -319,10 +320,9 @@ canvas {
   bottom: 10px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgb(11 26 28 / 0.75);
-  color: #e3eeed;
-  font-size: 11px;
-  font-weight: 600;
+  background: #f6ecd2;
+  color: #2b1d12;
+  font: 500 12px var(--font-display);
 }
 .stage__tag::first-letter {
   text-transform: uppercase;
@@ -643,12 +643,6 @@ canvas {
   position: absolute;
   left: 10px;
   top: 10px;
-  display: flex;
-  align-items: center;
-  padding-left: 10px;
-  border-radius: 8px;
-  background: rgb(11 26 28 / 0.75);
-  color: #e3eeed;
 }
 .name__input {
   width: 120px;
@@ -677,8 +671,6 @@ canvas {
   position: absolute;
   right: 10px;
   top: 10px;
-  background: rgb(11 26 28 / 0.75);
-  color: #e3eeed;
 }
 .stage--cheer .stage__sprite {
   animation: hop 0.5s ease-out;

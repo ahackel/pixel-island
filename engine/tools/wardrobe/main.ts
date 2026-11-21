@@ -1,6 +1,7 @@
 // The wardrobe: the character editor the island game opens before each new game (engine/character/editor.ts), with every
 // row and a tab for how the preview shows the character, and around it the tools' bar: the characters kept on this
 // device, undo, a random one, and the page where the eye and mouth shapes are drawn.
+import { confirmDialog, pixelButton } from '../../ui/components.ts';
 import { BROWS, EYE_COLORS, EYE_SHAPES, GLASSES_COLORS, HAIR_STYLES, HEAD_SHAPES, MOODS, NOSES } from '../../engine/character/base.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { ROSTER_KEY } from '../../engine/character/character.ts';
@@ -170,9 +171,9 @@ function renameThing(name: string): void {
   render();
 }
 
-function deleteThing(): void {
+async function deleteThing(): Promise<void> {
   const saved = current();
-  if (!saved || !confirm(t('saved.confirmDelete', { name: saved.name }))) return;
+  if (!saved || !(await confirmDialog(t('saved.confirmDelete', { name: saved.name })))) return;
   roster = roster.filter((c) => c !== saved);
   setCurrent(null);
   storeRoster('');
@@ -237,7 +238,7 @@ function renderBar(): void {
     undo: undo.undo,
     redo: undo.redo,
     shuffle: () => shuffle(),
-    extra: button({ class: 'btn', 'aria-pressed': String(shapesPage), title: t('shapes') }, () => openShapes(!shapesPage), icon('face'), h('span', { class: 'btn__label' }, t('shapes.button'))),
+    extra: pixelButton(t('shapes'), { icon: 'face', flat: true, pressed: shapesPage }, () => openShapes(!shapesPage)),
     relabel: () => {
       mount();
       render();

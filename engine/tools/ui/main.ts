@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, confirmDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -41,6 +41,11 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
     () => choice('Colors', colors, ...pickOf('colors'), 'colors'),
     () => choice('List', icons, ...pickOf('list'), 'list'),
   ]],
+  ['toggle', [() => toggle('Toggle', { icon: 'lock' }, true, noop), () => toggle('Words', { words: 'Wind' }, false, noop)]],
+  ['tile grid', [() => tileGrid([{ id: 'a', icon: 'sun' }, { id: 'b', icon: 'moon', mark: 'lock' }, { id: 'c', picture: iconPicture('storm') }], 'b', noop)]],
+  ['preview frame', [() => previewFrame(Object.assign(div('width:160px;height:90px;background:#e9d9a0'), {}), { tag: label('TAG', C.ink, 2), tools: [pixelButton('Picture', { icon: 'camera' }, noop)] })]],
+  ['confirm', [() => pixelButton('Ask', { icon: 'trash' }, () => void confirmDialog('Delete this?'))]],
+  ['toast', [() => pixelButton('Say', { icon: 'info' }, () => toast('Saved to the project.'))]],
   ['swatch', [() => swatch('Swatch', PAINT.o, true, noop), () => swatch('Empty', null, false, noop)]],
   ['slider', [() => slider('Slider', value, (v) => { value = v; }, 60, (v) => `${Math.round(v * 100)}`)]],
   ['number field', [() => numberField({ words: 'W' }, 24, noop, { min: 0, max: 99, width: 50 }), () => numberField({ icon: 'sun' }, 7, noop, { width: 40 })]],

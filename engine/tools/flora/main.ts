@@ -1,4 +1,5 @@
 import './style.css';
+import { tileGrid, section as pixelSection, choice, swatch, pixelButton, toast } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
@@ -10,7 +11,7 @@ import { cleanSwap, FLORA, FLORA_CALLS, FLORA_REJECTED, FLORA_STORE, plantById, 
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
-import { button, cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
+import { button, cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
@@ -254,13 +255,13 @@ const SCENE_W = 16 * 32;
 const SCENE_H = 318;
 const stage = h('div', { class: 'stage' });
 const preview = h('canvas', { class: 'flora-preview', width: String(FLORA_W), height: String(FLORA_H) });
-const drySlider = h('input', { type: 'range', class: 'slider', min: '0', max: '1', step: '0.05' });
+const drySlider = rangeInput({ min: '0', max: '1', step: '0.05' });
 const dryValue = h('b');
-const sizeSlider = h('input', { type: 'range', class: 'slider', min: String(SIZE_MIN), max: String(SIZE_MAX), step: '0.05' });
+const sizeSlider = rangeInput({ min: String(SIZE_MIN), max: String(SIZE_MAX), step: '0.05' });
 const sizeValue = h('b');
-const turnSlider = h('input', { type: 'range', class: 'slider', min: '0', max: String(TURNS - 1), step: '1' });
+const turnSlider = rangeInput({ min: '0', max: String(TURNS - 1), step: '1' });
 const turnValue = h('b');
-const previewRows = h('div', { class: 'sec__body' });
+const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'library__body', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
@@ -280,15 +281,12 @@ const pool = () => FLORA.filter((e) => state.tab === 'all' || e.category === sta
 
 function cards(): HTMLElement {
   cardPictures.clear();
-  return h('div', { class: 'grid' }, ...pool().map((entry) => {
+  const tiles = pool().map((entry) => {
     const picture = h('span', { class: 'card__picture' }, thumb(rasterOf(entry, 0, 0, 0, state.dryness, 1), 60));
     cardPictures.set(entry.id, picture);
-    return button({ class: 'card', 'aria-pressed': String(entry.id === state.selected) }, () => {
-      state.selected = entry.id;
-      state.seed = 0;
-      changed();
-    }, picture, h('span', { class: 'card__label' }, plantName(entry.id, entry.label)), state.custom[entry.id] ? h('span', { class: 'card__label', style: 'opacity: .7; font-weight: 500' }, t('recipe.edited')) : null);
-  }));
+    return { id: entry.id, picture, words: plantName(entry.id, entry.label), mark: state.custom[entry.id] ? 'pencil' : undefined };
+  });
+  return tileGrid(tiles, state.selected, (id) => { state.selected = id; state.seed = 0; changed(); });
 }
 
 function colours(): HTMLElement[] {
@@ -298,19 +296,16 @@ function colours(): HTMLElement[] {
     const keys = colorChoices(from, entry.category).slice(1);
     const title = i === 0 ? t('color.main') : t('color.second');
     const current = state.colors[entry.id]?.[from] ?? null;
-    return row(title, h('div', { class: 'swatches' }, ...[null, ...keys].map((key) => {
-      const name = key ? t(`palette.${key}` as Key) : t('color.original');
-      return button({
-        class: key === null ? 'swatch swatch--own' : 'swatch', 'aria-pressed': String(key === current), 'aria-label': `${title}: ${name}`, title: name,
-        style: key ? `--swatch: ${PALETTE[key].base}; --swatch-shade: ${PALETTE[key].shade}` : '',
-      }, () => {
-        const next = { ...state.colors[entry.id] };
-        if (key) next[from] = key;
-        else delete next[from];
-        state.colors[entry.id] = next;
-        changed();
-      }, key === null ? t('color.original') : null);
-    })));
+    const set = (key: string | null) => {
+      const next = { ...state.colors[entry.id] };
+      if (key) next[from] = key as PaletteKey;
+      else delete next[from];
+      state.colors[entry.id] = next;
+      changed();
+    };
+    // The plant's own colour first (an empty swatch), then the choices as a bar.
+    return row(title, h('div', { class: 'urow' }, swatch(t('color.original'), null, current === null, () => set(null)),
+      choice(title, keys.map((key) => ({ id: key, color: PALETTE[key].base })), () => current, set, 'colors', 50)));
   });
 }
 
@@ -342,25 +337,24 @@ function renderEditor(): void {
       cardPictures.get(entry.id)?.replaceChildren(thumb(rasterOf(entry, 0, 0, 0, state.dryness, 1), 60));
     }, 250);
   });
-  const copy = button({ class: 'toggle' }, async () => {
+  const copy = pixelButton(t('recipe.copy'), { icon: 'copy' }, async () => {
     try {
       await navigator.clipboard.writeText(area.value);
-      copy.textContent = t('recipe.copied');
-      setTimeout(() => (copy.textContent = t('recipe.copy')), 1500);
+      toast(t('recipe.copied'));
     } catch {
       area.select();
     }
-  }, t('recipe.copy'));
+  });
   editor.replaceChildren(
     h('p', { class: 'note' }, t('recipe.note')),
     area,
     status,
-    h('div', { class: 'toggles' }, button({ class: 'toggle' }, () => {
+    h('div', { class: 'urow' }, pixelButton(t('recipe.reset'), { icon: 'reset' }, () => {
       delete state.custom[entry.id];
       edits.delete(entry.id);
       editorFor = '';
       changed();
-    }, t('recipe.reset')), copy),
+    }), copy),
   );
 }
 
@@ -512,8 +506,7 @@ function mount(): void {
   sizeSlider.setAttribute('aria-label', t('size'));
   turnSlider.setAttribute('aria-label', t('turn'));
   stage.replaceChildren(preview, snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)));
-  const previewSec = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  previewSec.open = true;
+  const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   root.replaceChildren(
     h('div', { class: 'shell' },
       barSlot,

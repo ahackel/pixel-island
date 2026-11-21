@@ -1,5 +1,6 @@
 import '../wardrobe/style.css';
 import './style.css';
+import { confirmDialog, pixelButton } from '../../ui/components.ts';
 import { saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
@@ -29,7 +30,7 @@ import { PRESETS } from '../../engine/animals/animal-presets.ts';
 import { ocean } from '../../engine/world/ocean.ts';
 import { plantName } from '../flora/i18n.ts';
 import { roundBrush } from '../../shared/brush.ts';
-import { button as tap, h, icon, segmented, topBar, word, type IconName } from '../../shared/shell.ts';
+import { button as tap, h, icon, segmented, topBar, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
 
@@ -1358,8 +1359,8 @@ function turnItem(it: PlacedItem, step: number): void {
 /** For a selected object: turning it, and for a chest what lies in it. */
 function itemOptions(it: PlacedItem): Node[] {
   const out: Node[] = [h('div', { class: 'opts__row' },
-    tap({ class: 'btn', title: `${t('turn.left')} (Q)` }, () => turnItem(it, -1), icon('turnLeft'), t('turn.left')),
-    tap({ class: 'btn', title: `${t('turn.right')} (R)` }, () => turnItem(it, 1), icon('turnRight'), t('turn.right')),
+    pixelButton(`${t('turn.left')} (Q)`, { icon: 'undo' }, () => turnItem(it, -1)),
+    pixelButton(`${t('turn.right')} (R)`, { icon: 'redo' }, () => turnItem(it, 1)),
   )];
   if (!openFrames(it.item)) return out;
   const lang = currentLang() === 'de' ? 'de' : 'en';
@@ -1386,7 +1387,7 @@ function editOptions(): Node[] {
     out.push(segmented(t('paint'), [0, 1, 2, 3].map((n) => ({ id: String(n), label: t(`paint.${n}` as Key) })), String(prefs.paint), (n) => set({ paint: Number(n) })));
   }
   if (BRUSHED.includes(tool)) {
-    const slider = h('input', { type: 'range', class: 'slider', min: '1', max: String(BRUSH_MAX), step: '1', value: String(prefs.brush), 'aria-label': t('brush') });
+    const slider = rangeInput({ min: '1', max: String(BRUSH_MAX), step: '1', value: String(prefs.brush), 'aria-label': t('brush') });
     const size = h('b', {}, `Ø ${prefs.brush}`);
     const picture = h('span', {}, brushPicture(prefs.brush));
     // While dragging only the label and picture follow; the brush is stored on release.
@@ -1431,7 +1432,7 @@ function poseOptions(): HTMLElement {
   select.value = prefs.pose;
   select.addEventListener('change', () => set({ pose: select.value, poseFrame: 0 }));
   const frames = AUTHORED[prefs.pose]?.frames.length ?? 0;
-  const slider = h('input', { type: 'range', class: 'slider', min: '0', max: String(Math.max(0, frames - 1)), step: '1', value: String(prefs.poseFrame), 'aria-label': t('pose.frame') });
+  const slider = rangeInput({ min: '0', max: String(Math.max(0, frames - 1)), step: '1', value: String(prefs.poseFrame), 'aria-label': t('pose.frame') });
   slider.hidden = frames < 2;
   slider.addEventListener('change', () => set({ poseFrame: Number(slider.value) }));
   return h('div', { class: 'opts__brush' }, h('span', { class: 'opts__label' }, t('pose')), select, slider);
@@ -1536,7 +1537,7 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   // A cave's own settings: how its dark looks and how much rubble lies about.
   const caveNow = kind === 'settings' ? scene.cave : undefined;
   const tint = h('input', { type: 'color', value: caveNow?.tint ?? CAVE_DEFAULTS.tint });
-  const slider = (value: number) => h('input', { type: 'range', class: 'slider', min: '0', max: '1', step: '0.05', value: String(value) });
+  const slider = (value: number) => rangeInput({ min: '0', max: '1', step: '0.05', value: String(value) });
   const dark = slider(caveNow?.dark ?? CAVE_DEFAULTS.dark);
   const rubble = slider(caveNow?.rubble ?? CAVE_DEFAULTS.rubble);
   const ok = h('button', { type: 'submit', class: 'button button--primary', value: 'ok' }, t('dialog.ok'));
@@ -1567,9 +1568,9 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   dialog.showModal();
 }
 
-function deleteScene(): void {
+async function deleteScene(): Promise<void> {
   const scene = sceneNow();
-  if (!confirm(t('scene.confirmDelete', { name: scene.name }))) return;
+  if (!(await confirmDialog(t('scene.confirmDelete', { name: scene.name })))) return;
   library.scenes = library.scenes.filter((s) => s !== scene);
   switchTo(library.scenes[0] ?? createScene(t('scene.first'), 28, 28, true));
 }

@@ -21,7 +21,8 @@ import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { button, checkbox, h, history, icon, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
+import { choice, pixelButton, searchField, tileGrid, toggle, type Option as Pick, confirmDialog } from '../../ui/components.ts';
+import { button, checkbox, h, history, icon, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
 
@@ -158,6 +159,8 @@ function drawStage(frame: number): void {
 }
 
 /** The eight directions round the stage: which views are a prop's own, shared or mirrored. */
+const SOURCE_ICON: Record<string, string> = { painted: 'pencil', grown: 'sprout', built: 'tool' };
+
 function ring(): HTMLElement {
   const k = kind();
   const seen = new Set<number>();
@@ -187,36 +190,25 @@ function matches(k: PropKind): boolean {
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
 
-const libraryGrid = h('div', { class: 'grid grid--small props__grid' });
-const search = h('input', { type: 'search', class: 'props__search', placeholder: '', 'aria-label': '' });
-search.addEventListener('input', () => {
-  prefs.query = search.value;
+const libraryGrid = h('div', { class: 'props__grid' });
+const search = searchField('Search', (v) => {
+  prefs.query = v;
   savePrefs();
   renderLibrary();
-});
+}, prefs.query);
 function renderLibrary(): void {
   const list = propKinds().filter(matches);
-  libraryGrid.replaceChildren(...list.map((k) => {
-    const card = button({ class: 'card', 'aria-pressed': String(k.id === prefs.id), title: `${k.name} · ${sourceWord(k.source)}` }, () => pickKind(k.id),
-      h('span', { class: 'card__picture' }, thumb(k)),
-      h('span', { class: 'card__label' }, k.name),
-      h('span', { class: 'props__badges' },
-        h('span', { class: `props__badge props__badge--${k.source}` }, sourceWord(k.source)),
-        k.locked ? h('span', { class: 'props__badge props__badge--locked', title: L('Frozen: drawn from its pixels', 'Eingefroren: aus seinen Pixeln gezeichnet') }, icon('lock')) : null,
-        isHidden(k.id) ? h('span', { class: 'props__badge' }, L('hidden', 'verborgen')) : null));
-    return card;
-  }), list.length ? '' : h('p', { class: 'note' }, L('Nothing matches.', 'Nichts passt.')));
+  libraryGrid.replaceChildren(list.length
+    ? tileGrid(list.map((k) => ({ id: k.id, picture: thumb(k), words: `${k.name} · ${sourceWord(k.source)}`, mark: k.locked ? 'lock' : undefined })), prefs.id, pickKind)
+    : h('p', { class: 'note' }, L('Nothing matches.', 'Nichts passt.')));
 }
 function chips(): HTMLElement {
-  const chip = (text: string, on: boolean, flip: () => void) => button({ class: 'toggle props__chip', 'aria-pressed': String(on) }, () => { flip(); savePrefs(); render(); }, text);
-  return h('div', { class: 'props__chips' },
-    chip(L('All', 'Alle'), prefs.source === 'all', () => (prefs.source = 'all')),
-    ...SOURCES.map((s) => chip(sourceWord(s), prefs.source === s, () => (prefs.source = prefs.source === s ? 'all' : s))),
-    h('span', { class: 'props__chipsep' }),
-    ...FEATURES.map((f) => chip(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), prefs.feature === f, () => (prefs.feature = prefs.feature === f ? 'all' : f))),
-    h('span', { class: 'props__chipsep' }),
-    chip(L('Hidden too', 'Auch verborgene'), prefs.hidden, () => (prefs.hidden = !prefs.hidden)),
-  );
+  const flip = (change: () => void) => { change(); savePrefs(); render(); };
+  const sources: Pick[] = [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }))];
+  return h('div', { class: 'urow' },
+    choice(L('Source', 'Herkunft'), sources, () => prefs.source, (id) => flip(() => (prefs.source = id as typeof prefs.source)), 'buttons'),
+    ...FEATURES.map((f) => toggle(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), { words: L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]) }, prefs.feature === f, () => flip(() => (prefs.feature = prefs.feature === f ? 'all' : f)))),
+    toggle(L('Hidden too', 'Auch verborgene'), { icon: 'eye' }, prefs.hidden, () => flip(() => (prefs.hidden = !prefs.hidden))));
 }
 
 // ------------------------------------------------------------------ the panel
@@ -334,26 +326,26 @@ function panelFor(tab: Tab): (Node | string)[] {
         k.locked ? section(L('Locked', 'Gesperrt'),
           h('p', { class: 'note' }, L('Scenes and games draw these pixels instead of the rule. Unlocking goes back to the rule and loses the painting.', 'Szenen und Spiele zeichnen diese Pixel statt der Regel. Entsperren geht zur Regel zurück, die Malerei geht verloren.')),
           h('div', { class: 'toggles' },
-            button({ class: 'toggle' }, () => {
-              if (!confirm(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?'))) return;
+            pixelButton(L('Unlock', 'Entsperren'), { icon: 'unlock' }, async () => {
+              if (!(await confirmDialog(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?')))) return;
               unlockKind(k.id);
               grids = null;
               message = L(`${k.name} is drawn by its rule again.`, `${k.name} wird wieder nach seiner Regel gezeichnet.`);
               undo.reset();
               render();
-            }, L('Unlock', 'Entsperren')),
-            button({ class: 'toggle' }, () => {
+            }),
+            pixelButton(L('Painted copy', 'Gemalte Kopie'), { icon: 'copy' }, () => {
               const id = duplicateKind(kind());
               message = L('A painted copy is in the library.', 'Eine gemalte Kopie ist in der Bibliothek.');
               pickKind(id);
-            }, L('Painted copy', 'Gemalte Kopie')))) : '',
+            }))) : '',
       ];
     }
   }
 }
 
 function flexSlider(k: PropKind): HTMLElement {
-  const input = h('input', { type: 'range', class: 'slider', min: '0', max: '6', step: '0.5', 'aria-label': L('Bend', 'Biegung') });
+  const input = rangeInput({ min: '0', max: '6', step: '0.5', 'aria-label': L('Bend', 'Biegung') });
   input.value = String(k.flex);
   const out = h('b', {}, `${k.flex} px`);
   input.addEventListener('input', () => { changeKind(k.id, { flex: Number(input.value) }); out.textContent = `${input.value} px`; });
@@ -407,7 +399,7 @@ function shapePanel(k: PropKind): (Node | string)[] {
     area.addEventListener('input', apply);
     area.addEventListener('change', () => renderLibrary());
     return [section(L('Recipe', 'Rezept'), area, note,
-      builtin ? button({ class: 'toggle' }, () => { area.value = pretty(original); apply(); }, L('Back to the original', 'Zurück zum Original')) : '',
+      builtin ? pixelButton(L('Back to the original', 'Zurück zum Original'), { icon: 'reset' }, () => { area.value = pretty(original); apply(); }) : '',
       h('p', { class: 'note' }, L('The flora recipe this plant grows from (docs/specs/spec-plant.md). Edits show at once.', 'Das Flora-Rezept, aus dem diese Pflanze wächst (docs/specs/spec-plant.md). Änderungen zeigen sich sofort.')))];
   }
   if (k.source === 'built' && k.build) {
@@ -415,7 +407,7 @@ function shapePanel(k: PropKind): (Node | string)[] {
       return [section(L('Parts', 'Teile'), h('p', { class: 'note' }, L(
         'A preset of the engine. Duplicate it to change its size and parts; the copy is yours.',
         'Eine Vorlage der Engine. Dupliziere sie, um Größe und Teile zu ändern; die Kopie gehört dir.')),
-        button({ class: 'btn' }, () => pickKind(duplicateKind(k)), icon('copy'), h('span', { class: 'btn__label' }, L('Duplicate to edit', 'Zum Bearbeiten duplizieren'))))];
+        pixelButton(L('Duplicate to edit', 'Zum Bearbeiten duplizieren'), { icon: 'copy' }, () => pickKind(duplicateKind(k))))];
     }
     const build = structuredClone(k.build);
     const save = () => {
@@ -487,17 +479,19 @@ function renderBar(): void {
         'Friere jede Requisite ein, um ihre Pixel zu behalten und von Hand nachzuarbeiten. Eine eingefrorene Katalog-Requisite ist gesperrt: Szeneneditor und Spiele zeichnen die gemalten Pixel statt der Regel, bis sie entsperrt wird.'),
       L('Props are kept on this device (engine/world/prop.ts) and exported as JSON of type "pixel-prop".', 'Requisiten bleiben auf diesem Gerät (engine/world/prop.ts) und werden als JSON vom Typ „pixel-prop“ exportiert.'),
     ],
-    more: [
+    actions: [
       { label: L('New painted prop', 'Neue gemalte Requisite'), icon: 'plus', run: () => pickKind(newPainted(L('Painted prop', 'Gemalte Requisite'))) },
       { label: L('Duplicate', 'Duplizieren'), icon: 'copy', run: () => pickKind(duplicateKind(k)) },
+    ],
+    more: [
       { label: k.art ? L('Already frozen', 'Schon eingefroren') : L('Freeze into pixels', 'In Pixel einfrieren'), icon: 'lock', disabled: !!k.art, run: () => { lockKind(k); grids = null; prefs.tab = 'pixels'; undo.commit(); render(); } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${k.name}.json`, propKindFile(k)) },
       { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([PROP_STORE, FLORA_STORE, OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       k.builtin
         ? { label: isHidden(k.id) ? L('Show in the library', 'In der Bibliothek zeigen') : L('Hide from the library', 'In der Bibliothek verbergen'), icon: 'close', run: () => { setHidden(k.id, !isHidden(k.id)); render(); } }
-        : { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: k.id.startsWith('my-object:'), run: () => {
-          if (!confirm(L(`Delete "${k.name}" from this device?`, `„${k.name}“ von diesem Gerät löschen?`))) return;
+        : { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: k.id.startsWith('my-object:'), run: async () => {
+          if (!(await confirmDialog(L(`Delete "${k.name}" from this device?`, `„${k.name}“ von diesem Gerät löschen?`)))) return;
           deleteKind(k.id);
           message = L(`Deleted "${k.name}".`, `„${k.name}“ gelöscht.`);
           pickKind(propKinds()[0].id);
@@ -519,12 +513,7 @@ function render(): void {
   renderBar();
   name.set(k.name, L('Prop', 'Requisite'));
   stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
-  search.value = prefs.query;
-  search.placeholder = L('Search props', 'Requisiten suchen');
-  search.setAttribute('aria-label', L('Search props', 'Requisiten suchen'));
-  libraryHead.replaceChildren(h('label', { class: 'props__searchrow' }, icon('search'), search), chips(),
-    h('div', { class: 'toggles' }, button({ class: 'toggle' }, () => pickKind(newPainted(L('Painted prop', 'Gemalte Requisite'))), `+ ${L('Paint new', 'Neu malen')}`),
-      button({ class: 'toggle' }, () => pickKind(duplicateKind(k)), L('Duplicate', 'Duplizieren'))));
+  libraryHead.replaceChildren(search, chips());
   renderLibrary();
   ringSlot.replaceChildren(ring(),
     h('div', { class: 'toggles props__stagetools' },

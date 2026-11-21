@@ -1,6 +1,7 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
+import { tileGrid, confirmDialog, section as pixelSection, choice } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
@@ -13,8 +14,7 @@ import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { FACING_NAMES, turnFacing, type Facing } from '../../engine/core/puppet.ts';
 import {
   checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word,
-  type IconName,
-} from '../../shared/shell.ts';
+  type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
 import { drawSymptom, SYMPTOMS } from './symptoms.ts';
@@ -179,9 +179,9 @@ function renameThing(name: string): void {
   } else addThing(name, animal);
   render();
 }
-function remove(): void {
+async function remove(): Promise<void> {
   const saved = current();
-  if (!saved || !confirm(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`))) return;
+  if (!saved || !(await confirmDialog(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`)))) return;
   roster = roster.filter((s) => s !== saved);
   setCurrent(null);
   storeRoster(L(`Deleted "${saved.name}".`, `„${saved.name}“ gelöscht.`));
@@ -266,24 +266,19 @@ function shuffle(only?: TabId): void {
 
 /** Picture cards: each shows the current animal with that one choice made. */
 function cards<V>(values: readonly V[], text: (v: V) => string, chosen: (v: V) => boolean, apply: (a: Animal, v: V) => void): HTMLElement {
-  return h('div', { class: 'grid' }, ...values.map((v) => {
+  const tiles = values.map((v, i) => {
     const look = structuredClone(animal);
     apply(look, v);
-    const b = h('button', { type: 'button', class: 'card', 'aria-pressed': String(chosen(v)) },
-      h('span', { class: 'card__picture' }, thumbnail(look)), h('span', { class: 'card__label' }, text(v)));
-    b.addEventListener('click', () => {
-      apply(animal, v);
-      changed();
-    });
-    return b;
-  }));
+    return { id: String(i), picture: thumbnail(look), words: text(v) };
+  });
+  return tileGrid(tiles, String(values.findIndex(chosen)), (id) => { apply(animal, values[Number(id)]); changed(); });
 }
 
 /** A slider. The preview follows while dragging; the panel is rebuilt only on release, so the drag is not interrupted. */
 function slider(key: NumberKey): HTMLElement {
   const range = NUMBERS[key];
   const text = label(key === 'fur' ? 'shaggy' : key);
-  const input = h('input', { type: 'range', class: 'slider', min: String(range.min), max: String(range.max), step: String(range.step), 'aria-label': text });
+  const input = rangeInput({ min: String(range.min), max: String(range.max), step: String(range.step), 'aria-label': text });
   input.value = String(animal[key]);
   const value = h('b', {}, String(animal[key]));
   input.addEventListener('input', () => {
@@ -305,32 +300,15 @@ function featureToggles(values: readonly Feature[]): HTMLElement {
 }
 
 function swatches(title: string, selected: PaletteKey, choose: (key: PaletteKey) => void): HTMLElement {
-  return row(title, h('div', { class: 'swatches' }, ...COLOR_KEYS.map((key) => {
-    const b = h('button', {
-      type: 'button', class: 'swatch', 'aria-pressed': String(key === selected), 'aria-label': `${title}: ${key}`, title: key,
-      style: `--swatch: ${PALETTE[key].base}; --swatch-shade: ${PALETTE[key].shade}`,
-    });
-    b.addEventListener('click', () => choose(key));
-    return b;
-  })));
+  return row(title, choice(title, COLOR_KEYS.map((key) => ({ id: key, color: PALETTE[key].base })), () => selected, (key) => choose(key as PaletteKey), 'colors', 60));
 }
 
 function panelFor(id: TabId): HTMLElement[] {
   const sliders = (group: string) => (Object.keys(NUMBERS) as NumberKey[]).filter((k) => NUMBERS[k].group === group).map(slider);
   switch (id) {
     case 'species': {
-      const grid = h('div', { class: 'grid' });
-      for (const preset of PRESETS) {
-        const card = h('button', { type: 'button', class: 'card', 'aria-pressed': String(JSON.stringify(preset.animal) === JSON.stringify(animal)) },
-          h('span', { class: 'card__picture' }, thumbnail(preset.animal)),
-          h('span', { class: 'card__label' }, preset.name),
-        );
-        card.addEventListener('click', () => {
-          animal = structuredClone(preset.animal);
-          changed();
-        });
-        grid.append(card);
-      }
+      const grid = tileGrid(PRESETS.map((p, i) => ({ id: String(i), picture: thumbnail(p.animal), words: p.name })), String(PRESETS.findIndex((p) => JSON.stringify(p.animal) === JSON.stringify(animal))),
+        (id) => { animal = structuredClone(PRESETS[Number(id)].animal); changed(); });
       return [section(L('Species', 'Tierart'), grid, h('p', { class: 'note' }, L('The 21 animals of Lop Hop, redrawn by rule. Pick one, then style it in the other tabs.', 'Die 21 Tiere aus Lop Hop, nach Regeln neu gezeichnet. Wähle eines und gestalte es in den anderen Reitern.')))];
     }
     case 'coat':
@@ -394,7 +372,7 @@ const root = document.getElementById('animals')!;
 const stage = h('div', { class: 'stage' });
 const hero = h('canvas', { class: 'stage__sprite' });
 const stageTag = h('span', { class: 'stage__tag' });
-const previewRows = h('div', { class: 'sec__body' });
+const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'library__body', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('button') && cheer(stage));
@@ -542,8 +520,7 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Animal Editor', 'Tier-Editor');
   stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))));
-  const preview = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  preview.open = true;
+  const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   root.replaceChildren(
     h('div', { class: 'shell' },
       barSlot,
