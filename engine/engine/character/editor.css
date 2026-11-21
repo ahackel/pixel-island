@@ -12,10 +12,4 @@
 /* As tall as the longest tab, so switching tabs does not move the buttons. */
 .editor .editor__rows { display: flex; flex-direction: column; gap: 8px; min-height: 336px; }
 .editor .editor__row { display: grid; grid-template-columns: var(--name-w) auto; gap: 12px; align-items: center; }
-.editor .editor__pick { position: relative; }
 /* The two halves of a choice's box, over its picture: tapped, one steps back, the other on. */
-.editor .editor__half { position: absolute; top: 0; bottom: 4px; width: 50%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
-.editor .editor__half.editor__prev { left: 0; }
-.editor .editor__half.editor__next { right: 0; }
-.editor .editor__half:active { background: #2b1d1222; }
-.editor .editor__bar { touch-action: none; cursor: pointer; }

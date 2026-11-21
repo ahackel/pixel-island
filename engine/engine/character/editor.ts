@@ -9,10 +9,11 @@ import TEXT from './editor-text.json' with { type: 'json' };
 import { PALETTE, SHADOW, SKIN_KEYS, type PaletteKey } from '../core/palette.ts';
 import { AUTHORED, STAND } from '../core/poses.ts';
 import { BUILDS, drawCharacter, SPRITE_W, turnFacing, type Facing, type Sprite } from '../core/puppet.ts';
-import { C, caps, ICONS, pixelButton, S, type Icon } from '../../shared/game-ui.ts';
+import { C, caps, pixelButton, S, type Icon } from '../../shared/game-ui.ts';
+import { choice } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
-import { textWidth, text } from '../../shared/pixel-font.ts';
-import { drawRows, label, panel, pixelCanvas } from '../../shared/pixel-ui.ts';
+import { textWidth } from '../../shared/pixel-font.ts';
+import { label, panel, pixelCanvas } from '../../shared/pixel-ui.ts';
 import './editor.css';
 
 export type Value = string | number | boolean | null;
@@ -261,71 +262,20 @@ export function characterEditor(start: State, options: EditorOptions = {}): Edit
   const VALUE_W = 8 + Math.max(...all.filter((r) => !r.swatches).flatMap((r) => r.values.map((v) => textWidth(caps(named(r, v))))));
   /** A choice's box and a colour bar: room for an arrow at each end and the longest name between. */
   const BAR_W = 11 + VALUE_W + 11;
-  /** How tall the triangle over the chosen colour is. */
-  const TIP = 3;
   const rowEl = (row: Row) => {
     const line = el('div', 'editor__row');
     line.append(label(caps(titled(row)), C.paper, S));
-    const face = el('span', 'editor__value');
-    let draw: () => void;
-    if (row.swatches) {
-      // One bar of all the colours side by side, a little triangle over the chosen one; tapped or slid along.
-      const picks = row.values.filter((v) => v !== null);
-      const edge = (n: number) => 2 + Math.floor((n * (BAR_W - 4)) / picks.length);
-      draw = () => {
-        const now = row.get(cur()) ?? row.own?.(cur()) ?? null;
-        const { canvas: bar, ctx: c } = pixelCanvas(BAR_W, TIP + 14, S);
-        panel(c, 0, TIP, BAR_W, 13, C.paper, C.shadow);
-        picks.forEach((v, n) => {
-          const x = edge(n), w = edge(n + 1) - x;
-          c.fillStyle = hex(v);
-          c.fillRect(x, TIP + 2, w, 9);
-          if (v !== now) return;
-          c.fillStyle = C.paper;
-          const mid = x + Math.floor(w / 2);
-          for (let y = 0; y < TIP; y++) c.fillRect(mid - (TIP - 1 - y), y, 2 * (TIP - 1 - y) + 1, 1);
-        });
-        face.replaceChildren(bar);
-      };
-      const pickAt = (e: PointerEvent) => {
-        const x = (e.clientX - face.getBoundingClientRect().left) / S;
-        const n = Math.max(0, Math.min(picks.length - 1, Math.floor(((x - 2) * picks.length) / (BAR_W - 4))));
-        if ((row.get(cur()) ?? row.own?.(cur())) === picks[n]) return;
-        row.set(cur(), picks[n]);
-        changed();
-      };
-      face.className = 'editor__value editor__bar';
-      face.setAttribute('aria-label', titled(row));
-      face.addEventListener('pointerdown', (e) => { face.setPointerCapture(e.pointerId); pickAt(e); });
-      face.addEventListener('pointermove', (e) => { if (face.hasPointerCapture(e.pointerId)) pickAt(e); });
-      line.append(face);
-    } else {
-      // One box, as wide as a colour bar: the arrows at its ends, what is chosen between them. Each half steps its way.
-      draw = () => {
-        const { canvas: c, ctx: x } = pixelCanvas(BAR_W, 14, S);
-        panel(x, 0, 0, BAR_W, 13, C.paper, C.shadow);
-        drawRows(x, ICONS.left, 2, 2, C.ink);
-        drawRows(x, ICONS.right, BAR_W - 11, 2, C.ink);
-        const v = row.get(cur());
-        if (row.icon) drawRows(x, ICONS[row.icon(v)], Math.floor((BAR_W - 9) / 2), 2, C.ink);
-        else text(x, caps(named(row, v)), BAR_W / 2, 4, C.ink, 'center');
-        face.replaceChildren(c);
-      };
-      const step = (by: number) => {
-        const n = row.values.length;
-        row.set(cur(), row.values[(row.values.indexOf(row.get(cur())) + by + n) % n]);
-        changed();
-      };
-      const half = (name: string, by: number) => {
-        const b = el('button', `editor__half ${by < 0 ? 'editor__prev' : 'editor__next'}`);
-        b.setAttribute('aria-label', `${titled(row)}: ${name}`);
-        b.addEventListener('click', () => step(by));
-        return b;
-      };
-      const pick = el('div', 'editor__pick');
-      pick.append(face, half(say('char.prev'), -1), half(say('char.next'), 1));
-      line.append(pick);
-    }
+    const options = row.values.filter((v) => !row.swatches || v !== null).map((v) => ({
+      id: String(v),
+      ...(row.swatches ? { color: hex(v) } : row.icon ? { icon: row.icon(v) } : { words: named(row, v) }),
+    }));
+    const at = (id: string) => row.values.find((v) => String(v) === id) as Value;
+    const pick = choice(titled(row), options, () => {
+      const v = row.get(cur()) ?? (row.swatches ? row.own?.(cur()) ?? null : null);
+      return v === null || v === undefined ? null : String(v);
+    }, (id) => { row.set(cur(), at(id)); changed(); }, row.swatches ? 'colors' : 'arrows', BAR_W);
+    const draw = pick.redraw;
+    line.append(pick);
     draw();
     return line;
   };

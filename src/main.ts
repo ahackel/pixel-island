@@ -30,9 +30,9 @@ import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
-import { label, panel, pixelCanvas, rounded, speechBubble } from '@pixel/shared/pixel-ui.ts';
-import { LINE_H, LINE_STEP, text, wrap } from '@pixel/shared/pixel-font.ts';
+import { C, caps, dialog as storyDialog, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
+import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
+import { wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type Game } from './save.ts';
@@ -617,17 +617,7 @@ function drawFace(ctx: CanvasRenderingContext2D, x: number, y: number): void {
 }
 /** The box: the face in a frame on the left, the words beside it; as wide as the screen allows. */
 function storyBox(words: string): HTMLCanvasElement {
-  const w = Math.min(200, Math.floor((window.innerWidth - 24) / S));
-  const textX = 4 + FACE + 2 + 6;
-  const lines = wrap(words, w - textX - 5);
-  const h = Math.max(FACE + 2 + 8, (lines.length - 1) * LINE_STEP + LINE_H + 8);
-  const { canvas, ctx } = pixelCanvas(w, h + 1, S);
-  panel(ctx, 0, 0, w, h, C.paper, C.shadow);
-  rounded(ctx, 4, 4, FACE + 2, FACE + 2, C.track);
-  drawFace(ctx, 5, 5);
-  const top = Math.floor((h - ((lines.length - 1) * LINE_STEP + 5)) / 2);
-  lines.forEach((line, n) => text(ctx, line, textX, top + n * LINE_STEP, C.ink));
-  return canvas;
+  return storyDialog(words, drawFace, Math.min(200, Math.floor((window.innerWidth - 24) / S)), FACE);
 }
 
 const veil = el('div', 'veil');

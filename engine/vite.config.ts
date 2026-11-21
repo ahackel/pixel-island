@@ -21,6 +21,8 @@ export default defineConfig({
         props: 'tools/props/index.html',
         walls: 'tools/walls/index.html',
         parts: 'tools/parts/index.html',
+        icons: 'tools/icons/index.html',
+        ui: 'tools/ui/index.html',
       },
     },
   },
