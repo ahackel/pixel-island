@@ -1,0 +1,11 @@
+[
+  { "name": "Torn Striped Shirt", "slot": "top", "color": "cream",
+    "pattern": { "kind": "hstripes", "color": "red", "every": 3 },
+    "neck": "round", "length": 1, "sleeves": 3, "ragged": 3, "holes": 2 },
+  { "name": "Tattered Sailor Stripes", "slot": "top", "color": "white",
+    "pattern": { "kind": "hstripes", "color": "red", "every": 2 },
+    "neck": "v", "length": 2, "sleeves": 2, "ragged": 2, "holes": 1 },
+  { "name": "Castaway Striped Rag", "slot": "top", "color": "cream",
+    "pattern": { "kind": "hstripes", "color": "red", "every": 4 },
+    "neck": "round", "length": -2, "sleeves": 4, "ragged": 3, "holes": 4 }
+]

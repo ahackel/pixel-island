@@ -1,0 +1,20 @@
+[
+  { "name": "striped polo shirt", "slot": "top", "color": "white",
+    "pattern": { "kind": "hstripes", "color": "navy", "every": 3 },
+    "neck": "v", "length": 1, "sleeves": 3, "ragged": 0, "holes": 0 },
+  { "name": "long-sleeved jumper", "slot": "top", "color": "green",
+    "pattern": null,
+    "neck": "round", "length": 2, "sleeves": 10, "ragged": 0, "holes": 0 },
+  { "name": "checked shirt", "slot": "top", "color": "red",
+    "pattern": { "kind": "checks", "color": "cream", "every": 3 },
+    "neck": "v", "length": 1, "sleeves": 7, "ragged": 0, "holes": 0 },
+  { "name": "dark trousers with belt", "slot": "bottom", "color": "navy",
+    "pattern": null, "length": 10, "ragged": 0, "holes": 0, "belt": "brown", "skirt": false },
+  { "name": "knee-length shorts", "slot": "bottom", "color": "tan",
+    "pattern": null, "length": 5, "ragged": 0, "holes": 0, "belt": null, "skirt": false },
+  { "name": "long skirt", "slot": "bottom", "color": "teal",
+    "pattern": null, "length": 5, "ragged": 0, "holes": 0, "belt": null, "skirt": true },
+  { "name": "black dress shoes", "slot": "shoes", "color": "black" },
+  { "name": "white trainers", "slot": "shoes", "color": "white" },
+  { "name": "red pumps", "slot": "shoes", "color": "red" }
+]

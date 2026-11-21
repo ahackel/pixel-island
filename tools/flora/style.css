@@ -1,0 +1,80 @@
+/* The flora tool's own parts; the shell comes from shared/ui.css. */
+
+.flora-preview {
+  width: 256px;
+  height: 288px;
+}
+
+/* Four variants of the chosen plant, as small pictures in one row. */
+.variants {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.variant {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  padding: 2px;
+  border: 2px solid transparent;
+  background: var(--sand);
+  min-width: 0;
+  overflow: hidden;
+}
+.variant[aria-checked='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.card__picture {
+  overflow: hidden;
+}
+
+/* The recipe editor, behind Expert tools. */
+.recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.recipe__text {
+  width: 100%;
+  min-height: 18em;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--fg);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  resize: vertical;
+  tab-size: 2;
+}
+.recipe__status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.recipe__status[data-kind='warn'] {
+  color: #8a5a00;
+}
+.recipe__status[data-kind='error'] {
+  color: #b3262d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .recipe__status[data-kind='warn'] { color: #e0b060; }
+  :root:not([data-theme='light']) .recipe__status[data-kind='error'] { color: #ff8a8a; }
+}
+:root[data-theme='dark'] .recipe__status[data-kind='warn'] { color: #e0b060; }
+:root[data-theme='dark'] .recipe__status[data-kind='error'] { color: #ff8a8a; }
+
+/* The island, in its own tab. */
+.scene__frame {
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  background: #7fd6d0;
+  overflow: hidden;
+}
+.scene__canvas {
+  max-width: 100%;
+}

@@ -1,0 +1,53 @@
+[
+  {
+    "name": "Bleached log",
+    "category": "driftwood",
+    "parts": [
+      { "type": "stem", "color": "driftwood", "accent": "cream", "length": 52, "width": [7, 6],
+        "lean": 90, "turn": 15, "texture": "grain", "cap": "cut", "jitter": 0.2,
+        "children": [
+          { "type": "stem", "color": "driftwood", "accent": "cream", "at": 0.65, "turn": 270,
+            "lean": 45, "length": 8, "width": [3, 2], "texture": "grain", "cap": "cut", "jitter": 0.2 }
+        ] }
+    ]
+  },
+  {
+    "name": "Forked branch",
+    "category": "driftwood",
+    "parts": [
+      { "type": "stem", "color": "driftwood", "length": 44, "width": [5, 3],
+        "lean": 88, "turn": 170, "curve": 6, "texture": "grain", "cap": "point", "jitter": 0.25,
+        "children": [
+          { "type": "stem", "color": "driftwood", "at": 0.5, "turn": 120, "lean": 40, "curve": 10,
+            "length": 24, "width": [3, 2], "texture": "grain", "cap": "point", "jitter": 0.25 }
+        ] }
+    ]
+  },
+  {
+    "name": "Crossed sticks",
+    "category": "driftwood",
+    "parts": [
+      { "type": "stem", "color": "driftwood", "accent": "cream", "count": 2, "around": 360, "turn": 20,
+        "length": 20, "width": 4, "lean": 88, "texture": "grain", "cap": "cut", "jitter": 0.1 },
+      { "type": "stem", "color": "tan", "accent": "cream", "count": 2, "around": 360, "turn": 110,
+        "length": 17, "width": 3, "lean": 86, "texture": "grain", "cap": "cut", "jitter": 0.1 },
+      { "type": "stem", "color": "driftwood", "accent": "cream", "count": 2, "around": 360, "turn": 160,
+        "length": 15, "width": 3, "lean": 84, "texture": "grain", "cap": "cut", "jitter": 0.1 }
+    ]
+  },
+  {
+    "name": "Old root stump",
+    "category": "driftwood",
+    "parts": [
+      { "type": "stem", "color": "driftwood", "count": 6, "around": 360, "turn": 30,
+        "length": 17, "width": [5, 1], "lean": 82, "curve": 12, "texture": "grain", "cap": "point",
+        "out": 3, "jitter": 0.4 },
+      { "type": "stem", "color": "driftwood", "accent": "cream", "length": 20, "width": [12, 10],
+        "lean": 4, "texture": "grain", "cap": "cut", "jitter": 0.2,
+        "children": [
+          { "type": "stem", "color": "driftwood", "accent": "cream", "at": 0.7, "turn": 0,
+            "lean": 70, "length": 8, "width": [3, 2], "texture": "grain", "cap": "cut", "jitter": 0.2 }
+        ] }
+    ]
+  }
+]

@@ -1,0 +1,161 @@
+[
+  {
+    "name": "Two-armed saguaro",
+    "category": "cactus",
+    "parts": [
+      {
+        "type": "stem",
+        "color": "green",
+        "length": 50,
+        "width": [7, 6],
+        "lean": 0,
+        "texture": "ribs",
+        "cap": "round",
+        "sway": 0.05,
+        "jitter": 0.15,
+        "children": [
+          {
+            "type": "stem",
+            "color": "green",
+            "count": 2,
+            "around": 360,
+            "turn": 0,
+            "at": [0.4, 0.55],
+            "out": 2,
+            "length": 17,
+            "width": 5,
+            "lean": 90,
+            "curve": -95,
+            "texture": "ribs",
+            "cap": "round",
+            "sway": 0.05,
+            "jitter": 0.25
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Flowering barrel cactus",
+    "category": "cactus",
+    "parts": [
+      {
+        "type": "blob",
+        "color": "moss",
+        "size": [16, 14],
+        "texture": "ribs",
+        "sway": 0,
+        "jitter": 0.15,
+        "children": [
+          {
+            "type": "stamp",
+            "legend": { "P": "pink", "Y": "yellow" },
+            "rows": [".P.P.", "PPYPP", ".PpP."],
+            "at": 1,
+            "sway": 0.2
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Prickly pear with fruit",
+    "category": "cactus",
+    "parts": [
+      {
+        "type": "blob",
+        "color": "leaf",
+        "accent": "cream",
+        "size": [10, 13],
+        "texture": "dots",
+        "sway": 0,
+        "jitter": 0.2,
+        "children": [
+          {
+            "type": "blob",
+            "color": "leaf",
+            "accent": "cream",
+            "count": 2,
+            "around": 360,
+            "turn": 0,
+            "at": 0.75,
+            "out": 5,
+            "size": [9, 11],
+            "texture": "dots",
+            "sway": 0,
+            "jitter": 0.3,
+            "children": [
+              {
+                "type": "stamp",
+                "legend": { "R": "red" },
+                "rows": [".R.", "RRR", ".r."],
+                "count": 2,
+                "around": 360,
+                "turn": 0,
+                "at": 1,
+                "out": 2,
+                "sway": 0
+              }
+            ]
+          },
+          {
+            "type": "blob",
+            "color": "leaf",
+            "accent": "cream",
+            "at": 1,
+            "size": [8, 10],
+            "texture": "dots",
+            "sway": 0,
+            "jitter": 0.3,
+            "children": [
+              {
+                "type": "stamp",
+                "legend": { "R": "red" },
+                "rows": [".R.", "RRR", ".r."],
+                "at": 1,
+                "sway": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ball cactus cluster",
+    "category": "cactus",
+    "parts": [
+      {
+        "type": "blob",
+        "color": "sage",
+        "accent": "white",
+        "size": [10, 10],
+        "texture": "spines",
+        "sway": 0,
+        "jitter": 0.2,
+        "children": [
+          {
+            "type": "stamp",
+            "legend": { "Y": "yellow", "O": "orange" },
+            "rows": ["Y.Y", ".O.", "Y.Y"],
+            "at": 1,
+            "sway": 0.1
+          }
+        ]
+      },
+      {
+        "type": "blob",
+        "color": "sage",
+        "accent": "white",
+        "count": 5,
+        "around": 360,
+        "turn": 30,
+        "out": 7,
+        "size": [7, 7],
+        "texture": "spines",
+        "sway": 0,
+        "jitter": 0.5
+      }
+    ]
+  }
+]

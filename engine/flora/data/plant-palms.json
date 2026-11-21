@@ -1,0 +1,170 @@
+[
+  {
+    "name": "Leaning coconut palm",
+    "category": "palm",
+    "parts": [
+      {
+        "type": "stem",
+        "color": "tan",
+        "accent": "wood",
+        "length": 82,
+        "width": [6, 4],
+        "lean": 24,
+        "turn": 0,
+        "curve": -10,
+        "texture": "rings",
+        "cap": "flat",
+        "sway": 0.3,
+        "children": [
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "leaf",
+            "accent": "lime",
+            "count": 9,
+            "around": 360,
+            "turn": 20,
+            "at": 1,
+            "length": 30,
+            "width": 4,
+            "rise": 35,
+            "droop": 135,
+            "jitter": 0.3,
+            "sway": 1
+          },
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "jungle",
+            "accent": "leaf",
+            "count": 5,
+            "around": 360,
+            "turn": 56,
+            "at": 1,
+            "length": 22,
+            "width": 3,
+            "rise": 60,
+            "droop": 110,
+            "jitter": 0.3,
+            "sway": 1
+          },
+          {
+            "type": "blob",
+            "color": "brown",
+            "count": 4,
+            "around": 360,
+            "turn": 90,
+            "at": 0.94,
+            "out": 3,
+            "size": [5, 5],
+            "texture": "smooth",
+            "jitter": 0.2,
+            "sway": 0.1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Stout bushy palm",
+    "category": "palm",
+    "parts": [
+      {
+        "type": "stem",
+        "color": "wood",
+        "accent": "bark",
+        "length": 34,
+        "width": [11, 9],
+        "lean": 4,
+        "turn": 90,
+        "curve": 0,
+        "texture": "rings",
+        "cap": "flat",
+        "sway": 0.1,
+        "children": [
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "jungle",
+            "accent": "green",
+            "count": 14,
+            "around": 360,
+            "at": 1,
+            "length": 26,
+            "width": 4,
+            "rise": 30,
+            "droop": 125,
+            "jitter": 0.25,
+            "sway": 0.8
+          },
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "green",
+            "accent": "lime",
+            "count": 8,
+            "around": 360,
+            "turn": 22,
+            "at": 1,
+            "length": 18,
+            "width": 4,
+            "rise": 65,
+            "droop": 100,
+            "jitter": 0.3,
+            "sway": 0.8
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Young palm sapling",
+    "category": "palm",
+    "parts": [
+      {
+        "type": "stem",
+        "color": "tan",
+        "accent": "wood",
+        "length": 12,
+        "width": [3, 2],
+        "lean": 6,
+        "turn": 0,
+        "texture": "rings",
+        "cap": "flat",
+        "sway": 0.4,
+        "children": [
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "lime",
+            "accent": "leaf",
+            "count": 5,
+            "around": 360,
+            "turn": 30,
+            "at": 1,
+            "length": 15,
+            "width": 3,
+            "rise": 55,
+            "droop": 100,
+            "jitter": 0.35,
+            "sway": 1.3
+          },
+          {
+            "type": "leaf",
+            "shape": "frond",
+            "color": "leaf",
+            "accent": "lime",
+            "count": 1,
+            "at": 1,
+            "length": 10,
+            "width": 2,
+            "rise": 85,
+            "droop": 40,
+            "jitter": 0.2,
+            "sway": 1.2
+          }
+        ]
+      }
+    ]
+  }
+]
