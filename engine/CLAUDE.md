@@ -26,7 +26,7 @@ Three layers; dependencies point down only (`tools` → `engine` → `shared`):
 
 ## Games
 
-A game vendors this repo as a git subtree in its own `engine/` folder (pinned by the game's `.engine-version`) and imports it through a Vite alias `@pixel`. The game's dev server also serves the editors at `/engine/tools/*` (F2 switches), and the editors save into the game's `src/content/` through `shared/project.ts` and `dev/content-plugin.ts`. Games: pixel-island, animal-hospital (not yet moved). Anything any game could use belongs here; game rules and content stay in the game. Never import from a game in here.
+A game vendors this repo as a git subtree in its own `engine/` folder (pinned by the game's `.engine-version`) and imports it through a Vite alias `@pixel`. The game's dev server also serves the editors at `/engine/tools/*` (F2 switches), and the editors save into the game's `src/content/` through `shared/project.ts` and `dev/content-plugin.ts`. Anything any game could use belongs here; game rules and content stay in the game. Never import from a game in here.
 
 ## Conventions
 
