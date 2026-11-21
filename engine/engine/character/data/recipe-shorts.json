@@ -1,0 +1,8 @@
+[
+  { "name": "Frayed blue cut-offs", "slot": "bottom", "color": "blue",
+    "pattern": null, "length": 4, "ragged": 2, "holes": 0, "belt": null, "skirt": false },
+  { "name": "Tattered blue shorts", "slot": "bottom", "color": "blue",
+    "pattern": null, "length": 3, "ragged": 3, "holes": 2, "belt": null, "skirt": false },
+  { "name": "Rope-belted navy cut-offs", "slot": "bottom", "color": "navy",
+    "pattern": null, "length": 4, "ragged": 3, "holes": 1, "belt": "tan", "skirt": false }
+]

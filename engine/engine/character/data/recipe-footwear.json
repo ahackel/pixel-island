@@ -1,0 +1,18 @@
+[
+  { "name": "Tall black boots", "slot": "shoes", "color": "black",
+    "sole": null, "height": 5, "cuff": null, "open": false },
+  { "name": "Brown ankle boots", "slot": "shoes", "color": "brown",
+    "sole": null, "height": 2, "cuff": null, "open": false },
+  { "name": "Yellow rubber boots", "slot": "shoes", "color": "yellow",
+    "sole": "grey", "height": 4, "cuff": null, "open": false },
+  { "name": "Hiking boots", "slot": "shoes", "color": "wood",
+    "sole": "black", "height": 3, "cuff": "red", "open": false },
+  { "name": "Canvas trainers", "slot": "shoes", "color": "blue",
+    "sole": "white", "height": 0, "cuff": null, "open": false },
+  { "name": "Leather sandals", "slot": "shoes", "color": "tan",
+    "sole": "brown", "height": 0, "cuff": null, "open": true },
+  { "name": "Flip-flops", "slot": "shoes", "color": "teal",
+    "sole": "orange", "height": 0, "cuff": null, "open": true },
+  { "name": "Fur-trimmed winter boots", "slot": "shoes", "color": "navy",
+    "sole": "black", "height": 4, "cuff": "white", "open": false }
+]

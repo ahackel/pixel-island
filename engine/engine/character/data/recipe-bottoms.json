@@ -1,0 +1,14 @@
+[
+  { "name": "Long navy trousers", "slot": "bottom", "color": "navy",
+    "pattern": null, "length": 10, "ragged": 0, "holes": 0, "belt": "brown", "skirt": false },
+  { "name": "Rolled-up tan trousers", "slot": "bottom", "color": "tan",
+    "pattern": null, "length": 7, "ragged": 0, "holes": 0, "belt": null, "skirt": false },
+  { "name": "Torn knee shorts", "slot": "bottom", "color": "grey",
+    "pattern": null, "length": 5, "ragged": 3, "holes": 1, "belt": null, "skirt": false },
+  { "name": "Striped wrap skirt", "slot": "bottom", "color": "red",
+    "pattern": { "kind": "hstripes", "color": "cream", "every": 2 }, "length": 5, "ragged": 1, "holes": 0, "belt": null, "skirt": true },
+  { "name": "Patched trousers with rope belt", "slot": "bottom", "color": "brown",
+    "pattern": { "kind": "checks", "color": "tan", "every": 5 }, "length": 9, "ragged": 2, "holes": 3, "belt": "straw", "skirt": false },
+  { "name": "Cream briefs", "slot": "bottom", "color": "cream",
+    "pattern": null, "length": 1, "ragged": 0, "holes": 0, "belt": null, "skirt": false }
+]

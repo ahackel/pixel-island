@@ -1,0 +1,116 @@
+[
+  {
+    "name": "Banana plant",
+    "category": "jungle",
+    "parts": [
+      {
+        "type": "stem", "color": "green", "length": 26, "width": [5, 4], "lean": 3, "cap": "flat",
+        "texture": "plain", "sway": 0.2,
+        "children": [
+          { "type": "leaf", "shape": "broad", "color": "leaf", "accent": "lime", "texture": "split",
+            "count": 7, "around": 360, "length": 26, "width": 8, "rise": 45, "droop": 80, "jitter": 0.35 },
+          { "type": "leaf", "shape": "broad", "color": "lime", "accent": "leaf", "texture": "plain",
+            "count": 1, "turn": 270, "length": 18, "width": 5, "rise": 85, "droop": 10, "jitter": 0.2 },
+          { "type": "stamp", "at": 0.85, "out": 4, "turn": 90, "sway": 0.3, "anchor": [3, 0],
+            "legend": { "W": "wood", "Y": "yellow", "P": "purple" },
+            "rows": [
+              "...W...",
+              "..YWY..",
+              ".YyYyY.",
+              "YyYyYyY",
+              ".YyYyY.",
+              "..YyY..",
+              "...P...",
+              "...p..."
+            ] }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Monstera",
+    "category": "jungle",
+    "parts": [
+      {
+        "type": "stem", "color": "green", "count": 7, "around": 360, "out": 1, "length": 13, "width": 1,
+        "lean": 35, "curve": 20, "cap": "point", "jitter": 0.4,
+        "children": [
+          { "type": "leaf", "shape": "broad", "color": "jungle", "accent": "green", "texture": "holes",
+            "length": 15, "width": 10, "rise": 20, "droop": 40, "jitter": 0.3 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Large fern",
+    "category": "jungle",
+    "parts": [
+      { "type": "leaf", "shape": "frond", "color": "leaf", "accent": "green", "count": 12, "around": 360,
+        "out": 1, "length": 26, "width": 5, "rise": 65, "droop": 110, "jitter": 0.35 },
+      { "type": "leaf", "shape": "frond", "color": "lime", "accent": "leaf", "count": 5, "around": 360,
+        "length": 16, "width": 4, "rise": 80, "droop": 50, "jitter": 0.3 }
+    ]
+  },
+  {
+    "name": "Hibiscus bush",
+    "category": "jungle",
+    "parts": [
+      {
+        "type": "blob", "color": "jungle", "texture": "clumps", "size": [28, 19],
+        "children": [
+          { "type": "stamp", "count": 7, "around": 360, "at": [0.35, 0.95], "out": 11, "jitter": 0.4,
+            "anchor": [2, 2],
+            "legend": { "R": "red", "Y": "yellow" },
+            "rows": [
+              ".R.R.",
+              "RRrRR",
+              ".rYr.",
+              "RRrRR",
+              ".R.R."
+            ] }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Bamboo clump",
+    "category": "jungle",
+    "parts": [
+      {
+        "type": "stem", "color": "lime", "accent": "moss", "texture": "rings", "count": 6, "around": 360,
+        "out": 4, "length": 70, "width": 3, "lean": 6, "cap": "flat", "jitter": 0.4, "sway": 0.4,
+        "children": [
+          { "type": "leaf", "shape": "blade", "color": "leaf", "count": 10, "around": 360, "at": [0.45, 1],
+            "length": 9, "width": 2, "rise": 10, "droop": 40, "jitter": 0.5 }
+        ]
+      },
+      {
+        "type": "stem", "color": "green", "accent": "moss", "texture": "rings", "count": 3, "around": 360,
+        "turn": 90, "out": 2, "length": 38, "width": 2, "lean": 4, "cap": "flat", "jitter": 0.4,
+        "children": [
+          { "type": "leaf", "shape": "blade", "color": "leaf", "count": 6, "around": 360, "at": [0.5, 1],
+            "length": 8, "width": 2, "rise": 15, "droop": 35, "jitter": 0.5 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Round-canopy tree",
+    "category": "jungle",
+    "parts": [
+      {
+        "type": "stem", "color": "bark", "texture": "bark", "length": 24, "width": [4, 3], "lean": 2,
+        "cap": "flat", "sway": 0.1,
+        "children": [
+          {
+            "type": "blob", "color": "jungle", "texture": "clumps", "size": [40, 30], "at": 1,
+            "children": [
+              { "type": "blob", "color": "leaf", "texture": "clumps", "size": [18, 14], "count": 3,
+                "around": 360, "at": 0.55, "out": 12, "jitter": 0.3 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,84 @@
+[
+  { "name": "Large grey boulder", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "grey", "size": [52, 36], "facets": 6, "texture": "cracks" },
+      { "type": "rock", "color": "grey", "size": [16, 10], "facets": 6, "texture": "smooth", "turn": 30, "out": 24 }
+    ] },
+  { "name": "Mossy stone", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "stone", "size": [32, 22], "facets": 8, "texture": "moss", "accent": "moss",
+        "children": [
+          { "type": "leaf", "shape": "blade", "color": "leaf", "count": 5, "out": 1, "length": 6, "width": 1,
+            "rise": 70, "droop": 25, "jitter": 0.5, "turn": 200, "around": 90, "at": 1 }
+        ] }
+    ] },
+  { "name": "Beach stone pile", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "stone", "size": [10, 7], "facets": 9, "texture": "smooth",
+        "count": 5, "around": 360, "out": 8, "jitter": 0.5 },
+      { "type": "rock", "color": "grey", "size": [13, 9], "facets": 9, "texture": "smooth",
+        "children": [
+          { "type": "rock", "color": "sandstone", "size": [7, 5], "facets": 9, "texture": "smooth", "at": 1 }
+        ] }
+    ] },
+  { "name": "Dark volcanic rock", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "basalt", "size": [40, 30], "facets": 5, "texture": "speckles", "accent": "grey" },
+      { "type": "rock", "color": "basalt", "size": [14, 9], "facets": 5, "texture": "cracks", "turn": 160, "out": 20 }
+    ] },
+  { "name": "Sandstone outcrop", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "sandstone", "size": [56, 38], "facets": 5, "texture": "speckles", "accent": "tan",
+        "children": [
+          { "type": "rock", "color": "sandstone", "size": [28, 16], "facets": 5, "texture": "speckles", "accent": "tan",
+            "at": 1, "turn": 180, "out": 6 }
+        ] },
+      { "type": "rock", "color": "sandstone", "size": [18, 12], "facets": 6, "texture": "cracks", "turn": 20, "out": 28 }
+    ] },
+  { "name": "Flat stepping stone", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "stone", "size": [34, 10], "facets": 9, "texture": "smooth" }
+    ] },
+  { "name": "Stalagmite", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "cave", "size": [16, 12], "facets": 6, "texture": "cracks",
+        "children": [
+          { "type": "rock", "color": "cave", "size": [10, 12], "facets": 5, "texture": "smooth", "at": 1,
+            "children": [
+              { "type": "rock", "color": "cave", "size": [5, 10], "facets": 5, "texture": "smooth", "at": 1 }
+            ] }
+        ] }
+    ] },
+  { "name": "Stalagmite pair", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "cave", "size": [20, 10], "facets": 6, "texture": "cracks",
+        "children": [
+          { "type": "rock", "color": "cave", "size": [9, 14], "facets": 5, "texture": "smooth", "at": 1,
+            "children": [
+              { "type": "rock", "color": "cave", "size": [4, 12], "facets": 5, "texture": "smooth", "at": 1 }
+            ] }
+        ] },
+      { "type": "rock", "color": "cave", "size": [9, 8], "facets": 5, "texture": "smooth", "turn": 20, "out": 10,
+        "children": [
+          { "type": "rock", "color": "cave", "size": [5, 8], "facets": 5, "texture": "smooth", "at": 1 }
+        ] }
+    ] },
+  { "name": "Cave boulder", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "cave", "size": [36, 24], "facets": 6, "texture": "cracks" },
+      { "type": "rock", "color": "cave", "size": [14, 9], "facets": 5, "texture": "smooth", "turn": 40, "out": 18 }
+    ] },
+  { "name": "Cave rubble", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "cave", "size": [12, 8], "facets": 5, "texture": "smooth" },
+      { "type": "rock", "color": "cave", "size": [7, 5], "facets": 5, "texture": "smooth", "turn": 200, "out": 9 },
+      { "type": "rock", "color": "cave", "size": [5, 4], "facets": 4, "texture": "smooth", "turn": 70, "out": 8 }
+    ] },
+  { "name": "Cave rubble, flat", "category": "rock",
+    "parts": [
+      { "type": "rock", "color": "cave", "size": [15, 6], "facets": 6, "texture": "cracks" },
+      { "type": "rock", "color": "cave", "size": [6, 7], "facets": 4, "texture": "smooth", "turn": 120, "out": 10 },
+      { "type": "rock", "color": "cave", "size": [9, 4], "facets": 5, "texture": "smooth", "turn": 300, "out": 9 },
+      { "type": "rock", "color": "cave", "size": [3, 3], "facets": 4, "texture": "smooth", "turn": 30, "out": 13 }
+    ] }
+]

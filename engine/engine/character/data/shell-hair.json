@@ -1,0 +1,14 @@
+[
+  { "id": "recipe-hair-loose-0", "name": "Long wavy side part", "slot": "hair", "color": "hairBrown", "hem": [3, 8, 19, 21, 21, 21, 19, 5], "volume": 1, "curl": true, "parting": 30 },
+  { "id": "recipe-hair-loose-1", "name": "Tight curl mop", "slot": "hair", "color": "hairBrown", "hem": [4, 7, 10, 12, 12, 12, 10, 7], "volume": 2, "crown": 1, "curl": true },
+  { "id": "recipe-hair-loose-2", "name": "Centre part tucked bob", "slot": "hair", "color": "hairBrown", "hem": [3, 6, 13, 14, 14, 14, 13, 6], "volume": 1, "parting": 0 },
+  { "id": "recipe-hair-short-0", "name": "Mohawk", "slot": "hair", "color": "hairBrown", "hem": [1, 2, 4, 11, 12, 11, 4, 2], "volume": 2, "crown": 3, "strip": 1.5 },
+  { "id": "recipe-hair-short-1", "name": "Side parting", "slot": "hair", "color": "hairBrown", "hem": [3, 6, 5, 11, 12, 11, 5, 4], "volume": 1, "parting": 60 },
+  { "id": "recipe-hair-short-2", "name": "Buzz cut", "slot": "hair", "color": "hairBrown", "hem": [2, 5, 5, 10, 11, 10, 5, 5], "volume": 0 },
+  { "id": "recipe-hair-tied-0", "name": "High ponytail", "slot": "hair", "color": "hairBrown", "hem": [2, 5, 5, 11, 12, 11, 5, 5], "volume": 1, "parts": [{ "kind": "tail", "at": 180, "row": 1, "size": 3, "length": 14 }] },
+  { "id": "recipe-hair-tied-1", "name": "Pigtails", "slot": "hair", "color": "hairBrown", "hem": [3, 6, 9, 11, 12, 11, 9, 6], "volume": 1, "parting": 0, "parts": [{ "kind": "tail", "at": 110, "row": 7, "size": 3, "length": 7 }, { "kind": "tail", "at": 250, "row": 7, "size": 3, "length": 7 }] },
+  { "id": "recipe-hair-tied-2", "name": "Long braid", "slot": "hair", "color": "hairBrown", "hem": [3, 6, 5, 12, 13, 12, 5, 6], "volume": 1, "parts": [{ "kind": "tail", "at": 180, "row": 10, "size": 2, "length": 14 }] },
+  { "id": "recipe-hairstyles-0", "name": "Top bun", "slot": "hair", "color": "hairBrown", "hem": [2, 5, 5, 11, 12, 11, 5, 5], "volume": 1, "parts": [{ "kind": "bun", "at": 180, "row": -3, "size": 2.5, "out": 1 }] },
+  { "id": "recipe-hairstyles-1", "name": "Curly afro", "slot": "hair", "color": "hairBrown", "hem": [4, 7, 10, 12, 13, 12, 10, 7], "volume": 3, "crown": 2, "curl": true },
+  { "id": "recipe-hairstyles-2", "name": "Fringe bob", "slot": "hair", "color": "hairBrown", "hem": [5, 8, 12, 13, 13, 13, 12, 8], "volume": 1 }
+]

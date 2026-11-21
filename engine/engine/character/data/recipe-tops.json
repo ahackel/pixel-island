@@ -1,0 +1,20 @@
+[
+  { "name": "Plain T-shirt", "slot": "top", "color": "white",
+    "pattern": null,
+    "neck": "round", "length": 0, "sleeves": 3, "ragged": 0, "holes": 0 },
+  { "name": "Tank top", "slot": "top", "color": "teal",
+    "pattern": null,
+    "neck": "v", "length": 0, "sleeves": 0, "ragged": 0, "holes": 0 },
+  { "name": "Long tunic", "slot": "top", "color": "tan",
+    "pattern": null,
+    "neck": "round", "length": 5, "sleeves": 7, "ragged": 1, "holes": 0 },
+  { "name": "Checked shirt", "slot": "top", "color": "red",
+    "pattern": { "kind": "checks", "color": "navy", "every": 3 },
+    "neck": "v", "length": 1, "sleeves": 10, "ragged": 0, "holes": 0 },
+  { "name": "Open shirt", "slot": "top", "color": "blue",
+    "pattern": { "kind": "vstripes", "color": "cream", "every": 4 },
+    "neck": "open", "length": 2, "sleeves": 5, "ragged": 1, "holes": 1 },
+  { "name": "Cropped rag", "slot": "top", "color": "grey",
+    "pattern": null,
+    "neck": "round", "length": -5, "sleeves": 1, "ragged": 3, "holes": 4 }
+]

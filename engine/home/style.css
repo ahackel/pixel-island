@@ -1,0 +1,117 @@
+/* The start page: five equal tool tiles and the things made so far, on one screen. The shell comes from shared/ui.css. */
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 20px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+}
+.tile:hover {
+  border-color: var(--accent);
+}
+.tile__picture {
+  display: grid;
+  place-items: center;
+  height: 250px;
+  overflow: hidden;
+}
+/* Both pictures keep their own colours in either theme: sand under the castaways, sea round the island. */
+.tile__picture--cast {
+  background:
+    repeating-linear-gradient(26.565deg, transparent 0 30px, rgb(0 0 0 / 0.06) 30px 32px),
+    repeating-linear-gradient(-26.565deg, transparent 0 30px, rgb(0 0 0 / 0.06) 30px 32px),
+    #e9d9a0;
+}
+.tile__picture--island {
+  background: #2470cc;
+}
+.tool__canvas {
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+.tile__cap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 64px;
+  padding: 8px 12px;
+  border-top: 2px solid var(--ink);
+}
+.tile__cap b {
+  display: block;
+  font: 700 18px var(--font-display);
+}
+.tile__cap span span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.tile__go {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+.mine__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.mine__head h2 {
+  font: 700 18px var(--font-display);
+}
+.mine__head p {
+  color: var(--muted);
+  font-size: 13px;
+}
+.things {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.things .card {
+  text-decoration: none;
+}
+.things .card__picture {
+  height: 84px;
+}
+
+@media (max-width: 1023px) {
+  .tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 699px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tile__picture {
+    height: 170px;
+  }
+  .home {
+    overflow: visible;
+  }
+}
