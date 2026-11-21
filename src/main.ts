@@ -1667,9 +1667,9 @@ function frame(ms: number): void {
     if (it.open >= openFrames(it.item)) opening.delete(it);
   }
   // The island's own things lie on the island: none of them show in the cave.
-  const things: Thing[] = inCave() ? [...plants, ...world.itemThings(), ...caveThings(world, actor), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))] : [
+  const things: Thing[] = inCave() ? [...plants, ...world.itemThings(), ...world.propThings(Math.floor((ms / 1000) * 6) % FRAMES), ...caveThings(world, actor), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))] : [
     ...(rocky ? [mouthThing(at(rocky.face))] : []),
-    ...plants, ...world.itemThings(), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
+    ...plants, ...world.itemThings(), ...world.propThings(Math.floor((ms / 1000) * 6) % FRAMES), ...game.coconuts.map(coconutThing), ...game.wood.map((w) => woodThing(at(w))), ...game.stones.map((s) => stoneThing(at(s))),
     blanketThing(at(BLANKET)), ...game.lying.map((l) => LYING[l.item](at(l))), ...(game.hat ? [hatThing(game.who)(at(game.hat))] : []), ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, at(b))),
     ...game.fires.map((f) => campfireThing(at(f), ms)), ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms)),
   ];
