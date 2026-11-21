@@ -65,10 +65,10 @@ Ambient and sparse: mostly waves, wind and birds, with a gentle melody now and t
 
 ## Repos and the split
 
-- `pixel-island` (this repo) imports the engine through the Vite alias `@pixel`, pointing at `../pixel-art/pixel-art`, the same way animal-hospital does.
-- The rule: anything any game could use goes to `pixel-art`. Anything that is this game's rules or content stays here.
+- `pixel-island` (this repo) imports the engine through the Vite alias `@pixel`, pointing at `engine/`, a git subtree of pixel-engine pinned by `.engine-version`.
+- The rule: anything any game could use goes to `pixel-engine`. Anything that is this game's rules or content stays here.
 
-| pixel-art (engine and tools) | pixel-island (game) |
+| pixel-engine (engine and tools) | pixel-island (game) |
 |---|---|
 | Time-of-day tint: day, sunset, night palettes | Day length, night timer, tiredness |
 | Light sources (fire, torch) lighting a radius at night | Survival needs, fainting, speed penalties |
@@ -80,7 +80,7 @@ Ambient and sparse: mostly waves, wind and birds, with a gentle melody now and t
 | Fade-to-black and screen transitions | Morning wash-up, events, progression, save |
 | **Tools:** item & recipe editor, lighting/time-of-day preview, structure editor | **Tool:** day and event timeline editor |
 
-Decided per tool: the generic editors live in pixel-art and load and save JSON. The story-like timeline lives here.
+Decided per tool: the generic editors live in pixel-engine and load and save JSON. The story-like timeline lives here.
 
 ## Day cycle
 
@@ -262,7 +262,7 @@ Open for this island: nothing right now.
 
 ### Island 2: what it needs
 
-Based on what pixel-art and this repo have today. Engine work is anything another game could use; the rest stays here.
+Based on what pixel-engine and this repo have today. Engine work is anything another game could use; the rest stays here.
 
 **Already there to build on:**
 - **Heights and cliffs:** the terrain height map, with slopes, cliffs and walking blocked across cliffs (`engine/world/terrain.ts`, `path.ts`).
@@ -271,7 +271,7 @@ Based on what pixel-art and this repo have today. Engine work is anything anothe
 - **Animals:** a dog preset (`engine/animals/animal-presets.ts`), and herds with poses and carrying (`herd.ts`).
 - **People:** the character rig and the shared character editor, so the smuggler can be made in it.
 
-**Engine work (pixel-art):**
+**Engine work (pixel-engine):**
 
 | Feature | What it means |
 |---|---|

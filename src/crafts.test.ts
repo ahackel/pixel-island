@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BAG_ITEMS, BUILDS, HUT_PLAN, lacking, recipeFor, takeFrom, type BagItem } from './crafts.ts';
 // By path, as node runs the tests without Vite's `@pixel` alias.
-import { LOOT } from '../../pixel-art/pixel-art/engine/world/loot.ts';
+import { LOOT } from '../engine/engine/world/loot.ts';
 
 test('every thing the scene editor can put in a chest is a bag item', () => {
   for (const l of LOOT) assert.ok(BAG_ITEMS.includes(l.id as BagItem), l.id);

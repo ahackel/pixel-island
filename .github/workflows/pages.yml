@@ -1,5 +1,5 @@
 # Publishes the game with GitHub Pages: andreashackel.de/pixel-island/.
-# The engine is the pixel-art submodule (the @pixel alias), at the commit this repo pins.
+# The engine is the engine/ subtree (the @pixel alias), at the version this repo has pulled.
 name: Publish game
 
 on:
@@ -21,8 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22

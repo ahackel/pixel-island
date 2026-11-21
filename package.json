@@ -2,7 +2,7 @@
   "name": "pixel-island",
   "version": "0.1.0",
   "private": true,
-  "description": "A shipwreck survivor on a tiny island, built on the pixel-art engine",
+  "description": "A shipwreck survivor on a tiny island, built on pixel-engine",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

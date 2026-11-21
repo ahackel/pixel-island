@@ -1,17 +1,17 @@
 # Pixel Island
 
-A shipwreck survivor on a tiny island, built on the [pixel-art](../pixel-art/pixel-art) engine. Design: [DESIGN.md](DESIGN.md).
+A shipwreck survivor on a tiny island, built on the [pixel-engine](https://github.com/ahackel/pixel-engine). Design: [DESIGN.md](DESIGN.md).
 
-The engine is the git submodule `pixel-art/`, imported through the alias `@pixel` (Vite and `tsconfig.json`). It is pinned to one commit, so this game's `main` always builds; the engine moves only when you move the pin. Anything any game could use goes into pixel-art; this repo holds only the game's rules and content.
+The engine is vendored in `engine/` as a git subtree of pixel-engine, imported through the alias `@pixel` (Vite and `tsconfig.json`). `.engine-version` says which engine tag was pulled last, so this game's `main` always builds and the engine moves only when you pull. Anything any game could use goes into pixel-engine; this repo holds only the game's rules and content.
 
 ```bash
-git clone --recurse-submodules https://github.com/ahackel/pixel-island.git   # or, in a clone: git submodule update --init
+git clone https://github.com/ahackel/pixel-island.git
 npm install
 ```
 
 ### Engine
 
-To take a newer engine: push the engine change to pixel-art's `main`, then here `git -C pixel-art fetch && git -C pixel-art checkout <commit>`, build, and commit the changed `pixel-art` pointer. To edit the engine while playing, change files in `pixel-art/` (it is a full checkout: commit and push there first, then commit the pointer here).
+To take a newer engine: `git subtree pull --prefix=engine https://github.com/ahackel/pixel-engine.git <tag> --squash`, build, test, and write the tag into `.engine-version`. Engine files can be edited here like any others; they stay local patches on top of the pulled version until they are promoted to pixel-engine.
 
 ```bash
 npm run dev
@@ -37,4 +37,4 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 ## Publishing
 
-`.github/workflows/pages.yml` builds the game with GitHub Pages on every push to `main`, checking out the pinned pixel-art submodule with it. It appears at `andreashackel.de/pixel-island/`. A change to the engine alone does not republish the game: the game picks it up when you move the pin.
+`.github/workflows/pages.yml` builds the game with GitHub Pages on every push to `main`, with the vendored engine/. It appears at `andreashackel.de/pixel-island/`. 
