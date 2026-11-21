@@ -247,6 +247,8 @@ export interface TopBar {
   relabel: () => void;
 }
 export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null; pops: HTMLElement[] } {
+  // F2 goes to where the dev server starts: the game when a game serves the tools, else the start page.
+  if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/'));
   const me = TOOLS.find((x) => x.id === o.tool)!;
   const switcher = h('button', { type: 'button', class: 'switch', 'aria-label': `${o.title}, ${word('tools')}` },
     h('span', { class: 'switch__icon' }, icon(me.icon)), h('h1', {}, o.title), icon('chevron'));

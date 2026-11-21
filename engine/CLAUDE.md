@@ -26,12 +26,12 @@ Three layers; dependencies point down only (`tools` → `engine` → `shared`):
 
 ## Games
 
-Games live in their own repositories next to this one and import it through a Vite alias `@pixel` (`../pixel-art/pixel-art`): animal-hospital, pixel-island. Anything any game could use belongs here; game rules and content stay in the game.
+A game vendors this repo as a git subtree in its own `engine/` folder (pinned by the game's `.engine-version`) and imports it through a Vite alias `@pixel`. The game's dev server also serves the editors at `/engine/tools/*` (F2 switches), and the editors save into the game's `src/content/` through `shared/project.ts` and `dev/content-plugin.ts`. Games: pixel-island, animal-hospital (not yet moved). Anything any game could use belongs here; game rules and content stay in the game. Never import from a game in here.
 
 ## Conventions
 
 - Pages are Vite entries listed in `vite.config.ts`; a new tool must be added there, to `shared/shell.ts` (`TOOLS`) and to the start page. Published URLs follow the folder: `/tools/<name>/`.
-- `engine/character/face-shapes.json` is written by a dev-server-only endpoint in `vite.config.ts` (the wardrobe's shape editor); it can't save on the published site.
+- Editors save into the project with `saveToProject(name, data)` (`shared/project.ts`): the dev server's `/__save` (`dev/content-plugin.ts`, added to the game's or this repo's `vite.config.ts`) writes `<content dir>/<name>.json`; it can't save on a published site. A game's `src/content/face-shapes.json` overrides `engine/character/face-shapes.json`.
 - UI text is English and German via per-tool `i18n.ts` (the props, walls, parts and object pages write both inline with `L(en, de)`); add both when adding strings. `tools/scene` also imports `plantName` from `tools/flora/i18n.ts`.
 - Painted things are palette cells in a tone, never free colours (`engine/core/stamp.ts`). Freezing a catalogue prop or wall locks it on the device; games get the lock through scene files (`Scene.carried`) or `wallKind()`.
 - User data (saved characters, scenes, props, walls, part edits) lives in browser storage and is exported/imported as JSON; anything read back must be validated (see `engine/world/scene.ts`).

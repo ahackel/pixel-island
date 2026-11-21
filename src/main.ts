@@ -792,6 +792,9 @@ app.append(hudBox, buttons, actions, bag, bubble, dialog, veil, menuBox);
 showBag();
 showQuest();
 
+// F2 jumps to the scene editor and back (in the editors too). Dev server only: the published build has no editors.
+if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/engine/tools/scene/index.html'));
+
 // ?cheats: an orange button in the corner opens a drawer of buttons to get somewhere quickly while developing.
 let fast = 1;
 /** A weather the cheat forces, instead of the day's own. */
@@ -800,6 +803,7 @@ if (params.has('cheats')) {
   const cheat = (words: string, on: () => void) => ({ words, on });
   // Under the menu, so it does not show over it.
   cheatDrawer(app, [
+    ...(import.meta.env.DEV ? [cheat('EDITOR', () => (location.href = '/engine/tools/scene/index.html'))] : []),
     cheat('FULL', () => Object.assign(game, { hunger: 1, energy: 1 })),
     cheat('HUNGRY', () => (game.hunger = LOW - 0.01)),
     cheat('TIRED', () => (game.energy = LOW - 0.01)),
