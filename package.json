@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run check:engine && tsc --noEmit && vite build",
+    "check:engine": "node engine/scripts/check-boundary.mjs",
     "preview": "vite preview --host",
     "test": "node --test src/*.test.ts"
   },

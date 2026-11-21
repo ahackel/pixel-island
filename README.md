@@ -11,7 +11,7 @@ npm install
 
 ### Engine
 
-To take a newer engine: `git subtree pull --prefix=engine https://github.com/ahackel/pixel-engine.git <tag> --squash`, build, test, and write the tag into `.engine-version`. Engine files can be edited here like any others; they stay local patches on top of the pulled version until they are promoted to pixel-engine.
+To take a newer engine: `git subtree pull --prefix=engine https://github.com/ahackel/pixel-engine.git <tag> --squash`, build, test, and write the tag into `.engine-version`. The skills `/engine-upgrade` and `/engine-promote` (in `.claude/skills/`) do this with checks. Engine files can be edited here like any others; they stay local patches on top of the pulled version until they are promoted to pixel-engine.
 
 ```bash
 npm run dev
