@@ -1,10 +1,11 @@
-// The icon editor: the shared library of 9 by 9 icons (ui/icons.json) drawn pixel by pixel. Pick an icon on the left, paint
-// it big in the middle with the colours on the right. "Save" writes the whole library to the project's icons.json, which
-// the game then lays over the engine's; promote it to the engine to share it.
+// The icon editor: the shared library of 9 by 9 icons (ui/icons.json) drawn pixel by pixel. Pick an icon in the panel on the
+// left, paint it big in the middle (the tools float under it), name it and choose colours in the inspector on the right.
+// "Save" writes the whole library to the project's icons.json, which the game then lays over the engine's; promote it to
+// the engine to share it.
 import { saveToProject, canSaveToProject } from '../../shared/project.ts';
 import { history } from '../../shared/history.ts';
 import { drawRows, pixelCanvas } from '../../shared/pixel-ui.ts';
-import { box, pixelButton, swatch } from '../../ui/components.ts';
+import { box, choice, iconPicture, pixelButton, searchField, sidePanel, textField, type Option } from '../../ui/components.ts';
 import { ICONS } from '../../ui/icons.ts';
 import { uiPage } from '../../ui/page.ts';
 import { C, PAINT, S } from '../../ui/theme.ts';
@@ -14,20 +15,60 @@ const CELL = 28;
 let lib: Record<string, string[]> = Object.fromEntries(Object.entries(ICONS).map(([k, v]) => [k, [...v]]));
 let name = Object.keys(lib)[0];
 let ink = 'x';
-let saved: boolean | null = null;
+type Tool = 'draw' | 'erase' | 'line' | 'rect';
+let tool: Tool = 'draw';
+let filter = '';
 
 const undo = history(() => ({ lib, name }), (v) => { lib = v.lib; name = v.name; render(); });
-const main = uiPage('icons');
-const area = document.createElement('div');
-area.className = 'urow';
-area.style.alignItems = 'flex-start';
-main.append(area);
+const mark = document.createElement('span');
+mark.className = 'urow';
+/** The saved state next to the bar's save button: a check while what is shown is what is in the project. */
+const setSaved = (v: boolean | null) => { mark.replaceChildren(...(v ? [iconPicture('check')] : [])); };
+const main = uiPage('icons', {
+  undo: () => { undo.undo(); setSaved(null); },
+  redo: () => { undo.redo(); setSaved(null); },
+  save: { label: canSaveToProject() ? 'Save to project' : 'Saving needs the dev server', disabled: !canSaveToProject(), on: async () => setSaved(await saveToProject('icons.json', lib)) },
+  status: mark,
+  actions: [
+    { icon: 'plus', label: 'New', on: () => {
+      let i = 1;
+      while (lib[`new-${i}`]) i++;
+      lib[`new-${i}`] = Array(N).fill('.'.repeat(N));
+      name = `new-${i}`;
+      undo.commit();
+      render();
+    } },
+    { icon: 'copy', label: 'Copy', on: () => {
+      let i = 2;
+      while (lib[`${name}-${i}`]) i++;
+      lib[`${name}-${i}`] = [...lib[name]];
+      name = `${name}-${i}`;
+      undo.commit();
+      render();
+    } },
+    { icon: 'trash', label: 'Delete', on: () => {
+      if (Object.keys(lib).length < 2) return;
+      delete lib[name];
+      name = Object.keys(lib)[0];
+      undo.commit();
+      setSaved(null);
+      render();
+    } },
+  ],
+});
+main.className = 'uworkspace';
+document.body.classList.add('upage--fill');
 
-const pic = (rows: readonly string[], scale: number) => {
-  const { canvas, ctx } = pixelCanvas(N, N, scale);
-  drawRows(ctx, rows, 0, 0, PAINT);
-  return canvas;
-};
+// Left: the library, search on top. Middle: the paint area and its tools. Right: the inspector.
+const library = sidePanel('left', 'pixel-icons-library');
+const list = document.createElement('div');
+list.className = 'urow uside__list';
+library.body.append(searchField('Search', (v) => { filter = v.trim().toLowerCase(); renderList(); }), list);
+const area = document.createElement('div');
+area.className = 'uwork';
+const inspector = sidePanel('right', 'pixel-icons-inspector', 200);
+main.append(library.panel, area, inspector.panel);
+
 /** A library tile: the working copy of an icon on a button's paper, lit when open. */
 const tile = (rows: readonly string[], lit: boolean) => {
   const { canvas, ctx } = pixelCanvas(N + 4, N + 4, S);
@@ -44,27 +85,54 @@ const paint = (x: number, y: number, ch: string) => {
   return true;
 };
 
+type Cell = [number, number];
+/** The cells on the straight line between two cells. */
+function lineCells(a: Cell, b: Cell): Cell[] {
+  const out: Cell[] = [];
+  let [x, y] = a;
+  const dx = Math.abs(b[0] - x), dy = -Math.abs(b[1] - y), sx = x < b[0] ? 1 : -1, sy = y < b[1] ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    out.push([x, y]);
+    if (x === b[0] && y === b[1]) return out;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x += sx; }
+    if (e2 <= dx) { err += dx; y += sy; }
+  }
+}
+/** The cells on the outline of the rectangle with corners a and b. */
+const rectCells = (a: Cell, b: Cell): Cell[] => [lineCells(a, [b[0], a[1]]), lineCells([b[0], a[1]], b), lineCells(b, [a[0], b[1]]), lineCells([a[0], b[1]], a)].flat();
+
 function editor(): HTMLElement {
   const { canvas, ctx } = pixelCanvas(N, N, CELL);
-  // Grid lines over the picture: a CSS gradient, so the pixels stay crisp.
-  canvas.style.background = `repeating-conic-gradient(${C.track} 0 25%, ${C.paper} 0 50%) 0 0 / ${CELL * 2}px ${CELL * 2}px`;
+  // The transparent checker, one raster pixel per square, as a CSS gradient so the pixels stay crisp.
+  canvas.style.background = `repeating-conic-gradient(${C.track} 0 25%, ${C.paper} 0 50%) 0 0 / ${S * 2}px ${S * 2}px`;
   const redraw = () => { ctx.clearRect(0, 0, N, N); drawRows(ctx, lib[name], 0, 0, PAINT); };
   redraw();
-  const at = (e: PointerEvent) => { const r = canvas.getBoundingClientRect(); return paint(Math.floor((e.clientX - r.left) / r.width * N), Math.floor((e.clientY - r.top) / r.height * N), ink); };
-  canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); if (at(e)) redraw(); });
-  canvas.addEventListener('pointermove', (e) => canvas.hasPointerCapture(e.pointerId) && at(e) && redraw());
-  canvas.addEventListener('pointerup', () => { undo.commit(); saved = null; render(); });
+  const cell = (e: PointerEvent): Cell => { const r = canvas.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * N), Math.floor((e.clientY - r.top) / r.height * N)]; };
+  let from: Cell | null = null;
+  let last: Cell = [0, 0];
+  let base: string[] = [];
+  const apply = (a: Cell, b: Cell) => {
+    const ch = tool === 'erase' ? '.' : ink;
+    for (const [x, y] of tool === 'rect' ? rectCells(a, b) : lineCells(a, b)) paint(x, y, ch);
+    redraw();
+  };
+  canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); from = last = cell(e); base = lib[name].slice(); apply(from, from); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!from) return;
+    const to = cell(e);
+    if (tool === 'draw' || tool === 'erase') { apply(last, to); last = to; return; }
+    lib[name] = base.slice(); // a line or rectangle is drawn afresh from where it began
+    apply(from, to);
+  });
+  canvas.addEventListener('pointerup', () => { from = null; undo.commit(); setSaved(null); render(); });
   canvas.style.touchAction = 'none';
   return canvas;
 }
 
-function render(): void {
-  area.replaceChildren();
-  // The library: every icon, the open one lit.
-  const list = document.createElement('div');
-  list.className = 'urow';
-  list.style.maxWidth = '330px';
-  list.append(...Object.keys(lib).map((k) => {
+function renderList(): void {
+  list.replaceChildren(...Object.keys(lib).filter((k) => k.includes(filter)).map((k) => {
     const b = document.createElement('button');
     b.className = 'pbtn';
     b.title = k;
@@ -72,63 +140,31 @@ function render(): void {
     b.addEventListener('click', () => { name = k; undo.reset(); render(); });
     return b;
   }));
+}
 
-  const rename = Object.assign(document.createElement('input'), { value: name, spellcheck: false, title: 'Name' });
-  rename.addEventListener('change', () => {
-    const to = rename.value.trim();
-    if (!to || to === name || lib[to]) return void (rename.value = name);
+function render(): void {
+  renderList();
+
+  const rename = (to: string) => {
+    to = to.trim();
+    if (!to || to === name || lib[to]) return render();
     lib = Object.fromEntries(Object.entries(lib).map(([k, v]) => [k === name ? to : k, v]));
     name = to;
     undo.commit();
-    saved = null;
+    setSaved(null);
     render();
-  });
+  };
 
+  // The tools float under the paint area.
   const tools = document.createElement('div');
   tools.className = 'urow';
-  tools.append(
-    pixelButton('Undo', { icon: 'undo' }, () => { undo.undo(); saved = null; }),
-    pixelButton('Redo', { icon: 'redo' }, () => { undo.redo(); saved = null; }),
-    pixelButton('New', { icon: 'plus' }, () => {
-      let i = 1;
-      while (lib[`new-${i}`]) i++;
-      lib[`new-${i}`] = Array(N).fill('.'.repeat(N));
-      name = `new-${i}`;
-      undo.commit();
-      render();
-    }),
-    pixelButton('Copy', { icon: 'copy' }, () => {
-      let i = 2;
-      while (lib[`${name}-${i}`]) i++;
-      lib[`${name}-${i}`] = [...lib[name]];
-      name = `${name}-${i}`;
-      undo.commit();
-      render();
-    }),
-    pixelButton('Delete', { icon: 'trash' }, () => {
-      if (Object.keys(lib).length < 2) return;
-      delete lib[name];
-      name = Object.keys(lib)[0];
-      undo.commit();
-      saved = null;
-      render();
-    }),
-    pixelButton(canSaveToProject() ? 'Save to project' : 'Saving needs the dev server', { icon: saved ? 'check' : 'download' }, async () => {
-      if (!canSaveToProject()) return;
-      saved = await saveToProject('icons.json', lib);
-      render();
-    }),
-  );
-  const colors = document.createElement('div');
-  colors.className = 'urow';
-  colors.style.cssText = 'max-width: 200px';
-  colors.append(swatch('Erase', null, ink === '.', () => { ink = '.'; render(); }),
-    ...Object.entries(PAINT).map(([ch, color]) => swatch(ch, color, ink === ch, () => { ink = ch; render(); })));
+  tools.append(...([['draw', 'pencil'], ['erase', 'eraser'], ['line', 'line'], ['rect', 'rect']] as const).map(([id, icon]) =>
+    pixelButton(id[0].toUpperCase() + id.slice(1), { icon, flat: true, pressed: tool === id }, () => { tool = id; render(); })));
 
-  const preview = document.createElement('div');
-  preview.className = 'urow';
-  preview.append(...[1, 2, S].map((scale) => pic(lib[name], scale)));
+  // The inspector: the name and the colours.
+  const colors: Option[] = Object.entries(PAINT).map(([id, color]) => ({ id, color }));
+  inspector.body.replaceChildren(textField('Name', name, () => {}, { done: rename, width: 43 }), choice('Colors', colors, () => ink, (id) => { ink = id; }, 'colors', 43));
 
-  area.append(box(list), box(editor(), document.createElement('br'), tools), box(rename, colors, preview));
+  area.replaceChildren(box(editor()), box(tools));
 }
 render();

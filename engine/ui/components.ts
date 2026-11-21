@@ -304,7 +304,7 @@ export function choice(label: string, options: Option[], get: () => string | nul
   } else {
     self.redraw = () => self.replaceChildren(opener(label, { ...faceOf(options[index()]), flat }, (close) => {
       const list = el('div', 'urow');
-      list.append(...options.map((o) => pixelButton(o.words ?? o.icon ?? o.id, { ...faceOf(o), lit: o.id === get() }, () => { pick(o.id); close(); self.redraw(); })));
+      list.append(...options.map((o) => pixelButton(o.words ?? o.icon ?? o.id, { ...faceOf(o), lit: o.id === get(), flat: true }, () => { pick(o.id); close(); self.redraw(); })));
       return list;
     }));
   }
@@ -353,25 +353,108 @@ export function section(name: Name, content: Node[], open = true): HTMLElement {
   return wrap;
 }
 
-/** A line of text to type in, in a pixel box; `dice` (optional) is a button beside it that makes a new one. */
-export function textField(label: string, value: string, change: (value: string) => void, options: { placeholder?: string; dice?: () => string } = {}): HTMLElement {
-  const input = Object.assign(el('input', 'ubox__in utext'), { value, placeholder: options.placeholder ?? '' });
+/** A line of text to type in: the same drawn well as the search field. `dice` (optional) is a button beside it that makes a new text; `done` is told when typing ends (leaving the field, Enter). `width` is in pixels of the raster. */
+export function textField(label: string, value: string, change: (value: string) => void, options: { placeholder?: string; dice?: () => string; done?: (value: string) => void; width?: number } = {}): HTMLElement {
+  const well = inputWell(label, { value, change, done: options.done, placeholder: options.placeholder, width: options.width ?? 60 });
+  const row = el('span', 'urow');
+  row.append(well);
+  if (options.dice) row.append(pixelButton(label, { icon: 'dice' }, () => { well.input.value = options.dice!(); well.redraw(); change(well.input.value); options.done?.(well.input.value); }));
+  return row;
+}
+
+const MAGNIFIER = ['.xxx...', 'x...x..', 'x...x..', 'x...x..', '.xxxx..', '....xx.', '.....xx'];
+const CROSS = ['x...x', '.x.x.', '..x..', '.x.x.', 'x...x'];
+
+interface WellOptions { value?: string; change: (value: string) => void; done?: (value: string) => void; placeholder?: string; icon?: readonly string[]; clearable?: boolean; width?: number }
+
+/**
+ * A line of text, all drawn on the raster: a well, an optional small icon at the left, the typed words in the pixel font and,
+ * if `clearable`, a small cross at the right while there is text (tap it to clear). A transparent input over it takes the typing;
+ * the caret is drawn too (a long text scrolls to keep it in view). Without `width` (raster pixels) it stretches over its parent.
+ */
+function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLInputElement; redraw: () => void } {
+  const H = 13;
+  const wrap = el('span', 'usearch');
+  if (o.width) wrap.style.width = `${o.width * S}px`;
+  const input = Object.assign(el('input', 'usearch__input'), { spellcheck: false, value: o.value ?? '' });
   input.setAttribute('aria-label', label);
   input.title = label;
-  input.addEventListener('input', () => change(input.value));
-  const outer = el('span', 'ubox ubox--field');
-  outer.append(input);
-  const row = el('span', 'urow');
-  row.append(outer);
-  if (options.dice) row.append(pixelButton(label, { icon: 'dice' }, () => { input.value = options.dice!(); change(input.value); }));
-  return row;
+  const clear = el('button', 'usearch__clear');
+  clear.title = clear.ariaLabel = 'Clear';
+  const left = o.icon ? 2 + o.icon[0].length + 3 : 3;
+  let canvas: HTMLCanvasElement | null = null;
+  let blink: number | undefined;
+  const draw = () => {
+    const w = o.width ?? Math.max(left + 14, Math.floor(wrap.clientWidth / S));
+    const made = pixelCanvas(w, H, S);
+    const { ctx } = made;
+    panel(ctx, 0, 0, w, H, C.track);
+    if (o.icon) drawRows(ctx, o.icon, 2, Math.floor((H - o.icon.length) / 2), C.ink);
+    const crossed = o.clearable && input.value;
+    const room = w - left - (crossed ? 11 : 3);
+    const shown = input.value.toUpperCase();
+    const caretAt = textWidth(shown.slice(0, input.selectionStart ?? shown.length));
+    const shift = Math.max(0, caretAt - room + 1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, 0, room, H);
+    ctx.clip();
+    if (shown) text(ctx, shown, left - shift, 4, C.ink);
+    else if (o.placeholder && document.activeElement !== input) text(ctx, o.placeholder.toUpperCase(), left, 4, C.empty);
+    if (document.activeElement === input && Math.floor(Date.now() / 500) % 2 === 0) { ctx.fillStyle = C.ink; ctx.fillRect(left - shift + caretAt + (caretAt ? 1 : 0), 3, 1, 7); }
+    ctx.restore();
+    if (crossed) drawRows(ctx, CROSS, w - 8, 4, C.ink);
+    clear.hidden = !crossed;
+    canvas?.remove();
+    canvas = made.canvas;
+    wrap.prepend(canvas);
+    input.style.left = `${left * S}px`;
+    input.style.right = `${(crossed ? 11 : 2) * S}px`;
+  };
+  input.addEventListener('input', () => { draw(); o.change(input.value); });
+  input.addEventListener('change', () => o.done?.(input.value));
+  clear.addEventListener('click', () => { input.value = ''; draw(); o.change(''); o.done?.(''); input.focus(); });
+  for (const type of ['keyup', 'click', 'blur'] as const) input.addEventListener(type, draw);
+  input.addEventListener('focus', () => { draw(); blink = window.setInterval(draw, 500); });
+  input.addEventListener('blur', () => window.clearInterval(blink));
+  wrap.append(input, clear);
+  new ResizeObserver(draw).observe(wrap);
+  return Object.assign(wrap, { input, redraw: draw });
+}
+
+/** A search box that stretches over its parent: a small magnifier at the left, a cross to clear at the right. */
+export function searchField(label: string, change: (value: string) => void): HTMLElement {
+  return inputWell(label, { change, icon: MAGNIFIER, clearable: true });
+}
+
+/**
+ * A panel at the left or right edge of a page, top to bottom, with a grip on its inner edge to drag it wider or narrower (the
+ * width is kept in the browser under `key`). Put the content in `body`.
+ */
+export function sidePanel(side: 'left' | 'right', key: string, width = 240): { panel: HTMLElement; body: HTMLElement } {
+  const panel = el('aside', `uside uside--${side}`);
+  let w = width;
+  try { w = Math.max(120, Number(localStorage.getItem(key)) || width); } catch { /* the default */ }
+  panel.style.width = `${w}px`;
+  const body = el('div', 'uside__body');
+  const grip = el('div', 'uside__grip');
+  grip.title = 'Resize';
+  grip.addEventListener('pointerdown', (e) => grip.setPointerCapture(e.pointerId));
+  grip.addEventListener('pointermove', (e) => {
+    if (!grip.hasPointerCapture(e.pointerId)) return;
+    const r = panel.getBoundingClientRect();
+    panel.style.width = `${Math.round(Math.max(120, Math.min(innerWidth * 0.6, side === 'left' ? e.clientX - r.left : r.right - e.clientX)))}px`;
+  });
+  grip.addEventListener('pointerup', () => { try { localStorage.setItem(key, String(parseInt(panel.style.width))); } catch { /* not kept */ } });
+  panel.append(body, grip);
+  return { panel, body };
 }
 
 /** A button that opens a panel of icon buttons, one per action. */
 export function menu(label: string, items: { icon: string; label: string; on: () => void; danger?: boolean; disabled?: boolean }[], icon = 'menu', flat = false): HTMLElement {
   return opener(label, { icon, flat }, (close) => {
     const list = el('div', 'urow');
-    list.append(...items.map((i) => Object.assign(pixelButton(i.label, { icon: i.icon, dark: i.danger }, () => { close(); i.on(); }), { disabled: !!i.disabled })));
+    list.append(...items.map((i) => Object.assign(pixelButton(i.label, { icon: i.icon, dark: i.danger, flat: true }, () => { close(); i.on(); }), { disabled: !!i.disabled })));
     return list;
   });
 }
@@ -432,47 +515,60 @@ export interface HeaderOptions {
   tool: string;
   about?: string[];
   more?: { icon: string; label: string; on: () => void; danger?: boolean; disabled?: boolean }[];
+  /** Actions on the whole file or library, as buttons in their own group (new, copy, delete). */
+  actions?: { icon: string; label: string; on: () => void; disabled?: boolean }[];
   /** Short status text next to the menu (saved, an error). */
   status?: Node;
   /** Old-style controls the page still brings itself (a picker of its things). */
   things?: Node;
   undo?: () => void;
   redo?: () => void;
+  /** The main action: save. */
+  save?: { label: string; on: () => void; disabled?: boolean };
   shuffle?: () => void;
   extra?: Node;
   languages?: { current: string; ids: string[]; pick: (id: string) => void };
   labels?: { about: string; more: string; undo: string; redo: string; shuffle: string; language: string; tools: string };
 }
 
-/** The header of every tool page: switcher, about, menu, status, then undo, redo and language at the right. */
+/** Joins groups of controls into one row with a divider between each two non-empty groups. */
+function groups(...list: (Node | null | undefined | false)[][]): HTMLElement {
+  const row = el('span', 'urow');
+  list.map((g) => g.filter((n): n is Node => !!n)).filter((g) => g.length).forEach((g, i) => {
+    if (i) row.append(el('span', 'udivider'));
+    row.append(...g);
+  });
+  return row;
+}
+
+/** The header of every tool page, groups divided by lines: switcher, about, menu | actions on the file | its things and status; at the right undo, redo | save | extras | language. */
 export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null } {
   const t = { about: 'About', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle', language: 'Language', tools: 'Tools', ...o.labels };
   const bar = el('header', 'uheader');
   const pages: Option[] = o.tools.map((x) => ({ id: x.id, icon: x.icon, words: x.name }));
-  const left = el('span', 'urow');
-  left.append(choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true));
-  if (o.about) {
-    const paras = o.about;
-    left.append(opener(t.about, { icon: 'info', flat: true }, () => {
-      const text = el('div', 'uabout');
-      text.append(...paras.map((p) => Object.assign(el('p', ''), { textContent: p })));
-      return text;
-    }));
-  }
-  if (o.more) left.append(menu(t.more, o.more, 'more', true));
-  if (o.things) left.append(o.things);
-  if (o.status) left.append(o.status);
-  const right = el('span', 'urow');
+  const paras = o.about;
   const undo = o.undo ? pixelButton(t.undo, { icon: 'undo', flat: true }, o.undo) : null;
   const redo = o.redo ? pixelButton(t.redo, { icon: 'redo', flat: true }, o.redo) : null;
-  if (undo) right.append(undo);
-  if (redo) right.append(redo);
-  if (o.shuffle) right.append(pixelButton(t.shuffle, { icon: 'dice', flat: true }, o.shuffle));
-  if (o.extra) right.append(o.extra);
-  if (o.languages) {
-    const l = o.languages;
-    right.append(choice(t.language, l.ids.map((id) => ({ id, icon: id })), () => l.current, l.pick, 'list', 60, true));
-  }
+  const l = o.languages;
+  const left = groups(
+    [
+      choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true),
+      paras && opener(t.about, { icon: 'info', flat: true }, () => {
+        const text = el('div', 'uabout');
+        text.append(...paras.map((p) => Object.assign(el('p', ''), { textContent: p })));
+        return text;
+      }),
+      o.more && menu(t.more, o.more, 'more', true),
+    ],
+    (o.actions ?? []).map((a) => Object.assign(pixelButton(a.label, { icon: a.icon, flat: true }, a.on), { disabled: !!a.disabled })),
+    [o.things, o.status],
+  );
+  const right = groups(
+    [undo, redo],
+    [o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled })],
+    [o.shuffle && pixelButton(t.shuffle, { icon: 'dice', flat: true }, o.shuffle), o.extra],
+    [l && choice(t.language, l.ids.map((id) => ({ id, icon: id })), () => l.current, l.pick, 'list', 60, true)],
+  );
   bar.append(left, right);
   return { bar, undo, redo };
 }

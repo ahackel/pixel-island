@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, dialog, field, fields, header, hud, numberField, iconPicture, menu, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -52,6 +52,8 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   )]],
   ['section', [() => section({ icon: 'clothes' }, [pixelButton('One', { icon: 'sun' }, noop)])]],
   ['text field', [() => textField('Name', 'Mara', noop, { dice: () => 'Kai' })]],
+  ['search field', [() => Object.assign(searchField('Search', noop), { style: 'width: 200px; display: block' })]],
+  ['side panel', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-demo', 150); panel.style.height = '120px'; body.append(searchField('Search', noop)); return panel; }]],
   ['menu', [() => menu('Menu', [{ icon: 'download', label: 'Save', on: noop }, { icon: 'upload', label: 'Open', on: noop }, { icon: 'trash', label: 'Delete', on: noop }])]],
   ['panel', [() => panelPicture(30, 20), () => box(div('width:80px;height:40px'))]],
   ['slot', [() => slot({ rows: iconRows('tool'), colors: PAINT }), () => slot(null)]],

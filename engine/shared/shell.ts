@@ -205,6 +205,8 @@ export interface MenuItem {
   run: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** A main action (save): a button in the bar instead of an item in the menu. */
+  main?: boolean;
 }
 export function menu(label: string, items: MenuItem[]): HTMLElement {
   const pop = h('div', { class: 'pop', role: 'menu', 'aria-label': label });
@@ -243,7 +245,8 @@ export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement |
   const tools = TOOLS.map((x) => ({ ...x, name: word(x.id as keyof typeof WORDS.en), href: toolHref(x.id) }));
   const { bar, undo, redo } = header({
     tools, tool: o.tool, about: o.about, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
-    more: o.more.map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
+    more: o.more.filter((m) => !m.main).map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
+    save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled }))[0],
     languages: { current: currentLang(), ids: LANGS.map((l) => l.id), pick: (id) => { setLang(id as Lang); o.relabel(); } },
     labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools') },
   });

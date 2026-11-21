@@ -226,7 +226,7 @@ function renderBar(): void {
       { label: L('New painted wall', 'Neue gemalte Wand'), icon: 'plus', run: () => pick(addWall({ name: L('Painted wall', 'Gemalte Wand'), source: 'painted', art: toArt([blankGrid(24, 26)], 4, 22), height: 4 })) },
       { label: L('Duplicate', 'Duplizieren'), icon: 'copy', run: duplicate },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${w.name}.json`, wallFile(w)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([WALL_STORE]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([WALL_STORE]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void (async () => {
         try {
           const read = readWallFile(await pickFile());

@@ -393,7 +393,7 @@ function renderBar(): void {
       repaired: repaired ? t('foot.repaired', { n: repaired }) : '',
     }), t('foot.rules')],
     more: [
-      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([FLORA_STORE]).then((ok) => {
+      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([FLORA_STORE]).then((ok) => {
         status.textContent = ok ? (currentLang() === 'de' ? 'Im Projekt gespeichert (src/content/store).' : 'Saved to the project (src/content/store).') : (currentLang() === 'de' ? 'Nichts gespeichert: ändere erst etwas.' : 'Nothing saved: change something first.');
       }) },
       { label: currentLang() === 'de' ? 'Neu beginnen' : 'Start over', icon: 'reset', run: () => {

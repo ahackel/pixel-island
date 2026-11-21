@@ -143,6 +143,7 @@ function store(): void {
 /** After any change to the scene: saved shortly after, so a drag is one write. */
 function sceneChanged(): void {
   version++;
+  syncUndo();
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(store, 400);
 }
@@ -152,24 +153,47 @@ window.addEventListener('pagehide', () => saveTimer && store());
 /** The scene as it was before each of the last edits, to step back to. */
 const undoStack: Scene[] = [];
 const UNDO_MAX = 40;
+/** The scenes undone, to step forward to again; any new edit empties it. */
+const redoStack: Scene[] = [];
+let barUndo: HTMLButtonElement | null = null;
+let barRedo: HTMLButtonElement | null = null;
+const syncUndo = () => {
+  if (barUndo) barUndo.disabled = !undoStack.length;
+  if (barRedo) barRedo.disabled = !redoStack.length;
+};
 /** Keeps the scene as it is now, before an edit changes it. */
 function remember(): void {
   world.commit();
+  redoStack.length = 0;
   undoStack.push(structuredClone(world.scene));
   if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
+/** Shows `scene` in place of the current one (the same scene as it was before or after an edit). */
+function show(scene: Scene): void {
+  library.scenes[library.scenes.findIndex((s) => s.id === scene.id)] = scene;
+  world = new World(scene, prefs.rot);
+  selected = null;
+  sceneChanged();
 }
 function undo(): void {
   const before = undoStack.pop();
   if (!before) return;
-  library.scenes[library.scenes.findIndex((s) => s.id === before.id)] = before;
-  world = new World(before, prefs.rot);
-  selected = null;
-  sceneChanged();
+  world.commit();
+  redoStack.push(structuredClone(world.scene));
+  show(before);
+}
+function redo(): void {
+  const after = redoStack.pop();
+  if (!after) return;
+  world.commit();
+  undoStack.push(structuredClone(world.scene));
+  show(after);
 }
 
 function switchTo(scene: Scene): void {
   if (saveTimer) store();
   undoStack.length = 0;
+  redoStack.length = 0;
   if (!library.scenes.includes(scene)) library.scenes.push(scene);
   library.current = scene.id;
   selected = null;
@@ -839,6 +863,11 @@ window.addEventListener('keydown', (e) => {
     undo();
     return;
   }
+  if ((e.metaKey || e.ctrlKey) && ((e.code === 'KeyZ' && e.shiftKey) || e.code === 'KeyY') && prefs.mode === 'edit') {
+    e.preventDefault();
+    redo();
+    return;
+  }
   if (e.metaKey || e.ctrlKey) return;
   if (prefs.mode === 'play' && e.code === 'KeyE') emote('wave');
   if (prefs.mode === 'play' && e.code === 'KeyF') emote('use');
@@ -1263,7 +1292,6 @@ function showActions(): void {
 const fpsButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ fps: !prefs.fps }), icon('gauge'));
 const gridButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ grid: !prefs.grid }), icon('grid'));
 const brightButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ bright: !prefs.bright }), icon('sun'));
-const undoButton = tap({ class: 'stage__button' }, undo, icon('undo'));
 const dock = h('nav', { class: 'toolbar' });
 const options = h('section', { class: 'opts' });
 /** Who walks around in Play: picked while editing. */
@@ -1455,7 +1483,7 @@ function render(): void {
   const other = prefs.mode === 'edit' ? 'play' : 'edit';
   sceneSelect.replaceChildren(...library.scenes.map((s) => h('option', { value: s.id }, s.name)));
   sceneSelect.value = library.current;
-  const { bar, pops } = topBar({
+  const { bar, undo: u, redo: r, pops } = topBar({
     tool: 'scene',
     title: word('scene'),
     about: [t('hint.edit'), t('hint.play')],
@@ -1464,17 +1492,23 @@ function render(): void {
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.settings'), icon: 'sliders', run: () => sceneDialog('settings') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
-      { label: t('scene.project'), icon: 'download', run: () => void saveScene() },
+      { label: t('scene.project'), icon: 'download', main: true, run: () => void saveScene() },
       { label: t('scene.import'), icon: 'upload', run: () => void importScene() },
       { label: t('scene.delete'), icon: 'trash', run: deleteScene, danger: true },
     ],
     status: h('span', { class: 'bar__status' }),
+    undo,
+    redo,
     // One button: it shows where it takes you, Play while editing and Edit while playing.
     extra: tap({ class: 'ib mode', 'aria-label': t(`mode.${other}`), title: t(`mode.${other}`) }, () => set({ mode: other }), icon(other === 'play' ? 'play' : 'pencil')),
     relabel: mount,
   });
   barSlot.replaceChildren(bar, ...pops);
   const editing = prefs.mode === 'edit';
+  barUndo = u;
+  barRedo = r;
+  u!.hidden = r!.hidden = !editing;
+  syncUndo();
   dock.hidden = !editing;
   dock.replaceChildren(...(editing ? toolbar() : []));
   options.hidden = cast.hidden = !editing;
@@ -1484,7 +1518,6 @@ function render(): void {
   gridButton.setAttribute('aria-pressed', String(prefs.grid));
   brightButton.setAttribute('aria-pressed', String(prefs.bright));
   brightButton.hidden = !editing || !sceneNow().cave;
-  undoButton.hidden = !editing;
   viewport.style.background = sceneNow().cave ? '#000' : ocean.deep;
   fpsButton.setAttribute('aria-pressed', String(prefs.fps));
   fpsLine.hidden = !prefs.fps;
@@ -1562,8 +1595,6 @@ function mount(): void {
   gridButton.setAttribute('aria-label', t('zoom.grid'));
   brightButton.setAttribute('aria-label', t('bright'));
   brightButton.title = t('bright');
-  undoButton.setAttribute('aria-label', t('undo'));
-  undoButton.title = t('undo');
   gridButton.title = t('zoom.grid');
   fpsButton.setAttribute('aria-label', t('zoom.fps'));
   fpsButton.title = t('zoom.fps');
@@ -1578,7 +1609,6 @@ function mount(): void {
       tap({ class: 'stage__button', 'aria-label': t('zoom.out'), title: t('zoom.out') }, () => stepZoom(-1), icon('zoomOut')),
       tap({ class: 'stage__button', 'aria-label': t('rotate.left'), title: t('rotate.left') }, () => rotate(-1), icon('turnLeft')),
       tap({ class: 'stage__button', 'aria-label': t('rotate.right'), title: t('rotate.right') }, () => rotate(1), icon('turnRight')),
-      undoButton,
       brightButton,
       gridButton,
       fpsButton,

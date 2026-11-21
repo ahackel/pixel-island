@@ -228,7 +228,7 @@ function renderBar(): void {
       { label: t('saved.new'), icon: 'plus', run: newThing },
       { label: saved ? t('saved.copy') : t('saved.keep'), icon: 'copy', run: copyThing },
       { label: t('reset'), icon: 'reset', run: () => { state = defaultState(); changed(); } },
-      { label: t('saved.project'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([ROSTER_KEY]).then((ok) => { message = t(ok ? 'saved.projectDone' : 'saved.projectNone'); render(); }) },
+      { label: t('saved.project'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([ROSTER_KEY]).then((ok) => { message = t(ok ? 'saved.projectDone' : 'saved.projectNone'); render(); }) },
       { label: t('saved.export'), icon: 'download', run: () => download(`${saved?.name ?? t('saved.default')}.json`, characterFile({ id: '', name: saved?.name ?? t('saved.default'), state })) },
       { label: t('saved.import'), icon: 'upload', run: () => void importThing() },
       { label: t('saved.delete'), icon: 'trash', run: deleteThing, danger: true, disabled: !saved },
