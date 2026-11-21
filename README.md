@@ -2,11 +2,16 @@
 
 A shipwreck survivor on a tiny island, built on the [pixel-art](../pixel-art/pixel-art) engine. Design: [DESIGN.md](DESIGN.md).
 
-The engine is imported from the sibling folder `../pixel-art/pixel-art` through the alias `@pixel` (Vite and `tsconfig.json`), so engine edits show up here on reload. Anything any game could use goes into pixel-art; this repo holds only the game's rules and content.
+The engine is the git submodule `pixel-art/`, imported through the alias `@pixel` (Vite and `tsconfig.json`). It is pinned to one commit, so this game's `main` always builds; the engine moves only when you move the pin. Anything any game could use goes into pixel-art; this repo holds only the game's rules and content.
 
 ```bash
+git clone --recurse-submodules https://github.com/ahackel/pixel-island.git   # or, in a clone: git submodule update --init
 npm install
 ```
+
+### Engine
+
+To take a newer engine: push the engine change to pixel-art's `main`, then here `git -C pixel-art fetch && git -C pixel-art checkout <commit>`, build, and commit the changed `pixel-art` pointer. To edit the engine while playing, change files in `pixel-art/` (it is a full checkout: commit and push there first, then commit the pointer here).
 
 ```bash
 npm run dev
@@ -32,4 +37,4 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 ## Publishing
 
-`.github/workflows/pages.yml` builds the game with GitHub Pages on every push to `main`, checking out pixel-art beside it. It appears at `andreashackel.de/pixel-island/`. A change to the engine alone does not republish the game: run the workflow by hand (Actions → Publish game → Run workflow).
+`.github/workflows/pages.yml` builds the game with GitHub Pages on every push to `main`, checking out the pinned pixel-art submodule with it. It appears at `andreashackel.de/pixel-island/`. A change to the engine alone does not republish the game: the game picks it up when you move the pin.

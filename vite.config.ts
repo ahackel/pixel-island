@@ -1,10 +1,10 @@
-// The pixel-art engine is imported from the sibling folder by the alias `@pixel`
-// (one source of truth: ../pixel-art/pixel-art must exist), as in animal-hospital.
+// The pixel-art engine is imported from the ./pixel-art git submodule by the alias `@pixel`
+// (pinned to one commit; see README, Engine).
 import { defineConfig } from 'vite';
 import path from 'node:path';
 
 const here = import.meta.dirname;
-const PIXEL = path.resolve(here, '../pixel-art/pixel-art');
+const PIXEL = path.resolve(here, 'pixel-art');
 
 export default defineConfig({
   base: './',
