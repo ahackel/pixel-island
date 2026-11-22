@@ -9,7 +9,7 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
+  GROUNDS, heightAt, hiddenBehind, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
@@ -85,6 +85,10 @@ const PRINT_MS = 60_000;
  * exact, so weather, lightning and footprints still move every frame.
  */
 const WATER_MS = 100;
+/** The alpha of a kept water pixel still to be shaded toward the horizon. */
+const WATER_ALPHA = 254;
+/** Bands of rows the water is refreshed in, one after another over WATER_MS. */
+const BANDS = 8;
 /** Prints are pressed sand: tinted toward the sand's shaded side colour, at most this much. */
 const PRINT_RGB = rgb('#b39a63');
 const PRINT_DEPTH = 0.45;
@@ -115,25 +119,22 @@ const DRY = 0.45;
 
 /** Smooth noise 0 to 1 over a grid one unit across, a different field for each seed. */
 function noiseAt(x: number, y: number, seed: number): number {
+  // Written out rather than with small helpers: it runs for every shore pixel of every water frame.
   const ix = Math.floor(x), iy = Math.floor(y);
-  const ease = (t: number) => t * t * (3 - 2 * t);
-  const u = ease(x - ix), v = ease(y - iy);
-  const at = (a: number, b: number) => mix(a, b, seed);
-  const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * u;
-  const bottom = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * u;
+  const fx = x - ix, fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const a = mix(ix, iy, seed), b = mix(ix + 1, iy, seed), c = mix(ix, iy + 1, seed), e = mix(ix + 1, iy + 1, seed);
+  const top = a + (b - a) * u;
+  const bottom = c + (e - c) * u;
   return top + (bottom - top) * v;
 }
 
-/** Each crest on its way in at pixel x, y: how far along (0 rising, 1 breaking) and which pass of it this is. */
-function crestsAt(x: number, y: number, ms: number): { phase: number; id: number }[] {
-  const bend = 0.1 * Math.sin(x * 0.07) + 0.06 * Math.sin(x * 0.019 + y * 0.041);
-  const out = [];
-  for (let n = 0; n < ocean.waves; n++) {
-    const t = ms / (ocean.wavePeriod * 1000) + bend + n / ocean.waves;
-    out.push({ phase: t - Math.floor(t), id: Math.floor(t) * ocean.waves + n });
-  }
-  return out;
-}
+/**
+ * Crest `n` on its way in at pixel x, y is at `t` = `crestTime(x, y, ms) + n / ocean.waves`: its fraction is how far
+ * along it is (0 rising, 1 breaking), and `floor(t) * ocean.waves + n` which pass of it this is. The time is bent
+ * along x so crests are not rings. (No list of crests per pixel: this runs for every shore pixel of every water frame.)
+ */
+const crestTime = (x: number, y: number, ms: number) => ms / (ocean.wavePeriod * 1000) + (0.1 * Math.sin(x * 0.07) + 0.06 * Math.sin(x * 0.019 + y * 0.041));
 
 /** Whether pass `id` of a crest shows at pixel x, y, or falls in one of its gaps. */
 const shownAt = (x: number, y: number, id: number) => noiseAt(x / 14, y / 8, id) >= GAPS;
@@ -148,14 +149,19 @@ export function waveAt(depth: number, above: number, left: number, x: number, y:
   const reach = ocean.waveReach;
   if (depth <= 0 || depth >= reach + TRAIL) return 0;
   let foam = 0;
-  for (const { phase, id } of crestsAt(x, y, ms)) {
-    if (!shownAt(x, y, id)) continue;
+  const t0 = crestTime(x, y, ms);
+  for (let n = 0; n < ocean.waves; n++) {
+    const t = t0 + n / ocean.waves;
+    const phase = t - Math.floor(t);
     const crest = reach * (1 - phase);
     // Only against water: next to land or a cliff the crest would otherwise outline the shore for good.
-    const crosses = (other: number) => other > 0 && (depth - crest) * (other - crest) <= 0;
-    if (crosses(above) || crosses(left)) return Math.sqrt(phase);
+    const on = (above > 0 && (depth - crest) * (above - crest) <= 0) || (left > 0 && (depth - crest) * (left - crest) <= 0);
     const behind = (depth - crest) / TRAIL;
-    if (behind > 0 && behind < 1) foam = Math.max(foam, 0.6 * Math.sqrt(phase) * (1 - behind));
+    // Most pixels are neither on a crest nor behind one: only those ask whether this pass has a gap here.
+    if (!on && !(behind > 0 && behind < 1)) continue;
+    if (!shownAt(x, y, Math.floor(t) * ocean.waves + n)) continue;
+    if (on) return Math.sqrt(phase);
+    foam = Math.max(foam, 0.6 * Math.sqrt(phase) * (1 - behind));
   }
   return foam;
 }
@@ -166,7 +172,10 @@ export function waveAt(depth: number, above: number, left: number, x: number, y:
  */
 export function washAt(dist: number, x: number, y: number, ms: number): { sheet: number; wet: number } {
   let sheet = 0, wet = 0;
-  for (const { phase, id } of crestsAt(x, y, ms)) {
+  const t0 = crestTime(x, y, ms);
+  for (let n = 0; n < ocean.waves; n++) {
+    const t = t0 + n / ocean.waves;
+    const phase = t - Math.floor(t), id = Math.floor(t) * ocean.waves + n;
     // The wash comes from the pass that just broke.
     if (phase >= WASH + DRY || !shownAt(x, y, id - ocean.waves)) continue;
     const run = WASH_RUN * (0.4 + 0.6 * noiseAt(x / 9, y / 5, id + 7919));
@@ -311,6 +320,35 @@ export function smooth(map: HeightMap, cells: number[]): void {
  * Everything outside `World` that takes a tile or a point (tools, the walker) uses view
  * coordinates; `toData` and `toView` convert for what is saved.
  */
+const shaded = new Uint8ClampedArray(3);
+/**
+ * Copies the part `x0`, `y0`, `sw` by `sh` of a kept ground `w` by `h` into `to`, shading the water marked with
+ * WATER_ALPHA toward the horizon, the further up the window the more. Whole pixels move as 32-bit words, and a run of
+ * one colour is shaded once (most of the sea is one).
+ */
+function horizon(from: Uint8ClampedArray, to: Uint8ClampedArray, w: number, h: number, x0: number, y0: number, sw: number, sh: number): void {
+  const src = new Uint32Array(from.buffer, from.byteOffset, w * h);
+  const dst = new Uint32Array(to.buffer, to.byteOffset, w * h);
+  const [fr, fg, fb] = rgb(ocean.far);
+  const ALPHA = WATER_ALPHA << 24;
+  for (let y = y0; y < y0 + sh; y++) {
+    const shade = ocean.gradient * (1 - y / h);
+    let last = -1, out = 0;
+    for (let i = y * w + x0, end = i + sw; i < end; i++) {
+      const v = src[i];
+      if ((v & 0xff000000) !== ALPHA) { dst[i] = v; continue; }
+      if (v !== last) {
+        // Little-endian: the red byte is the lowest. The clamped array rounds as the drawing does.
+        const r = v & 255, g = (v >>> 8) & 255, b = (v >>> 16) & 255;
+        shaded[0] = r + (fr - r) * shade; shaded[1] = g + (fg - g) * shade; shaded[2] = b + (fb - b) * shade;
+        last = v;
+        out = 0xff000000 | (shaded[2] << 16) | (shaded[1] << 8) | shaded[0];
+      }
+      dst[i] = out;
+    }
+  }
+}
+
 export class World {
   scene: Scene;
   /** Quarter turns, 0 to 3. */
@@ -721,40 +759,31 @@ export class World {
   }
 
   /**
-   * Paints the camera window: the ground, every shadow at once, then things back to front with
-   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
-   * The picture is reused by the next call: copy it to keep it.
+   * Draws the ground, the sea floor under the water and the water surface of `view` into `image`, a picture its size.
+   * The sea's gradient toward the horizon goes by the window, not the ground: with `far` it is drawn on, else the
+   * water's pixels are left for it with alpha WATER_ALPHA (`horizon`).
    */
-  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
+  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string }): void {
     const { w, h } = view;
     const SEA = rgb(ocean.deep);
     const FOAM = rgb(ocean.wave);
     const FAR = rgb(ocean.far);
     const g = this.ground;
     const shore = this.shoreOf(g);
-    let t0 = performance.now();
-    // The picture and the shadow mask are reused from frame to frame rather than made anew each time.
-    if (this.image?.width !== w || this.image.height !== h) this.image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
-    const image = this.image;
     const d = image.data;
-    const baseKey = `${view.x},${view.y},${w},${h}|${Math.floor(ms / WATER_MS)}|${grid}`;
-    const kept = !highlight && this.base && this.base.ground === g && this.base.key === baseKey ? this.base.data : null;
-    if (!kept) d.fill(0);
-    if (!kept) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    d.fill(0);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const gx = x + view.x, gy = y + view.y;
       if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) continue;
       const p = gy * g.w + gx, o = (y * w + x) * 4;
       d[o] = g.rgba[p * 4]; d[o + 1] = g.rgba[p * 4 + 1]; d[o + 2] = g.rgba[p * 4 + 2]; d[o + 3] = 255;
     }
     // On the sea floor, under the surface the waves and ripples are drawn on next: decorations, then fish over them.
-    if (!kept) {
-      this.drawDecor(image, view);
-      this.drawFish(image, view, ms);
-    }
-    if (kept) d.set(kept);
-    else for (let y = 0; y < h; y++) {
+    this.drawDecor(image, view);
+    this.drawFish(image, view, ms);
+    for (let y = 0; y < h; y++) {
       const gy = y + view.y;
-      const far = ocean.gradient * (1 - y / h);
+      const shade = ocean.gradient * (1 - y / h);
       for (let x = 0; x < w; x++) {
         const gx = x + view.x;
         const o = (y * w + x) * 4;
@@ -767,7 +796,8 @@ export class World {
           d[o] = SEA[0]; d[o + 1] = SEA[1]; d[o + 2] = SEA[2]; d[o + 3] = 255;
           const mark = markAt(gx, gy, 9, ms);
           if (mark) for (let k = 0; k < 3; k++) d[o + k] += (FOAM[k] - d[o + k]) * mark;
-          for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * far;
+          if (far) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * shade;
+          else d[o + 3] = WATER_ALPHA;
           continue;
         }
         const p = gy * g.w + gx;
@@ -783,7 +813,8 @@ export class World {
           if (wet) for (let k = 0; k < 3; k++) d[o + k] += (WET_RGB[k] - d[o + k]) * wet * WET_DEPTH;
           if (sheet) for (let k = 0; k < 3; k++) d[o + k] += (FOAM[k] - d[o + k]) * sheet;
         }
-        if (depth > 0) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * far;
+        if (depth > 0 && far) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * shade;
+        else if (depth > 0) d[o + 3] = WATER_ALPHA;
         if (grid) {
           // A faint line where one tile's pixels meet the next one's, to the right or below.
           const c = g.cell[p];
@@ -794,10 +825,72 @@ export class World {
         if (highlight?.cells.has(g.cell[p])) blend(image, x, y, highlight.color);
       }
     }
-    if (!kept && !highlight) {
-      const data = this.base?.data.length === d.length ? this.base.data : new Uint8ClampedArray(d.length);
-      data.set(d);
-      this.base = { key: baseKey, ground: g, data };
+  }
+
+  /**
+   * Paints the camera window: the ground, every shadow at once, then things back to front with
+   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
+   * The picture is reused by the next call: copy it to keep it.
+   */
+  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
+    const { w, h } = view;
+    const g = this.ground;
+    let t0 = performance.now();
+    // The picture and the shadow mask are reused from frame to frame rather than made anew each time.
+    if (this.image?.width !== w || this.image.height !== h) this.image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+    const image = this.image;
+    const d = image.data;
+    if (highlight) this.drawBase(image, view, ms, grid, true, highlight);
+    else {
+      // The ground and water are kept from frame to frame: moved along when the view moves, drawing only the strips it
+      // uncovers, and refreshed for the waves a band of rows at a time, each band every WATER_MS, so no frame redraws it all.
+      const key = `${w},${h}|${grid}`;
+      let b = this.base;
+      const dx = b ? view.x - b.x : 0, dy = b ? view.y - b.y : 0;
+      const bandOf = (k: number) => Math.floor((ms + (k * WATER_MS) / BANDS) / WATER_MS);
+      if (!b || b.ground !== g || b.key !== key || Math.abs(dx) >= w || Math.abs(dy) >= h) {
+        const reuse = b?.data.length === d.length ? b : null;
+        b = this.base = { key, ground: g, x: view.x, y: view.y, data: reuse?.data ?? new Uint8ClampedArray(d.length), lit: reuse?.lit ?? new Uint8ClampedArray(d.length), bands: new Float64Array(BANDS) };
+        this.drawBase({ data: b.data, width: w, height: h }, view, ms, grid, false);
+        for (let k = 0; k < BANDS; k++) b.bands[k] = bandOf(k);
+        horizon(b.data, b.lit, w, h, 0, 0, w, h);
+      } else {
+        // The shading toward the horizon goes by the window's rows: kept where the view only moves sideways, so only what
+        // is drawn anew is shaded, and all shaded again when it moves up or down.
+        const drawn: [number, number, number, number][] = [];
+        const kept = b;
+        const strip = (x: number, y: number, sw: number, sh: number) => {
+          if (sw <= 0 || sh <= 0) return;
+          if (this.strip.length < sw * sh * 4) this.strip = new Uint8ClampedArray(sw * sh * 4);
+          const s = { data: this.strip.subarray(0, sw * sh * 4), width: sw, height: sh };
+          this.drawBase(s, { x: view.x + x, y: view.y + y, w: sw, h: sh }, ms, grid, false);
+          for (let r = 0; r < sh; r++) kept.data.set(s.data.subarray(r * sw * 4, (r + 1) * sw * 4), ((y + r) * w + x) * 4);
+          drawn.push([x, y, sw, sh]);
+        };
+        if (dx || dy) {
+          const from = Math.max(0, -dx), len = (w - Math.abs(dx)) * 4;
+          const move = (a: Uint8ClampedArray, y: number) => a.copyWithin((y * w + from) * 4, ((y + dy) * w + from + dx) * 4, ((y + dy) * w + from + dx) * 4 + len);
+          if (dy >= 0) for (let y = 0; y < h - dy; y++) move(kept.data, y);
+          else for (let y = h - 1; y >= -dy; y--) move(kept.data, y);
+          if (!dy) for (let y = 0; y < h; y++) move(kept.lit, y);
+          kept.x = view.x;
+          kept.y = view.y;
+          strip(0, dy > 0 ? h - dy : 0, w, Math.abs(dy));
+          strip(dx > 0 ? w - dx : 0, 0, Math.abs(dx), h);
+        }
+        for (let k = 0; k < BANDS; k++) {
+          const now = bandOf(k);
+          if (now === kept.bands[k]) continue;
+          kept.bands[k] = now;
+          const y0 = Math.floor((k * h) / BANDS);
+          strip(0, y0, w, Math.floor(((k + 1) * h) / BANDS) - y0);
+        }
+        t0 = part('water', t0);
+        if (dy) horizon(kept.data, kept.lit, w, h, 0, 0, w, h);
+        else for (const [x, y, sw, sh] of drawn) horizon(kept.data, kept.lit, w, h, x, y, sw, sh);
+        t0 = part('horizon', t0);
+      }
+      d.set(b.lit);
     }
     const placed = things
       .map((t) => {
@@ -829,6 +922,9 @@ export class World {
     const mask = this.mask.fill(0);
     // A lightning flash throws hard shadows, darker than the sun's.
     const flash = flashAt(ms, this.weather);
+    // The same for every shadow pixel of the frame, so worked out once.
+    const strength = Math.min(1, SHADE_ALPHA * this.shadowDepth);
+    const sun = Math.max(shadowLight(this.weather), 3 * flash);
     for (const t of things) {
       const at = footOf(g, t.spot);
       const reach = 2 * Math.max(t.w, t.h);
@@ -841,7 +937,7 @@ export class World {
         if (x >= 0 && y >= 0 && x < w && y < h && !g.shade[p] && !mask[y * w + x]) {
           mask[y * w + x] = 1;
           const o = (y * w + x) * 4;
-          const a = Math.min(1, SHADE_ALPHA * this.shadowDepth) * shadowFade(g.depth[p]) * Math.max(shadowLight(this.weather), 3 * flash);
+          const a = strength * shadowFade(g.depth[p]) * sun;
           for (let k = 0; k < 3; k++) d[o + k] += (SHADE_RGB[k] - d[o + k]) * a;
         }
       }
@@ -849,8 +945,15 @@ export class World {
     t0 = part('shadows', t0);
     const spots = this.trackSpots ? this.spotsOf(view, g) : null;
     for (const t of paintOrder(placed)) {
+      // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
+      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.spot.level) + 0.4;
+      const hides = !!t.bases || this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
+      if (!spots && !t.bases) {
+        stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => hiddenBehind(this.map, g, x + view.x, y + view.y, diag, limit) : undefined);
+        continue;
+      }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
-        const hidden = hiddenByGround(this.map, g, x + view.x, y + view.y, t.spot.i, t.spot.j, Math.max(SEA_LEVEL, t.bases ? t.bases[(y - t.dy) * t.w + x - t.dx] : t.spot.level));
+        const hidden = hides && hiddenByGround(this.map, g, x + view.x, y + view.y, t.spot.i, t.spot.j, Math.max(SEA_LEVEL, t.bases ? t.bases[(y - t.dy) * t.w + x - t.dx] : t.spot.level));
         if (!hidden && spots) {
           const b = t.box;
           if (b) {
@@ -913,14 +1016,55 @@ export class World {
     return dist;
   }
 
-  /** The ground and water of the last window composed without a highlight: it is redrawn `WATER_MS` apart, the rest every frame. */
-  private base: { key: string; ground: TerrainImage; data: Uint8ClampedArray } | null = null;
+  /**
+   * The ground and water of the last window composed without a highlight, where it is (`x`, `y`), the wave time each
+   * band of rows was last drawn at, and `lit`, the same with the water shaded toward the horizon.
+   */
+  private base: { key: string; ground: TerrainImage; x: number; y: number; data: Uint8ClampedArray; lit: Uint8ClampedArray; bands: Float64Array } | null = null;
+  /** Room to draw a strip of the base in. */
+  private strip = new Uint8ClampedArray(0);
   private wind = -1;
   /** The plants' wind level now, held a little past a change of weather (`plantWind`). */
   private windLevel(): number {
     return (this.wind = plantWind(this.weather, this.wind));
   }
   private image: Pixels | null = null;
+  /**
+   * For each 16×16 block of the ground image, its tile diagonals (`i + j` of the cells painted there) each with the
+   * highest ground (at least the sea) painted from it, as pairs: for `groundAbove`.
+   */
+  private tallest: { ground: TerrainImage; bw: number; bh: number; blocks: number[][] } | null = null;
+
+  /**
+   * Whether any ground in a box of the ground image is in front of tile diagonal `diag` and higher than `limit`:
+   * only such ground can hide a thing there (`hiddenByGround`), so where there is none no pixel needs asking.
+   */
+  private groundAbove(x: number, y: number, w: number, h: number, diag: number, limit: number): boolean {
+    const g = this.ground;
+    if (this.tallest?.ground !== g) {
+      const bw = Math.ceil(g.w / 16), bh = Math.ceil(g.h / 16);
+      const blocks = Array.from({ length: bw * bh }, (): number[] => []);
+      for (let p = 0; p < g.cell.length; p++) {
+        const c = g.cell[p];
+        if (c < 0) continue;
+        const block = blocks[Math.floor(p / g.w / 16) * bw + Math.floor((p % g.w) / 16)];
+        const d = (c % this.map.w) + Math.floor(c / this.map.w);
+        const high = Math.max(SEA_LEVEL, g.height[p]);
+        let k = 0;
+        while (k < block.length && block[k] !== d) k += 2;
+        if (k === block.length) block.push(d, high);
+        else if (high > block[k + 1]) block[k + 1] = high;
+      }
+      this.tallest = { ground: g, bw, bh, blocks };
+    }
+    const { bw, bh, blocks } = this.tallest;
+    const x1 = Math.min(bw - 1, Math.floor((x + w - 1) / 16)), y1 = Math.min(bh - 1, Math.floor((y + h - 1) / 16));
+    for (let by = Math.max(0, Math.floor(y / 16)); by <= y1; by++) for (let bx = Math.max(0, Math.floor(x / 16)); bx <= x1; bx++) {
+      const block = blocks[by * bw + bx];
+      for (let k = 0; k < block.length; k += 2) if (block[k] > diag && block[k + 1] > limit) return true;
+    }
+    return false;
+  }
   private mask = new Uint8Array(0);
   private shadows = new WeakMap<Picture, Map<string, Int32Array>>();
   private shadowsOf: TerrainImage | null = null;

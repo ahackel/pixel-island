@@ -708,12 +708,14 @@ function mixHex(a: string, b: string, t: number): string {
  * `base`. Things are drawn after the ground, so a cliff or a hill nearer the viewer has to cover them.
  */
 export function hiddenByGround(map: HeightMap, image: TerrainImage, x: number, y: number, i: number, j: number, base: number): boolean {
+  return hiddenBehind(map, image, x, y, Math.floor(i) + Math.floor(j), base + 0.4);
+}
+/** `hiddenByGround` with what stays the same for a whole thing worked out once: its tile diagonal `i + j` (floored) and `base + 0.4`. */
+export function hiddenBehind(map: HeightMap, image: TerrainImage, x: number, y: number, diag: number, limit: number): boolean {
   if (x < 0 || y < 0 || x >= image.w || y >= image.h) return false;
   const p = y * image.w + x;
   const c = image.cell[p];
   if (c < 0) return false;
-  const ci = c % map.w;
-  const cj = Math.floor(c / map.w);
-  if (ci + cj <= Math.floor(i) + Math.floor(j)) return false;
-  return Math.max(SEA_LEVEL, image.height[p]) > base + 0.4;
+  if ((c % map.w) + Math.floor(c / map.w) <= diag) return false;
+  return Math.max(SEA_LEVEL, image.height[p]) > limit;
 }
