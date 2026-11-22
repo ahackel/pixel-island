@@ -144,22 +144,6 @@ export function icon(name: IconName): SVGSVGElement {
   return svg;
 }
 
-// ------------------------------------------------------------------ flags
-
-const FLAGS: Record<Lang, string> = {
-  en: '<clipPath id="flag-uk-t"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><path d="M0 0h60v30H0z" fill="#012169"/><path d="M0 0l60 30M60 0L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30M60 0L0 30" clip-path="url(#flag-uk-t)" stroke="#c8102e" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#c8102e" stroke-width="6"/>',
-  de: '<path d="M0 0h60v10H0z" fill="#000"/><path d="M0 10h60v10H0z" fill="#dd0000"/><path d="M0 20h60v10H0z" fill="#ffce00"/>',
-};
-/** A small flag for a language: the Union Jack for English, the German flag for German. */
-export function flag(lang: Lang): SVGSVGElement {
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 60 30');
-  svg.setAttribute('class', 'flag');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.innerHTML = FLAGS[lang];
-  return svg;
-}
-
 // ------------------------------------------------------------------ shell words
 
 const WORDS = {
@@ -180,24 +164,7 @@ export const word = (key: keyof typeof WORDS.en): string => WORDS[currentLang()]
 
 export { type ToolId } from './tools.ts';
 
-// ------------------------------------------------------------------ popovers
-
-/** Opens `pop` under `anchor` with the native popover: outside taps and Escape close it. */
-export function attachPopover(anchor: HTMLElement, pop: HTMLElement): void {
-  pop.popover = 'auto';
-  pop.id ||= `pop-${Math.random().toString(36).slice(2)}`;
-  anchor.setAttribute('aria-haspopup', 'true');
-  anchor.setAttribute('aria-expanded', 'false');
-  anchor.addEventListener('click', () => pop.togglePopover());
-  pop.addEventListener('toggle', (event) => {
-    const open = (event as ToggleEvent).newState === 'open';
-    anchor.setAttribute('aria-expanded', String(open));
-    if (!open) return;
-    const r = anchor.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 6}px`;
-    pop.style.left = `${Math.max(10, Math.min(r.left, window.innerWidth - pop.offsetWidth - 10))}px`;
-  });
-}
+// ------------------------------------------------------------------ menu items
 
 export interface MenuItem {
   label: string;
@@ -207,18 +174,6 @@ export interface MenuItem {
   disabled?: boolean;
   /** A main action (save): a button in the bar instead of an item in the menu. */
   main?: boolean;
-}
-export function menu(label: string, items: MenuItem[]): HTMLElement {
-  const pop = h('div', { class: 'pop', role: 'menu', 'aria-label': label });
-  for (const item of items) {
-    const b = button({ class: item.danger ? 'mi mi--danger' : 'mi', role: 'menuitem' }, () => {
-      pop.hidePopover();
-      item.run();
-    }, icon(item.icon), item.label);
-    b.disabled = !!item.disabled;
-    pop.append(b);
-  }
-  return pop;
 }
 
 // ------------------------------------------------------------------ top bar

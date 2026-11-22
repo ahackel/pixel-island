@@ -1,7 +1,7 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { tileGrid, confirmDialog, section as pixelSection, choice } from '../../ui/components.ts';
+import { box, tileGrid, confirmDialog, section as pixelSection, choice, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
@@ -374,7 +374,7 @@ const hero = h('canvas', { class: 'stage__sprite' });
 const stageTag = h('span', { class: 'stage__tag' });
 const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('button') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const name = nameTag();
@@ -390,18 +390,15 @@ function setFacing(next: Facing): void {
 
 function renderBar(): void {
   const saved = current();
-  const picker = h('select', { class: 'select bar__things', 'aria-label': L('My things', 'Meine Sachen') },
-    h('option', { value: '' }, L('Not saved yet', 'Noch nicht gespeichert')), ...roster.map((s) => h('option', { value: s.id }, s.name)));
-  picker.value = currentId ?? '';
-  picker.addEventListener('change', () => {
-    const chosen = roster.find((s) => s.id === picker.value);
+  const picker = choice(L('My things', 'Meine Sachen'), [{ id: '', words: L('Not saved yet', 'Noch nicht gespeichert') }, ...roster.map((s) => ({ id: s.id, words: s.name }))], () => currentId ?? '', (id) => {
+    const chosen = roster.find((s) => s.id === id);
     message = '';
     if (chosen) load(chosen.animal, chosen.id);
     else {
       setCurrent(null);
       render();
     }
-  });
+  }, 'list', 60, true);
   const fileName = saved?.name ?? L('Animal', 'Tier');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'animals',
@@ -487,11 +484,7 @@ function render(): void {
   panel.replaceChildren(...panelFor(tab));
   panel.scrollTop = scroll;
 
-  const symptoms = h('select', { class: 'select', 'aria-label': 'Symptom' }, h('option', { value: '' }, L('None', 'Keins')), ...Object.keys(SYMPTOMS).map((s) => h('option', { value: s }, s)));
-  symptoms.value = symptom;
-  symptoms.addEventListener('change', () => {
-    symptom = symptoms.value;
-  });
+  const symptoms = choice('Symptom', [{ id: '', words: L('None', 'Keins') }, ...Object.keys(SYMPTOMS).map((s) => ({ id: s, words: s }))], () => symptom, (id) => { symptom = id; }, 'list');
   const actions = CLIP_IDS.map((id) => ({ id: id as string, label: id === 'run' && animal.hops ? L('Hop', 'Hoppeln') : L(CLIPS[id].name, CLIP_DE[id]) }));
   previewRows.replaceChildren(
     row(L('Action', 'Aktion'), segmented(L('Action', 'Aktion'), actions, clip, (id) => {
@@ -521,15 +514,7 @@ function mount(): void {
   document.title = L('Animal Editor', 'Tier-Editor');
   stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))));
   const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, preview),
-        h('section', { class: 'library', 'aria-label': L('Animal', 'Tier') }, tabSlot, panel),
-      ),
-    ),
-  );
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-animals', centre: [stage, box(preview)], right: [tabSlot, panel], rightWidth: 460 })));
 }
 
 // Dragging sideways on the preview turns the animal round, an eighth of a turn at a time.

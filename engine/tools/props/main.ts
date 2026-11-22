@@ -21,8 +21,8 @@ import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { choice, pixelButton, searchField, tileGrid, toggle, type Option as Pick, confirmDialog } from '../../ui/components.ts';
-import { button, checkbox, h, history, icon, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
+import { box, choice, pixelButton, searchField, tileGrid, toggle, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
+import { button, checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
 
@@ -249,14 +249,15 @@ function onionOf(k: PropKind): ((view: number) => Grid | null) | undefined {
 }
 
 function freezeButton(k: PropKind): HTMLElement {
-  return button({ class: 'btn props__freeze' }, () => {
+  const label = k.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren');
+  return h('div', { class: 'props__freeze' }, pixelButton(label, { icon: 'freeze' }, () => {
     lockKind(kind());
     grids = null;
     prefs.tab = 'pixels';
     message = k.builtin ? L(`${k.name} is frozen: scenes now draw its pixels.`, `${k.name} ist eingefroren: Szenen zeichnen jetzt seine Pixel.`) : L('Frozen into pixels.', 'In Pixel eingefroren.');
     undo.commit();
     render();
-  }, icon('lock'), h('span', { class: 'btn__label' }, k.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren')));
+  }));
 }
 
 function panelFor(tab: Tab): (Node | string)[] {
@@ -441,7 +442,7 @@ const root = document.getElementById('props')!;
 const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
 const ringSlot = h('div', { class: 'props__under' });
 const libraryHead = h('div', { class: 'props__libhead' });
@@ -536,11 +537,9 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Props', 'Requisiten');
   stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, kind().name)));
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot,
-    h('main', { class: 'shell__main props__main' },
-      h('section', { class: 'library props__library', 'aria-label': L('Library', 'Bibliothek') }, libraryHead, h('div', { class: 'library__body' }, libraryGrid)),
-      h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, ringSlot),
-      h('section', { class: 'library', 'aria-label': L('Prop', 'Requisite') }, tabSlot, panel))));
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
+    key: 'pixel-props', left: [libraryHead, h('div', { class: 'uside__list' }, libraryGrid)], centre: [stage, box(ringSlot)], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+  })));
 }
 
 window.addEventListener('keydown', (e) => {

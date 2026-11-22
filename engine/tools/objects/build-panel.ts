@@ -1,7 +1,7 @@
 // The object editor's panels for a built thing (its size, parts and points), shared by the object
 // editor and the Shape tab of the props tool. They change the build they are given in place and say so
 // through the context.
-import { choice as pixelChoice, pixelButton } from '../../ui/components.ts';
+import { choice as pixelChoice, pixelButton, textField } from '../../ui/components.ts';
 import { AXES, COLOR_KEYS, KINDS, LOOPS, MAX_HEIGHT, MAX_PARTS, MAX_TILES, newPart, PAINTS, SHAPES, UNIT, type Build, type Part } from '../../engine/objects/object.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { h, row, section, segmented, rangeInput } from '../../shared/shell.ts';
@@ -131,12 +131,11 @@ export function buildPanel(id: BuildTab, ctx: BuildContext): HTMLElement[] {
     }
     case 'points': {
       const rows = prop.points.map((pt, i) => {
-        const name = h('input', { type: 'text', class: 'select', value: pt.name, maxlength: '16', 'aria-label': L('Point name', 'Name des Punkts') });
-        name.addEventListener('change', () => {
-          const v = name.value.trim().toLowerCase();
+        const name = textField(L('Point name', 'Name des Punkts'), pt.name, () => {}, { width: 50, done: (value) => {
+          const v = value.trim().toLowerCase();
           if (/^[a-z][a-z0-9]{0,15}$/.test(v)) pt.name = v;
           ctx.changed();
-        });
+        } });
         return section(pt.name,
           h('div', { class: 'urow' }, name, press(L('Delete', 'Löschen'), () => {
             prop.points.splice(i, 1);

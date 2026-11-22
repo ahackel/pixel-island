@@ -7,7 +7,7 @@ import './pixel-editor.css';
 import { hexOf, PAINT_KEYS, PALETTE, type Cell, type PaletteKey } from '../../engine/core/palette.ts';
 import { blankGrid, type Grid } from '../../engine/core/stamp.ts';
 import { h } from '../../shared/shell.ts';
-import { box, choice, pixelButton, section, swatch, toggle } from '../../ui/components.ts';
+import { box, choice, pixelButton, section, toggle } from '../../ui/components.ts';
 import { label } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
 import { currentLang } from '../../shared/lang.ts';
@@ -297,19 +297,19 @@ export function pixelEditor(o: PixelEditorOptions): { el: HTMLElement; redraw():
   });
 
   const el = h('div', { class: 'px' });
-  /** The three tones of a palette entry, as swatches. */
-  function swatchFor(key: PaletteKey): HTMLElement {
-    const ramp = h('span', { class: 'urow', title: key, style: 'gap: 4px; flex-wrap: nowrap' });
-    ramp.append(...(['light', 'base', 'shade'] as const).map((tone) => {
-      const c: Cell = { key, shade: tone === 'shade', ...(tone === 'light' ? { light: true } : {}) };
-      return swatch(`${key} ${tone}`, PALETTE[key][tone], sameCell(c, ink), () => {
-        ink = c;
-        if (tool === 'eraser' || tool === 'picker') tool = 'pencil';
-        rebuild();
-      });
-    }));
-    return ramp;
+  // The ink is a palette colour in one of its three tones: a colour bar picks the colour, a second bar of its tones the tone.
+  const TONES = ['light', 'base', 'shade'] as const;
+  const toneOf = (c: Cell) => (c.light ? 'light' : c.shade ? 'shade' : 'base');
+  const cellOf = (key: PaletteKey, tone: string): Cell => ({ key, shade: tone === 'shade', ...(tone === 'light' ? { light: true } : {}) });
+  const toneSlot = h('span');
+  const toneBar = () => choice(L('Tone', 'Ton'), TONES.map((tone) => ({ id: tone, color: PALETTE[ink.key][tone] })), () => toneOf(ink), (tone) => pickInk(cellOf(ink.key, tone)), 'colors', 40);
+  /** Takes an ink; the bars redraw themselves, so only a change of tool rebuilds the editor (it would end a drag along a bar). */
+  function pickInk(c: Cell): void {
+    ink = c;
+    if (tool === 'eraser' || tool === 'picker') { tool = 'pencil'; return rebuild(); }
+    toneSlot.replaceChildren(toneBar());
   }
+  const colorBar = (keys: PaletteKey[]) => choice(L('Colour', 'Farbe'), keys.map((key) => ({ id: key, color: PALETTE[key].base })), () => ink.key, (key) => pickInk(cellOf(key as PaletteKey, toneOf(ink))), 'colors', Math.max(40, keys.length * 8 + 4));
   const bar = (...items: Node[]) => { const row = h('div', { class: 'urow' }); row.append(...items); return row; };
   const act = (icon: string, tip: string, on: () => void) => pixelButton(tip, { icon, flat: true }, on);
   function rebuild(): void {
@@ -339,11 +339,13 @@ export function pixelEditor(o: PixelEditorOptions): { el: HTMLElement; redraw():
     el.replaceChildren(
       views ?? '', tools, wrap, info,
       h('div', { class: 'px__inks' },
-        h('div', { class: 'px__ramps' }, ...first.map(swatchFor)),
-        rest.length ? section({ icon: 'palette', tip: L('All colours', 'Alle Farben') }, [h('div', { class: 'px__ramps' }, ...rest.map(swatchFor))], false) : '',
+        colorBar(first),
+        toneSlot,
+        rest.length ? section({ icon: 'palette', tip: L('All colours', 'Alle Farben') }, [colorBar(rest)], false) : '',
       ),
       nudges, sizeRow ?? '',
     );
+    toneSlot.replaceChildren(toneBar());
     redraw();
   }
   rebuild();

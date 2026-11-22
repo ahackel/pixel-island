@@ -1,7 +1,7 @@
 // The wardrobe: the character editor the island game opens before each new game (engine/character/editor.ts), with every
 // row and a tab for how the preview shows the character, and around it the tools' bar: the characters kept on this
 // device, undo, a random one, and the page where the eye and mouth shapes are drawn.
-import { confirmDialog, pixelButton } from '../../ui/components.ts';
+import { choice, confirmDialog, pixelButton, sidePanel } from '../../ui/components.ts';
 import { BROWS, EYE_COLORS, EYE_SHAPES, GLASSES_COLORS, HAIR_STYLES, HEAD_SHAPES, MOODS, NOSES } from '../../engine/character/base.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { ROSTER_KEY } from '../../engine/character/character.ts';
@@ -15,7 +15,7 @@ import { SKIN_KEYS } from '../../engine/core/palette.ts';
 import { AUTHORED, STAND } from '../../engine/core/poses.ts';
 import { BODY_WINDOW, BUILDS, drawCharacter, FACING_VIEWS, type Facing } from '../../engine/core/puppet.ts';
 import { WEAR_MAX } from '../../engine/character/wear.ts';
-import { button, cheer, h, history, icon, NAMES, nameTag, pick, pickStart, shuffled, topBar, undoKeys, word } from '../../shared/shell.ts';
+import { cheer, h, history, NAMES, nameTag, pick, pickStart, shuffled, topBar, undoKeys, word } from '../../shared/shell.ts';
 import { currentLang, LANGS } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, type Rect } from '../../shared/pixels.ts';
 import { itemName, missingItemNames, t, type Key } from './i18n.ts';
@@ -74,8 +74,12 @@ const name = nameTag();
 name.onRename((value) => renameThing(value));
 let message = '';
 let editor: Editor | null = null;
-/** The shape editor's place, beside the preview while it is open. */
-const shapesSlot = h('section', { class: 'wardrobe__shapes', 'aria-label': t('shapes') });
+// The shape editor's panel at the right, as wide as it is dragged; the character editor makes room for it (--shapes-w).
+const shapes = sidePanel('right', 'pixel-wardrobe-shapes', 560);
+shapes.panel.classList.add('wardrobe__shapes');
+shapes.panel.setAttribute('aria-label', t('shapes'));
+const shapesSlot = shapes.body;
+new ResizeObserver(() => stage.style.setProperty('--shapes-w', `${shapes.panel.offsetWidth}px`)).observe(shapes.panel);
 
 // My things: saved characters on this device, shared with the scene editor. The working character
 // is kept on every change as before; while a saved one is picked, changes go straight into it.
@@ -198,14 +202,9 @@ async function importThing(): Promise<void> {
   render();
 }
 
-function thingsPicker(): HTMLSelectElement {
-  const select = h('select', { class: 'select bar__things', 'aria-label': t('things') },
-    h('option', { value: '' }, t('saved.none')),
-    ...roster.map((c) => h('option', { value: c.id }, c.name)),
-  );
-  select.value = currentId ?? '';
-  select.addEventListener('change', () => {
-    const saved = roster.find((c) => c.id === select.value);
+function thingsPicker(): HTMLElement {
+  return choice(t('things'), [{ id: '', words: t('saved.none') }, ...roster.map((c) => ({ id: c.id, words: c.name }))], () => currentId ?? '', (id) => {
+    const saved = roster.find((c) => c.id === id);
     setCurrent(saved?.id ?? null);
     if (saved) state = structuredClone(saved.state);
     message = '';
@@ -213,8 +212,7 @@ function thingsPicker(): HTMLSelectElement {
     version++;
     saveState();
     render();
-  });
-  return select;
+  }, 'list', 60, true);
 }
 
 function renderBar(): void {
@@ -323,7 +321,7 @@ window.addEventListener('popstate', syncShapes);
 
 function shapesView(): void {
   const head = h('div', { class: 'shapes-head' },
-    button({ class: 'btn shapes-head__back' }, () => openShapes(false), icon('chevron'), t('shapes.back')),
+    pixelButton(t('shapes.back'), { icon: 'left' }, () => openShapes(false)),
     h('h2', {}, t('shapes')));
   // From behind there is no face to edit.
   const seen = FACING_VIEWS[facing()];
@@ -368,7 +366,7 @@ function mount(): void {
     // The shape editor edits the view the preview shows.
     turned: () => shapesPage && render(),
   });
-  stage.replaceChildren(editor, h('div', { class: 'wardrobe__name' }, name.el), shapesSlot);
+  stage.replaceChildren(editor, h('div', { class: 'wardrobe__name' }, name.el), shapes.panel);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, h('main', { class: 'shell__main wardrobe__main' }, stage)));
 }
 

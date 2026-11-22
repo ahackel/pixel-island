@@ -1,7 +1,7 @@
 // The object editor: pick a thing, then change its size, parts and colours, see it in all four
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { tileGrid, confirmDialog, section as pixelSection } from '../../ui/components.ts';
+import { box, choice, tileGrid, confirmDialog, section as pixelSection, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, isShadow, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
@@ -205,8 +205,8 @@ const sideSlider = rangeInput({ min: '0', max: '3', step: '1' });
 const sideValue = h('b');
 const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
-panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
+panel.addEventListener('click', (e) => (e.target as Element).closest('.utile, .ubar, .uslider') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const name = nameTag();
 name.onRename(renameThing);
@@ -239,18 +239,15 @@ function newThing(): void {
 
 function renderBar(): void {
   const saved = current();
-  const picker = h('select', { class: 'select bar__things', 'aria-label': L('My things', 'Meine Sachen') },
-    h('option', { value: '' }, L('Not saved yet', 'Noch nicht gespeichert')), ...roster.map((s) => h('option', { value: s.id }, s.name)));
-  picker.value = currentId ?? '';
-  picker.addEventListener('change', () => {
-    const chosen = roster.find((s) => s.id === picker.value);
+  const picker = choice(L('My things', 'Meine Sachen'), [{ id: '', words: L('Not saved yet', 'Noch nicht gespeichert') }, ...roster.map((s) => ({ id: s.id, words: s.name }))], () => currentId ?? '', (id) => {
+    const chosen = roster.find((s) => s.id === id);
     message = '';
     if (chosen) load(chosen.prop, chosen.id);
     else {
       setCurrent(null);
       render();
     }
-  });
+  }, 'list', 60, true);
   const fileName = saved?.name ?? L('Object', 'Objekt');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'objects',
@@ -337,15 +334,7 @@ function mount(): void {
   sideSlider.setAttribute('aria-label', L('Turn', 'Drehung'));
   stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))));
   const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, preview),
-        h('section', { class: 'library', 'aria-label': L('Object', 'Objekt') }, tabSlot, panel),
-      ),
-    ),
-  );
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', centre: [stage, box(preview)], right: [tabSlot, panel], rightWidth: 460 })));
 }
 
 // What the preview shows now; render() clears `shown` so marks follow the panel.

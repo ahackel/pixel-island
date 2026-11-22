@@ -16,7 +16,7 @@ import { SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { choice, confirmDialog, pixelButton, searchField, tileGrid } from '../../ui/components.ts';
+import { box, choice, confirmDialog, pixelButton, searchField, tileGrid, workspace } from '../../ui/components.ts';
 import { h, history, row, savePicture, section, segmented, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -182,7 +182,7 @@ const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
 const under = h('div', { class: 'props__under' });
 const head = h('div', { class: 'props__libhead' });
-const panel = h('div', { class: 'library__body' });
+const panel = h('div', { class: 'uside__list' });
 const barSlot = h('div', { style: 'display: contents' });
 let dirty = true;
 
@@ -244,11 +244,9 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Parts', 'Teile');
   stage.replaceChildren(big, stageTag, snapButton(() => savePicture(big, entry().label)));
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot,
-    h('main', { class: 'shell__main props__main' },
-      h('section', { class: 'library props__library', 'aria-label': L('Parts', 'Teile') }, head, h('div', { class: 'library__body' }, grid)),
-      h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, under),
-      h('section', { class: 'library', 'aria-label': L('Part', 'Teil') }, h('div'), panel))));
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
+    key: 'pixel-parts', left: [head, h('div', { class: 'uside__list' }, grid)], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,
+  })));
 }
 
 undoKeys(undo.undo, undo.redo);

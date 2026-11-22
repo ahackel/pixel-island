@@ -1,5 +1,5 @@
 import './style.css';
-import { tileGrid, section as pixelSection, choice, swatch, pixelButton, toast } from '../../ui/components.ts';
+import { box, tileGrid, section as pixelSection, choice, pixelButton, toast, workspace } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
@@ -11,7 +11,7 @@ import { cleanSwap, FLORA, FLORA_CALLS, FLORA_REJECTED, FLORA_STORE, plantById, 
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
-import { button, cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
+import { cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
@@ -263,8 +263,8 @@ const turnSlider = rangeInput({ min: '0', max: String(TURNS - 1), step: '1' });
 const turnValue = h('b');
 const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
-panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
+panel.addEventListener('click', (e) => (e.target as Element).closest('.utile, .ubar, .uslider') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const editor = h('div', { class: 'recipe' });
 const sceneCanvas = h('canvas', { class: 'scene__canvas', width: String(SCENE_W), height: String(SCENE_H) });
@@ -303,9 +303,8 @@ function colours(): HTMLElement[] {
       state.colors[entry.id] = next;
       changed();
     };
-    // The plant's own colour first (an empty swatch), then the choices as a bar.
-    return row(title, h('div', { class: 'urow' }, swatch(t('color.original'), null, current === null, () => set(null)),
-      choice(title, keys.map((key) => ({ id: key, color: PALETTE[key].base })), () => current, set, 'colors', 50)));
+    // The plant's own colour first (a cell with the reset icon), then the choices, all in one bar.
+    return row(title, choice(title, [{ id: '', icon: 'reset' }, ...keys.map((key) => ({ id: key, color: PALETTE[key].base }))], () => current ?? '', (key) => set(key || null), 'colors', 62));
   });
 }
 
@@ -360,11 +359,13 @@ function renderEditor(): void {
 
 function variants(): HTMLElement {
   const entry = selectedEntry();
-  return h('div', { class: 'variants', role: 'radiogroup', 'aria-label': t('variant') }, ...Array.from({ length: VARIANTS }, (_, seed) =>
-    button({ class: 'variant', role: 'radio', 'aria-checked': String(seed === state.seed), 'aria-label': t('variant.n', { n: seed + 1 }) }, () => {
-      state.seed = seed;
-      changed();
-    }, thumb(rasterOf(entry, seed, 0, 0), 40))));
+  const grid = tileGrid(Array.from({ length: VARIANTS }, (_, seed) => ({ id: String(seed), picture: thumb(rasterOf(entry, seed, 0, 0), 40), words: t('variant.n', { n: seed + 1 }) })), String(state.seed), (seed) => {
+    state.seed = Number(seed);
+    changed();
+  });
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', t('variant'));
+  return grid;
 }
 
 /** A random plant from the open group, in a random variant. */
@@ -507,15 +508,7 @@ function mount(): void {
   turnSlider.setAttribute('aria-label', t('turn'));
   stage.replaceChildren(preview, snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)));
   const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': t('preview') }, stage, previewSec),
-        h('section', { class: 'library', 'aria-label': t('plants') }, tabSlot, panel),
-      ),
-    ),
-  );
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', centre: [stage, box(previewSec)], right: [tabSlot, panel], rightWidth: 460 })));
 }
 
 drySlider.addEventListener('input', () => {

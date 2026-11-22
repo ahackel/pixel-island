@@ -172,22 +172,27 @@ export type Live = HTMLElement & { redraw: () => void };
 
 /**
  * A colour bar: all the colours side by side in one panel, a little triangle over the chosen one; tap or slide along it.
+ * A pick with an icon instead of a colour (an eraser, "as it was") gets a cell of its own, wider than a colour's.
  * `get` says which is chosen (null: none); the bar redraws itself after a pick.
  */
-function colorsLook<T>(label: string, picks: { value: T; color: string }[], get: () => T | null, choose: (value: T) => void, width: number): Live {
-  const TIP = 3;
+function colorsLook<T>(label: string, picks: { value: T; color?: string; icon?: string }[], get: () => T | null, choose: (value: T) => void, width: number): Live {
+  const TIP = 3, ICON_W = 11;
   const self = Object.assign(el('span', 'ubar'), { redraw: () => {} }) as Live;
-  const edge = (n: number) => 2 + Math.floor((n * (width - 4)) / picks.length);
+  const icons = picks.filter((p) => p.icon).length;
+  const colorW = (width - 4 - icons * ICON_W) / Math.max(1, picks.length - icons);
+  const edges = [2];
+  picks.forEach((p) => edges.push(edges[edges.length - 1] + (p.icon ? ICON_W : colorW)));
+  const edge = (n: number) => Math.round(edges[n]);
   self.redraw = () => {
     const now = get();
     const { canvas, ctx } = pixelCanvas(width, TIP + 14, S);
     panel(ctx, 0, TIP, width, 13, C.paper, C.shadow);
     picks.forEach((p, n) => {
       const x = edge(n), w = edge(n + 1) - x;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(x, TIP + 2, w, 9);
+      if (p.icon) drawRows(ctx, iconRows(p.icon), x + Math.floor((w - 9) / 2), TIP + 2, PAINT);
+      else { ctx.fillStyle = p.color!; ctx.fillRect(x, TIP + 2, w, 9); }
       if (p.value !== now) return;
-      ctx.fillStyle = C.paper;
+      ctx.fillStyle = C.ink;
       const mid = x + Math.floor(w / 2);
       for (let y = 0; y < TIP; y++) ctx.fillRect(mid - (TIP - 1 - y), y, 2 * (TIP - 1 - y) + 1, 1);
     });
@@ -195,7 +200,8 @@ function colorsLook<T>(label: string, picks: { value: T; color: string }[], get:
   };
   const at = (e: PointerEvent) => {
     const x = (e.clientX - self.getBoundingClientRect().left) / S;
-    const n = Math.max(0, Math.min(picks.length - 1, Math.floor(((x - 2) * picks.length) / (width - 4))));
+    const found = picks.findIndex((_, i) => x < edge(i + 1));
+    const n = found < 0 ? picks.length - 1 : found;
     if (picks[n].value === get()) return;
     choose(picks[n].value);
     self.redraw();
@@ -238,7 +244,7 @@ function arrowsLook(label: string, show: () => { words?: string; icon?: string }
 
 // ------------------------------------------------------------------ one value of several
 
-/** One of several values: an icon, words or a colour. */
+/** One of several values: an icon, words or a colour. In the `colors` look an option with an icon and no colour is a cell showing that icon. */
 export interface Option { id: string; icon?: string; words?: string; color?: string }
 /** How the options are drawn: `arrows` one at a time between two arrows, `buttons` all in a row, `colors` a bar of colours, `list` a popup. */
 export type Look = 'arrows' | 'buttons' | 'colors' | 'list';
@@ -294,7 +300,7 @@ function groupLook(label: string, options: Option[], current: string | null, pic
  */
 export function choice(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, look: Look = 'arrows', width = 60, flat = false): Live {
   const index = () => Math.max(0, options.findIndex((o) => o.id === get()));
-  if (look === 'colors') return colorsLook(label, options.filter((o) => o.color).map((o) => ({ value: o.id, color: o.color! })), get, pick, width);
+  if (look === 'colors') return colorsLook(label, options.filter((o) => o.color || o.icon).map((o) => ({ value: o.id, color: o.color, icon: o.color ? undefined : o.icon })), get, pick, width);
   if (look === 'arrows') {
     return arrowsLook(label, () => options[index()], (by) => pick(options[(index() + by + options.length) % options.length].id), width);
   }
@@ -449,6 +455,32 @@ export function sidePanel(side: 'left' | 'right', key: string, width = 240): { p
   grip.addEventListener('pointerup', () => { try { localStorage.setItem(key, String(parseInt(panel.style.width))); } catch { /* not kept */ } });
   panel.append(body, grip);
   return { panel, body };
+}
+
+/** The panels of a `workspace`, and its middle. */
+export type Workspace = HTMLElement & { centre: HTMLElement; left: HTMLElement | null; right: HTMLElement | null };
+
+/**
+ * The frame of a tool page under its header: an optional panel at the left and one at the right, each with a grip to drag it
+ * wider or narrower (the widths are kept in the browser under `key`), and the middle on the page's ground between them. Below
+ * 700 pixels everything stacks, the middle first. Give `into` to fill an existing `main` instead of making one.
+ */
+export function workspace(o: { key: string; left?: Node[]; right?: Node[]; centre: Node[]; leftWidth?: number; rightWidth?: number }, into?: HTMLElement): Workspace {
+  const main = into ?? el('main', 'uworkspace');
+  const side = (which: 'left' | 'right', nodes: Node[] | undefined, width?: number) => {
+    if (!nodes) return null;
+    const { panel, body } = sidePanel(which, `${o.key}-${which}`, width);
+    body.append(...nodes);
+    main.append(panel);
+    return body;
+  };
+  const left = side('left', o.left, o.leftWidth);
+  const centre = el('div', 'uwork');
+  centre.append(...o.centre);
+  main.append(centre);
+  const right = side('right', o.right, o.rightWidth);
+  main.classList.add('uworkspace');
+  return Object.assign(main, { centre, left, right });
 }
 
 /** A button that opens a panel of icon buttons, one per action. */
@@ -629,6 +661,21 @@ export function confirmDialog(question: string): Promise<boolean> {
     addEventListener('keydown', key, true);
     document.body.append(veil);
   });
+}
+
+/** A form in a pixel box over the page: a title, the rows, then a cross (no) and a check (yes). `submit` runs on yes; Escape is no, Enter yes (not while typing a number). */
+export function formDialog(title: string, rows: Node[], submit: () => void): void {
+  const veil = el('div', 'umodal');
+  const head = el('div', 'uform__title');
+  head.append(label_(caps(title), C.ink, S));
+  const buttons = el('div', 'urow');
+  const done = (yes: boolean) => { veil.remove(); removeEventListener('keydown', key, true); if (yes) submit(); };
+  const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done(false); else if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) done(true); };
+  buttons.append(pixelButton('No', { icon: 'close' }, () => done(false)), pixelButton('Yes', { icon: 'check', lit: true }, () => done(true)));
+  veil.append(box(head, ...rows, buttons));
+  veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done(false); });
+  addEventListener('keydown', key, true);
+  document.body.append(veil);
 }
 
 /** A short message in a pixel box at the bottom of the page; it goes by itself. */

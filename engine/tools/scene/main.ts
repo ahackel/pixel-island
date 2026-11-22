@@ -1,6 +1,7 @@
-import '../wardrobe/style.css';
 import './style.css';
-import { confirmDialog, pixelButton } from '../../ui/components.ts';
+import { box, choice, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { pixelCanvas } from '../../shared/pixel-ui.ts';
+import { C } from '../../ui/theme.ts';
 import { saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
@@ -30,7 +31,7 @@ import { PRESETS } from '../../engine/animals/animal-presets.ts';
 import { ocean } from '../../engine/world/ocean.ts';
 import { plantName } from '../flora/i18n.ts';
 import { roundBrush } from '../../shared/brush.ts';
-import { button as tap, h, icon, segmented, topBar, word, type IconName, rangeInput } from '../../shared/shell.ts';
+import { h, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
 
@@ -38,6 +39,9 @@ import { t, type Key } from './i18n.ts';
 // character in Play. Scenes, and the editor's own settings, are kept in this browser.
 
 // ------------------------------------------------------------------ settings
+
+/** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
+const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
 const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'fill', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
@@ -48,8 +52,9 @@ const toolsHere = () => TOOLS.filter((tool) => !(sceneNow().cave ? ISLAND_ONLY :
 const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'fill', 'erase'];
 const ZOOM = { min: 1, max: 8 };
 const BRUSH_MAX = 7;
-const TOOL_ICONS: Record<Tool, IconName> = {
-  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'level', paint: 'brush', carve: 'pickaxe', fill: 'rock', prop: 'props', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+/** Each tool's icon in the pixel library. */
+const TOOL_ICONS: Record<Tool, string> = {
+  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', paint: 'brush', carve: 'pickaxe', fill: 'rock', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -208,8 +213,6 @@ function switchTo(scene: Scene): void {
 
 // ------------------------------------------------------------------ page helpers
 
-const statusLine = h('p', { class: 'status', 'aria-live': 'polite' });
-let statusTimer = 0;
 /** Saves the scene as a file of the project (the game's content/scenes), for committing. */
 async function saveScene(): Promise<void> {
   const name = sceneNow().name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
@@ -217,10 +220,7 @@ async function saveScene(): Promise<void> {
 }
 
 function say(text: string): void {
-  statusLine.textContent = text;
-  statusLine.hidden = !text;
-  clearTimeout(statusTimer);
-  statusTimer = window.setTimeout(() => (statusLine.hidden = true), 5000);
+  if (text) toast(text, 5000);
 }
 
 // ------------------------------------------------------------------ view
@@ -1173,7 +1173,7 @@ function thumb(id: string): HTMLCanvasElement {
   }
   const w = Math.max(1, x1 - x0 + 1);
   const hh = Math.max(1, y1 - y0 + 1);
-  const c = h('canvas', { class: 'plant__picture', width: String(w), height: String(hh) });
+  const c = h('canvas', { width: String(w), height: String(hh) });
   const g = c.getContext('2d')!;
   const image = g.createImageData(w, hh);
   const mask = new Uint8Array(w * hh);
@@ -1222,7 +1222,7 @@ function cropped(sprite: { w: number; h: number; get(x: number, y: number): stri
   }
   const w = Math.max(1, x1 - x0 + 1);
   const hh = Math.max(1, y1 - y0 + 1);
-  const c = h('canvas', { class: 'plant__picture', width: String(w), height: String(hh) });
+  const c = h('canvas', { width: String(w), height: String(hh) });
   const g = c.getContext('2d')!;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const color = sprite.get(x, y);
@@ -1241,7 +1241,7 @@ function decorThumb(id: string): HTMLCanvasElement {
   const pixels = decorPixels(decorById(id)!);
   // At least 11 by 9, taller for a tall one (the torch), at a scale that keeps it in the button.
   const w = Math.max(11, ...pixels.map((p) => 2 * Math.abs(p.x) + 1)), hh = Math.max(9, ...pixels.map((p) => 2 * Math.abs(p.y) + 2));
-  const c = h('canvas', { class: 'plant__picture', width: String(w), height: String(hh) });
+  const c = h('canvas', { width: String(w), height: String(hh) });
   const g = c.getContext('2d')!;
   g.fillStyle = '#f6e4b4';
   g.fillRect(0, 0, w, hh);
@@ -1261,7 +1261,7 @@ function itemThumb(id: string, prop: Build): HTMLCanvasElement {
   let x0 = w, y0 = ph, x1 = 0, y1 = 0;
   for (let y = 0; y < ph; y++) for (let x = 0; x < w; x++) if (picture.get(x, y)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
   const cw = Math.max(1, x1 - x0 + 3), ch = Math.max(1, y1 - y0 + 3);
-  const c = h('canvas', { class: 'plant__picture', width: String(cw), height: String(ch) });
+  const c = h('canvas', { width: String(cw), height: String(ch) });
   const g = c.getContext('2d')!;
   g.fillStyle = '#f6e4b4';
   g.fillRect(0, 0, cw, ch);
@@ -1277,40 +1277,39 @@ function itemThumb(id: string, prop: Build): HTMLCanvasElement {
   return c;
 }
 
-const sceneSelect = h('select', { class: 'select bar__things' });
 const barSlot = h('div', { style: 'display: contents' });
-/** What the character can do in Play, as icons floating over the scene: the emotes, or putting down what it holds. */
+/** What the character can do in Play, as buttons floating over the scene: the emotes, or putting down what it holds. */
 const actions = h('div', { class: 'actions' });
-const EMOTE_ICONS: Record<Emote, IconName> = { wave: 'hand', use: 'hammer' };
+const EMOTE_ICONS: Record<Emote, string> = { wave: 'hand', use: 'hammer' };
 const EMOTE_KEYS: Record<Emote, string> = { wave: 'E', use: 'F' };
 function showActions(): void {
   actions.hidden = prefs.mode !== 'play';
-  const label = (text: string) => ({ 'aria-label': text, title: text });
   actions.replaceChildren(...(held
-    ? [tap({ class: 'stage__button actions__main', ...label(t('drop')) }, drop, icon('lower'))]
-    : EMOTES.map((e) => tap({ class: 'stage__button', ...label(`${t(`emote.${e}` as Key)} (${EMOTE_KEYS[e]})`) }, () => emote(e), icon(EMOTE_ICONS[e])))));
+    ? [pixelButton(t('drop'), { icon: 'down', lit: true }, drop)]
+    : EMOTES.map((e) => pixelButton(`${t(`emote.${e}` as Key)} (${EMOTE_KEYS[e]})`, { icon: EMOTE_ICONS[e] }, () => emote(e)))));
 }
-const fpsButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ fps: !prefs.fps }), icon('gauge'));
-const gridButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ grid: !prefs.grid }), icon('grid'));
-const brightButton = tap({ class: 'stage__button', 'aria-pressed': 'false' }, () => set({ bright: !prefs.bright }), icon('sun'));
+/** Switches the cave's even light, built in `mount` (hidden outside a cave). */
+let brightToggle: HTMLElement | null = null;
 const dock = h('nav', { class: 'toolbar' });
-const options = h('section', { class: 'opts' });
+const options = h('div', { class: 'opts' });
 /** Who walks around in Play: picked while editing. */
-const cast = h('section', { class: 'opts opts--cast' });
+const cast = h('div', { class: 'opts opts--cast' });
+/** What a floating panel holds: a pixel box round its rows. */
+const panelOf = (...rows: Node[]) => box(h('div', { class: 'opts__body' }, ...rows));
+/** A button to another editor. */
+const link = (href: string, label: string) => pixelButton(label, { icon: 'pencil' }, () => { location.href = href; });
 
 /** Pictures to pick from: plants, decorations or animals. */
 function picks<T extends { id: string; name: string; picture: HTMLElement }>(label: string, list: T[], current: string, choose: (id: string) => void): HTMLElement {
-  return h('div', { class: 'plants', role: 'group', 'aria-label': label }, ...list.map((c) => {
-    const b = h('button', { type: 'button', class: 'plant', 'aria-pressed': String(c.id === current), title: c.name, 'aria-label': c.name }, c.picture);
-    b.addEventListener('click', () => choose(c.id));
-    return b;
-  }));
+  const grid = tileGrid(list.map((c) => ({ id: c.id, picture: c.picture, words: c.name })), current, choose);
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', label);
+  return grid;
 }
 
 const propThumbs = pictureCache('plant__picture', 400);
 /** The props tool's library: one search box over every prop, then pictures to pick from. */
 function propLibrary(): Node[] {
-  const input = h('input', { type: 'search', class: 'opts__search', placeholder: t('props.search'), 'aria-label': t('props.search'), value: prefs.propQuery });
   const grid = h('div');
   const fill = () => {
     const q = prefs.propQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -1323,27 +1322,24 @@ function propLibrary(): Node[] {
       }),
     })), prefs.prop, (prop) => set({ prop })), list.length ? '' : h('p', { class: 'opts__tip' }, t('props.none')));
   };
-  input.addEventListener('input', () => {
-    prefs.propQuery = input.value;
-    savePrefs();
-    fill();
-  });
   fill();
-  return [input, grid, h('a', { class: 'opts__link', href: '../props/' }, t('props.edit'))];
+  return [searchField(t('props.search'), (query) => { prefs.propQuery = query; savePrefs(); fill(); }, prefs.propQuery), grid, link('../props/', t('props.edit'))];
 }
 
 /** The round brush as a little picture of the tiles it covers. */
-function brushPicture(size: number): HTMLElement {
+function brushPicture(size: number): HTMLCanvasElement {
   const on = new Set(roundBrush(size).map(([di, dj]) => `${di},${dj}`));
-  const cells: HTMLElement[] = [];
-  for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) cells.push(h('span', { class: on.has(`${di},${dj}`) ? 'brush__cell brush__cell--on' : 'brush__cell' }));
-  return h('span', { class: 'brush', 'aria-hidden': 'true' }, ...cells);
+  const { canvas, ctx } = pixelCanvas(20, 20, 2);
+  for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) {
+    ctx.fillStyle = on.has(`${di},${dj}`) ? C.lit : C.track;
+    ctx.fillRect((di + 3) * 3, (dj + 3) * 3, 2, 2);
+  }
+  return canvas;
 }
 
-/** The floating options of the chosen tool, over the scene. */
 /** The options panel again, as the selection changed. */
 function showOptions(): void {
-  if (prefs.mode === 'edit') options.replaceChildren(...editOptions());
+  if (prefs.mode === 'edit') options.replaceChildren(panelOf(...editOptions()));
 }
 
 /** Turns a placed object a quarter; new ones then face the same way. */
@@ -1358,21 +1354,21 @@ function turnItem(it: PlacedItem, step: number): void {
 
 /** For a selected object: turning it, and for a chest what lies in it. */
 function itemOptions(it: PlacedItem): Node[] {
-  const out: Node[] = [h('div', { class: 'opts__row' },
-    pixelButton(`${t('turn.left')} (Q)`, { icon: 'undo' }, () => turnItem(it, -1)),
-    pixelButton(`${t('turn.right')} (R)`, { icon: 'redo' }, () => turnItem(it, 1)),
+  const out: Node[] = [h('div', { class: 'urow' },
+    pixelButton(`${t('turn.left')} (Q)`, { icon: 'turnleft' }, () => turnItem(it, -1)),
+    pixelButton(`${t('turn.right')} (R)`, { icon: 'turnright' }, () => turnItem(it, 1)),
   )];
   if (!openFrames(it.item)) return out;
   const lang = currentLang() === 'de' ? 'de' : 'en';
-  out.push(h('span', { class: 'opts__label' }, t('chest.loot')), h('div', { class: 'opts__chips' }, ...LOOT.map((l) => {
+  out.push(h('span', { class: 'opts__label' }, t('chest.loot')), h('div', { class: 'urow' }, ...LOOT.map((l) => {
     const has = it.loot?.includes(l.id) ?? false;
-    return tap({ class: 'chip', 'aria-pressed': String(has) }, () => {
+    return pixelButton(l[lang], { words: l[lang], pressed: has }, () => {
       remember();
       it.loot = has ? it.loot!.filter((x) => x !== l.id) : [...(it.loot ?? []), l.id];
       if (!it.loot.length) delete it.loot;
       sceneChanged();
       showOptions();
-    }, l[lang]);
+    });
   })));
   return out;
 }
@@ -1380,87 +1376,70 @@ function itemOptions(it: PlacedItem): Node[] {
 function editOptions(): Node[] {
   const tool = prefs.tool;
   const out: Node[] = [
-    h('div', { class: 'opts__head' }, icon(TOOL_ICONS[tool]), h('b', {}, t(`tool.${tool}` as Key))),
+    h('div', { class: 'opts__head' }, iconPicture(TOOL_ICONS[tool]), h('b', {}, t(`tool.${tool}` as Key))),
     h('p', { class: 'opts__tip' }, t(`tip.${tool}` as Key)),
   ];
   if (tool === 'paint') {
-    out.push(segmented(t('paint'), [0, 1, 2, 3].map((n) => ({ id: String(n), label: t(`paint.${n}` as Key) })), String(prefs.paint), (n) => set({ paint: Number(n) })));
+    out.push(choice(t('paint'), [0, 1, 2, 3].map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'buttons'));
   }
   if (BRUSHED.includes(tool)) {
-    const slider = rangeInput({ min: '1', max: String(BRUSH_MAX), step: '1', value: String(prefs.brush), 'aria-label': t('brush') });
-    const size = h('b', {}, `Ø ${prefs.brush}`);
     const picture = h('span', {}, brushPicture(prefs.brush));
-    // While dragging only the label and picture follow; the brush is stored on release.
-    slider.addEventListener('input', () => {
-      size.textContent = `Ø ${slider.value}`;
-      picture.replaceChildren(brushPicture(Number(slider.value)));
-      prefs.brush = Number(slider.value);
-    });
-    slider.addEventListener('change', () => set({ brush: Number(slider.value) }));
-    out.push(h('div', { class: 'opts__brush' }, h('span', { class: 'opts__label' }, t('brush'), size), slider, picture));
+    // Dragging only changes the number and the picture: a redraw of the panel would drop the drag.
+    const size = numberField({ icon: 'brush', tip: t('brush') }, prefs.brush, (n) => { prefs.brush = n; savePrefs(); picture.replaceChildren(brushPicture(n)); }, { min: 1, max: BRUSH_MAX, width: 36 });
+    out.push(h('div', { class: 'urow' }, size, picture));
   }
   if (tool === 'prop') out.push(...propLibrary());
   if (tool === 'plant') out.push(picks(t('plants'), FLORA.map((e) => ({ id: e.id, name: plantName(e.id, e.label), picture: thumb(e.id) })), prefs.plant, (plant) => set({ plant })));
   if (tool === 'decor') out.push(picks(t('decor'), DECOR.map((d) => ({ id: d.id, name: t(`decor.${d.id}` as Key), picture: decorThumb(d.id) })), prefs.decor, (decor) => set({ decor })));
   if (tool === 'item') {
     out.push(picks(t('items'), objectChoices().map((c) => ({ id: c.id, name: c.name, picture: itemThumb(c.id, c.prop) })), prefs.item, (item) => set({ item })));
-    out.push(h('a', { class: 'opts__link', href: '../objects/' }, t('object.edit')));
+    out.push(link('../objects/', t('object.edit')));
   }
   if (tool === 'move' && selected?.kind === 'item') out.push(...itemOptions(selected.obj as PlacedItem));
   if (tool === 'animal') {
     const choices = animalChoices();
     const current = choices.some((c) => c.id === prefs.animal) ? prefs.animal : choices[0].id;
     out.push(picks(t('animals'), choices.map((c) => ({ id: c.id, name: c.name, picture: animalThumb(c.animal) })), current, (animal) => set({ animal })));
-    out.push(h('a', { class: 'opts__link', href: '../animals/' }, t('animal.edit')));
+    out.push(link('../animals/', t('animal.edit')));
   }
   if (tool === 'person') {
     const choices = personChoices();
     const current = choices.some((c) => c.id === prefs.person) ? prefs.person : '';
     out.push(picks(t('character'), choices.map((c) => ({ id: c.id, name: c.name, picture: personThumb(c.state) })), current, (person) => set({ person })));
     out.push(poseOptions());
-    out.push(h('a', { class: 'opts__link', href: '../wardrobe/' }, t('character.edit')));
+    out.push(link('../wardrobe/', t('character.edit')));
   }
   return out;
 }
 
 /** Alive and roaming, or held in one frame of a clip, as a prop. */
 function poseOptions(): HTMLElement {
-  const select = h('select', { class: 'select', 'aria-label': t('pose') },
-    h('option', { value: '' }, t('pose.alive')),
-    ...Object.entries(AUTHORED).map(([id, clip]) => h('option', { value: id }, clip.name)),
-  );
-  select.value = prefs.pose;
-  select.addEventListener('change', () => set({ pose: select.value, poseFrame: 0 }));
+  const poses: Option[] = [{ id: '', words: t('pose.alive') }, ...Object.entries(AUTHORED).map(([id, clip]) => ({ id, words: clip.name }))];
   const frames = AUTHORED[prefs.pose]?.frames.length ?? 0;
-  const slider = rangeInput({ min: '0', max: String(Math.max(0, frames - 1)), step: '1', value: String(prefs.poseFrame), 'aria-label': t('pose.frame') });
-  slider.hidden = frames < 2;
-  slider.addEventListener('change', () => set({ poseFrame: Number(slider.value) }));
-  return h('div', { class: 'opts__brush' }, h('span', { class: 'opts__label' }, t('pose')), select, slider);
+  return fields(
+    field({ words: t('pose') }, choice(t('pose'), poses, () => prefs.pose, (pose) => set({ pose, poseFrame: 0 }), 'list')),
+    ...(frames < 2 ? [] : [field({ words: t('pose.frame') }, numberField({ words: '#', tip: t('pose.frame') }, prefs.poseFrame, (n) => { prefs.poseFrame = n; savePrefs(); }, { min: 0, max: frames - 1, width: 30 }))]),
+  );
 }
 
 function castOptions(): Node[] {
   roster = loadRoster();
   if (prefs.character && !roster.some((c) => c.id === prefs.character)) prefs.character = '';
-  const select = h('select', { class: 'select', 'aria-label': t('character') },
-    h('option', { value: '' }, t('character.default')),
-    ...roster.map((c) => h('option', { value: c.id }, c.name)),
-  );
-  select.value = prefs.character;
-  select.addEventListener('change', () => {
-    prefs.character = select.value;
-    savePrefs();
-    actor?.setLook(characterLook());
-  });
+  const who: Option[] = [{ id: '', words: t('character.default') }, ...roster.map((c) => ({ id: c.id, words: c.name }))];
   return [
-    h('div', { class: 'opts__head' }, icon('person'), h('b', {}, t('character'))),
-    select,
-    h('a', { class: 'opts__link', href: '../wardrobe/' }, t('character.edit')),
+    h('div', { class: 'opts__head' }, iconPicture('person'), h('b', {}, t('character'))),
+    choice(t('character'), who, () => prefs.character, (id) => {
+      prefs.character = id;
+      savePrefs();
+      actor?.setLook(characterLook());
+    }, 'list'),
+    link('../wardrobe/', t('character.edit')),
   ];
 }
 
-/** One line of tool icons, in Edit only: Play's actions float over the scene. */
+/** One line of tool buttons, in Edit only: Play's actions float over the scene. */
 function toolbar(): Node[] {
-  return toolsHere().map((tool) => tap({ class: 'toolbar__btn', 'aria-pressed': String(tool === prefs.tool), 'aria-label': t(`tool.${tool}` as Key), title: t(`tool.${tool}` as Key) }, () => set({ tool }), icon(TOOL_ICONS[tool])));
+  return toolsHere().map((tool) => pixelButton(t(`tool.${tool}` as Key), { icon: TOOL_ICONS[tool], flat: true, pressed: tool === prefs.tool }, () => set({ tool })));
 }
 
 function set(change: Partial<Prefs>): void {
@@ -1482,13 +1461,11 @@ function render(): void {
   // A tool the scene has no use for (raising the ground of a cave, say) gives way to Move.
   if (!toolsHere().includes(prefs.tool)) prefs.tool = 'move';
   const other = prefs.mode === 'edit' ? 'play' : 'edit';
-  sceneSelect.replaceChildren(...library.scenes.map((s) => h('option', { value: s.id }, s.name)));
-  sceneSelect.value = library.current;
   const { bar, undo: u, redo: r, pops } = topBar({
     tool: 'scene',
     title: word('scene'),
     about: [t('hint.edit'), t('hint.play')],
-    things: sceneSelect,
+    things: choice(word('scene'), library.scenes.map((s) => ({ id: s.id, words: s.name })), () => library.current, (id) => switchTo(library.scenes.find((s) => s.id === id)!), 'list', 60, true),
     more: [
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.settings'), icon: 'sliders', run: () => sceneDialog('settings') },
@@ -1501,7 +1478,7 @@ function render(): void {
     undo,
     redo,
     // One button: it shows where it takes you, Play while editing and Edit while playing.
-    extra: tap({ class: 'ib mode', 'aria-label': t(`mode.${other}`), title: t(`mode.${other}`) }, () => set({ mode: other }), icon(other === 'play' ? 'play' : 'pencil')),
+    extra: pixelButton(t(`mode.${other}`), { icon: other === 'play' ? 'play' : 'pencil', flat: true, lit: true }, () => set({ mode: other })),
     relabel: mount,
   });
   barSlot.replaceChildren(bar, ...pops);
@@ -1513,14 +1490,11 @@ function render(): void {
   dock.hidden = !editing;
   dock.replaceChildren(...(editing ? toolbar() : []));
   options.hidden = cast.hidden = !editing;
-  options.replaceChildren(...(editing ? editOptions() : []));
-  cast.replaceChildren(...(editing ? castOptions() : []));
+  options.replaceChildren(...(editing ? [panelOf(...editOptions())] : []));
+  cast.replaceChildren(...(editing ? [panelOf(...castOptions())] : []));
   showActions();
-  gridButton.setAttribute('aria-pressed', String(prefs.grid));
-  brightButton.setAttribute('aria-pressed', String(prefs.bright));
-  brightButton.hidden = !editing || !sceneNow().cave;
+  if (brightToggle) brightToggle.hidden = !editing || !sceneNow().cave;
   viewport.style.background = sceneNow().cave ? '#000' : ocean.deep;
-  fpsButton.setAttribute('aria-pressed', String(prefs.fps));
   fpsLine.hidden = !prefs.fps;
 }
 
@@ -1528,44 +1502,42 @@ function render(): void {
 
 function sceneDialog(kind: 'new' | 'settings'): void {
   const scene = sceneNow();
-  const name = h('input', { type: 'text', required: '', maxlength: '40', value: kind === 'new' ? t('scene.first') : scene.name });
-  const size = (value: number) => h('input', { type: 'number', min: String(MIN_SIZE), max: String(MAX_SIZE), step: '1', required: '', value: String(value) });
-  const w = size(kind === 'new' ? 28 : scene.w);
-  const hh = size(kind === 'new' ? 28 : scene.h);
-  const kinds = ['island', 'sea', 'cave'] as const;
-  const startWith = h('select', { class: 'select' }, ...kinds.map((k) => h('option', { value: k }, t(`dialog.kind.${k}`))));
+  let name = kind === 'new' ? t('scene.first') : scene.name;
+  let w = kind === 'new' ? 28 : scene.w;
+  let hh = kind === 'new' ? 28 : scene.h;
+  const kinds = [{ id: 'island', icon: 'palm' }, { id: 'sea', icon: 'flat' }, { id: 'cave', icon: 'rock' }] as const;
+  let startWith: (typeof kinds)[number]['id'] = 'island';
   // A cave's own settings: how its dark looks and how much rubble lies about.
   const caveNow = kind === 'settings' ? scene.cave : undefined;
-  const tint = h('input', { type: 'color', value: caveNow?.tint ?? CAVE_DEFAULTS.tint });
-  const slider = (value: number) => rangeInput({ min: '0', max: '1', step: '0.05', value: String(value) });
-  const dark = slider(caveNow?.dark ?? CAVE_DEFAULTS.dark);
-  const rubble = slider(caveNow?.rubble ?? CAVE_DEFAULTS.rubble);
-  const ok = h('button', { type: 'submit', class: 'button button--primary', value: 'ok' }, t('dialog.ok'));
-  const cancel = h('button', { type: 'button', class: 'button' }, t('dialog.cancel'));
-  const form = h('form', { method: 'dialog', class: 'dialog__form' },
-    h('h2', {}, t(kind === 'new' ? 'dialog.new' : 'dialog.settings')),
-    h('label', {}, t('dialog.name'), name),
-    h('div', { class: 'dialog__sizes' }, h('label', {}, t('dialog.width'), w), h('label', {}, t('dialog.height'), hh)),
-    kind === 'new' ? h('label', {}, t('dialog.kind'), startWith) : h('p', { class: 'hint' }, t('dialog.shrink')),
-    ...(caveNow ? [h('label', {}, t('dialog.tint'), tint), h('label', {}, t('dialog.dark'), dark), h('label', {}, t('dialog.rubble'), rubble)] : []),
-    h('div', { class: 'dialog__actions' }, cancel, ok),
-  );
-  const dialog = h('dialog', { class: 'dialog' }, form);
-  cancel.addEventListener('click', () => dialog.close());
-  form.addEventListener('submit', () => {
-    const label = name.value.trim().slice(0, 40) || t('scene.first');
+  let tint = caveNow?.tint ?? CAVE_DEFAULTS.tint;
+  let dark = caveNow?.dark ?? CAVE_DEFAULTS.dark;
+  let rubble = caveNow?.rubble ?? CAVE_DEFAULTS.rubble;
+  const size = { min: MIN_SIZE, max: MAX_SIZE, width: 44 };
+  const level = (label: string, icon: string, value: number, set: (n: number) => void) => field({ icon, tip: label }, pixelSlider(label, value, (v) => set(Math.round(v * 20) / 20), 60));
+  // A few dark tints to choose from; a tint saved earlier that is not one of them stays as a cell of its own.
+  const tints = [...new Set([...CAVE_TINTS, tint])];
+  const color = choice(t('dialog.tint'), tints.map((id) => ({ id, color: id })), () => tint, (id) => (tint = id), 'colors', 8 * tints.length + 4);
+  formDialog(t(kind === 'new' ? 'dialog.new' : 'dialog.settings'), [
+    fields(
+      field({ icon: 'pencil', tip: t('dialog.name') }, textField(t('dialog.name'), name, (v) => (name = v), { width: 80 })),
+      field({ icon: 'grid', tip: `${t('dialog.width')}, ${t('dialog.height')}` }, h('div', { class: 'urow' },
+        numberField({ words: 'W', tip: t('dialog.width') }, w, (n) => (w = n), size),
+        numberField({ words: 'H', tip: t('dialog.height') }, hh, (n) => (hh = n), size))),
+      ...(kind === 'new' ? [field({ icon: 'home', tip: t('dialog.kind') }, choice(t('dialog.kind'), kinds.map((k) => ({ id: k.id, icon: k.icon, words: t(`dialog.kind.${k.id}`) })), () => startWith, (id) => (startWith = id as typeof startWith), 'buttons'))] : []),
+      ...(caveNow ? [field({ icon: 'palette', tip: t('dialog.tint') }, color), level(t('dialog.dark'), 'moon', dark, (n) => (dark = n)), level(t('dialog.rubble'), 'rock', rubble, (n) => (rubble = n))] : []),
+    ),
+    ...(kind === 'new' ? [] : [h('p', { class: 'opts__tip' }, t('dialog.shrink'))]),
+  ], () => {
+    const label = name.trim().slice(0, 40) || t('scene.first');
     if (kind === 'new') {
-      return switchTo(startWith.value === 'cave' ? createCave(label, Number(w.value), Number(hh.value)) : createScene(label, Number(w.value), Number(hh.value), startWith.value === 'island'));
+      return switchTo(startWith === 'cave' ? createCave(label, w, hh) : createScene(label, w, hh, startWith === 'island'));
     }
-    const next = Number(w.value) !== scene.w || Number(hh.value) !== scene.h ? resized(scene, Number(w.value), Number(hh.value)) : scene;
+    const next = w !== scene.w || hh !== scene.h ? resized(scene, w, hh) : scene;
     next.name = label;
-    if (next.cave) Object.assign(next.cave, { tint: tint.value, dark: Number(dark.value), rubble: Number(rubble.value) });
+    if (next.cave) Object.assign(next.cave, { tint, dark, rubble });
     library.scenes[library.scenes.indexOf(scene)] = next;
     switchTo(next);
   });
-  dialog.addEventListener('close', () => dialog.remove());
-  document.body.append(dialog);
-  dialog.showModal();
 }
 
 async function deleteScene(): Promise<void> {
@@ -1593,30 +1565,22 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = t('title');
   canvas.setAttribute('aria-label', t('view'));
-  gridButton.setAttribute('aria-label', t('zoom.grid'));
-  brightButton.setAttribute('aria-label', t('bright'));
-  brightButton.title = t('bright');
-  gridButton.title = t('zoom.grid');
-  fpsButton.setAttribute('aria-label', t('zoom.fps'));
-  fpsButton.title = t('zoom.fps');
-  sceneSelect.setAttribute('aria-label', t('scene'));
-  sceneSelect.onchange = () => switchTo(library.scenes.find((s) => s.id === sceneSelect.value)!);
+  brightToggle = toggle(t('bright'), { icon: 'sun' }, prefs.bright, (bright) => set({ bright }));
   viewport.replaceChildren(
     canvas,
     options,
     cast,
     h('div', { class: 'zoom' },
-      tap({ class: 'stage__button', 'aria-label': t('zoom.in'), title: t('zoom.in') }, () => stepZoom(1), icon('zoomIn')),
-      tap({ class: 'stage__button', 'aria-label': t('zoom.out'), title: t('zoom.out') }, () => stepZoom(-1), icon('zoomOut')),
-      tap({ class: 'stage__button', 'aria-label': t('rotate.left'), title: t('rotate.left') }, () => rotate(-1), icon('turnLeft')),
-      tap({ class: 'stage__button', 'aria-label': t('rotate.right'), title: t('rotate.right') }, () => rotate(1), icon('turnRight')),
-      brightButton,
-      gridButton,
-      fpsButton,
+      pixelButton(t('zoom.in'), { icon: 'zoomin' }, () => stepZoom(1)),
+      pixelButton(t('zoom.out'), { icon: 'zoomout' }, () => stepZoom(-1)),
+      pixelButton(t('rotate.left'), { icon: 'turnleft' }, () => rotate(-1)),
+      pixelButton(t('rotate.right'), { icon: 'turnright' }, () => rotate(1)),
+      brightToggle,
+      toggle(t('zoom.grid'), { icon: 'grid' }, prefs.grid, (grid) => set({ grid })),
+      toggle(t('zoom.fps'), { icon: 'gauge' }, prefs.fps, (fps) => set({ fps })),
       fpsLine,
     ),
     actions,
-    statusLine,
   );
   document.getElementById('scene')!.replaceChildren(
     h('div', { class: 'editor' },
@@ -1628,7 +1592,6 @@ function mount(): void {
   render();
 }
 
-statusLine.hidden = true;
 mount();
 // Characters saved in the wardrobe in another tab show up when coming back.
 document.addEventListener('visibilitychange', () => {
@@ -1638,7 +1601,7 @@ document.addEventListener('visibilitychange', () => {
     herd?.poses.forEach((pose, k) => { pose.hops = world.scene.animals[k].animal.hops; });
     sceneChanged();
   }
-  if (prefs.mode === 'edit') cast.replaceChildren(...castOptions());
+  if (prefs.mode === 'edit') cast.replaceChildren(panelOf(...castOptions()));
   else {
     roster = loadRoster();
     actor?.setLook(characterLook());

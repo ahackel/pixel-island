@@ -6,7 +6,8 @@ import { browState, BROWS, EYE_SHAPES, eyeState, FACE_REGIONS, FACE_SHAPES, face
 import { download, pickFile } from '../../shared/files.ts';
 import { saveToProject } from '../../shared/project.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
-import { button, h, icon, row, segmented, type IconName } from '../../shared/shell.ts';
+import { h, row, segmented, type IconName } from '../../shared/shell.ts';
+import { choice, pixelButton } from '../../ui/components.ts';
 import { t, type Key } from './i18n.ts';
 
 export interface ShapeContext {
@@ -217,12 +218,8 @@ export function shapeEditor(ctx: ShapeContext): HTMLElement {
         })),
       ]
     : [];
-  // The paint colours as swatches; the last one rubs out to the skin.
-  const inks = h('div', { class: 'seg shapes__inks', role: 'radiogroup', 'aria-label': t('shapes.inkLabel') },
-    ...INKS.map((id) => button({ role: 'radio', 'aria-checked': String(id === ink), 'aria-label': t(`shapes.ink.${id}` as Key), title: t(`shapes.ink.${id}` as Key) }, () => {
-      ink = id;
-      rebuild();
-    }, id === '.' ? icon('eraser') : h('span', { class: 'shapes__chip', style: `background: ${colour(id)}` }))));
+  // The paint colours as a colour bar; the last cell rubs out to the skin.
+  const inks = choice(t('shapes.inkLabel'), INKS.map((id) => (id === '.' ? { id, icon: 'eraser' } : { id, color: colour(id) ?? '#ffffff' })), () => ink, (id) => { ink = id; }, 'colors', 64);
 
   draw();
   return h('div', { class: 'shapes' },
@@ -239,8 +236,8 @@ export function shapeEditor(ctx: ShapeContext): HTMLElement {
     row(t('shapes.inkLabel'), inks),
     canvas,
     h('div', { class: 'shapes__actions' },
-      button({ class: 'btn' }, () => download('face-shapes.json', JSON.stringify(FACE_SHAPES, null, 1) + '\n'), icon('download'), t('shapes.export')),
-      button({ class: 'btn' }, () => void importShapes(ctx.done), icon('upload'), t('shapes.import')),
+      pixelButton(t('shapes.export'), { icon: 'download' }, () => download('face-shapes.json', JSON.stringify(FACE_SHAPES, null, 1) + '\n')),
+      pixelButton(t('shapes.import'), { icon: 'upload' }, () => void importShapes(ctx.done)),
       import.meta.env.DEV ? statusEl : h('span', { class: 'note' }, t('shapes.devOnly'))),
   );
 }

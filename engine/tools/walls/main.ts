@@ -20,7 +20,7 @@ import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
 import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
-import { choice, numberField, pixelButton, tileGrid, type Option, confirmDialog } from '../../ui/components.ts';
+import { box, choice, numberField, pixelButton, tileGrid, type Option, confirmDialog, workspace } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
@@ -201,7 +201,7 @@ const stage = h('div', { class: 'stage props__stage walls__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
 const list = h('div', { class: 'props__grid' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
 const under = h('div', { class: 'props__under' });
 const name = nameTag();
@@ -275,11 +275,9 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Walls', 'Wände');
   stage.replaceChildren(h('div', { class: 'walls__scroll' }, bench), stageTag, name.el, snapButton(() => savePicture(bench, wall().name, 2)));
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot,
-    h('main', { class: 'shell__main props__main' },
-      h('section', { class: 'library props__library', 'aria-label': L('Walls', 'Wände') }, h('div', { class: 'library__body' }, list)),
-      h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, under),
-      h('section', { class: 'library', 'aria-label': L('Wall', 'Wand') }, tabSlot, panel))));
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
+    key: 'pixel-walls', left: [h('div', { class: 'uside__list' }, list)], centre: [stage, box(under)], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+  })));
 }
 
 undoKeys(undo.undo, undo.redo);

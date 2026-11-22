@@ -5,7 +5,7 @@
 import { saveToProject, canSaveToProject } from '../../shared/project.ts';
 import { history } from '../../shared/history.ts';
 import { drawRows, pixelCanvas } from '../../shared/pixel-ui.ts';
-import { box, choice, iconPicture, pixelButton, searchField, sidePanel, textField, type Option } from '../../ui/components.ts';
+import { box, choice, iconPicture, pixelButton, searchField, sidePanel, textField, tileGrid, type Option } from '../../ui/components.ts';
 import { ICONS } from '../../ui/icons.ts';
 import { uiPage } from '../../ui/page.ts';
 import { C, PAINT, S } from '../../ui/theme.ts';
@@ -62,19 +62,17 @@ document.body.classList.add('upage--fill');
 // Left: the library, search on top. Middle: the paint area and its tools. Right: the inspector.
 const library = sidePanel('left', 'pixel-icons-library');
 const list = document.createElement('div');
-list.className = 'urow uside__list';
+list.className = 'uside__list';
 library.body.append(searchField('Search', (v) => { filter = v.trim().toLowerCase(); renderList(); }), list);
 const area = document.createElement('div');
 area.className = 'uwork';
 const inspector = sidePanel('right', 'pixel-icons-inspector', 200);
 main.append(library.panel, area, inspector.panel);
 
-/** A library tile: the working copy of an icon on a button's paper, lit when open. */
-const tile = (rows: readonly string[], lit: boolean) => {
-  const { canvas, ctx } = pixelCanvas(N + 4, N + 4, S);
-  ctx.fillStyle = lit ? C.lit : C.paper;
-  ctx.fillRect(0, 0, N + 4, N + 4);
-  drawRows(ctx, rows, 2, 2, PAINT);
+/** A library tile's picture: the working copy of an icon. */
+const picture = (rows: readonly string[]) => {
+  const { canvas, ctx } = pixelCanvas(N, N, S);
+  drawRows(ctx, rows, 0, 0, PAINT);
   return canvas;
 };
 
@@ -132,14 +130,7 @@ function editor(): HTMLElement {
 }
 
 function renderList(): void {
-  list.replaceChildren(...Object.keys(lib).filter((k) => k.includes(filter)).map((k) => {
-    const b = document.createElement('button');
-    b.className = 'pbtn';
-    b.title = k;
-    b.append(tile(lib[k], k === name));
-    b.addEventListener('click', () => { name = k; undo.reset(); render(); });
-    return b;
-  }));
+  list.replaceChildren(tileGrid(Object.keys(lib).filter((k) => k.includes(filter)).map((k) => ({ id: k, picture: picture(lib[k]), words: k })), name, (k) => { name = k; undo.reset(); render(); }));
 }
 
 function render(): void {
