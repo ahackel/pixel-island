@@ -4,7 +4,7 @@
 import { drawPlantCropped, FRAMES, grow, isStill, type Category, type Grown } from '../flora/flora.ts';
 import { crop, type Cropped } from '../core/cropped.ts';
 import { plantById, plantOf } from '../flora/flora-catalog.ts';
-import { blend, footOf, HOMES, stamp, type Picture, type Pixels, type Spot, type Thing } from './island.ts';
+import { blend, footOf, HOMES, packedOf, stamp, type Picture, type Pixels, type Spot, type Thing } from './island.ts';
 import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached } from '../core/cache.ts';
@@ -17,7 +17,7 @@ import { turnFacing, type Facing } from '../core/puppet.ts';
 import type { Herd } from './herd.ts';
 import { decorById, decorPixels } from './decor.ts';
 import { flameFrame } from './flame.ts';
-import { GLOWING } from './daylight.ts';
+import { GLOW_ALPHA } from './daylight.ts';
 import { fishPixels, type Fish } from './fish.ts';
 import { CLEAR, drawWeather, flashAt, plantWind, shadowLight, weatherSea, type Weather } from './weather.ts';
 import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
@@ -941,35 +941,33 @@ export class World {
   private castShadow(t: Thing, byPicture: Map<string, Int32Array>, key: string): Int32Array {
     const g = this.ground;
     const hit = new Set<number>();
+    // The painted pixels, as stamping has them: glowing ones (marked by their alpha) cast no shadow.
+    const { n, xy, rgba } = packedOf(t.picture, t.w, t.h);
     // Where each column meets the ground: the foot's row, or lying flat, the column's lowest pixel.
-    const rests = Array.from({ length: t.w }, (_, x) => {
-      if (!t.flat) return t.foot.y;
-      for (let y = t.h - 1; y >= 0; y--) { const hex = t.picture.get(x, y); if (hex && hex !== SHADOW) return y; }
-      return t.foot.y;
-    });
-    for (let y = 0; y < t.h; y++) {
-      for (let x = 0; x < t.w; x++) {
-        const hex = t.picture.get(x, y);
-        if (!hex || hex === SHADOW || GLOWING.has(hex)) continue;
-        const up = Math.max(0, rests[x] - y) / LEVEL_PX * LEVEL_M;
-        const side = (x - t.foot.x) / TILE_W;
-        const back = (rests[x] - t.foot.y) / TILE_H; // a lying column rests nearer or further than the foot
-        const i = t.spot.i + side + back + up * SHADOW_RUN[0];
-        const j = t.spot.j - side + back + up * SHADOW_RUN[1];
-        // No shadows off the map, nor on water too deep for them to show.
-        if (!inside(this.map, Math.floor(i), Math.floor(j)) || SEA_LEVEL - heightAt(this.map, i, j) >= SHADOW_DEPTH) continue;
-        const level = standingHeight(this.map, i, j);
-        const at = footOf(g, { i, j, level });
-        if (at.x < 0 || at.y < 0 || at.x >= g.w || at.y >= g.h) continue;
-        const p = at.y * g.w + at.x;
-        // Nearer, higher ground drawn over that point hides the shadow there.
-        if (Math.abs(Math.max(SEA_LEVEL, g.height[p]) - level) > 0.5) continue;
-        hit.add(p);
-      }
+    const rests = new Array<number>(t.w).fill(-1);
+    for (let k = 0; k < n; k++) rests[xy[2 * k]] = Math.max(rests[xy[2 * k]], xy[2 * k + 1]);
+    for (let x = 0; x < t.w; x++) if (!t.flat || rests[x] < 0) rests[x] = t.foot.y;
+    for (let k = 0; k < n; k++) {
+      if (rgba[4 * k + 3] === GLOW_ALPHA) continue;
+      const x = xy[2 * k], y = xy[2 * k + 1];
+      const up = Math.max(0, rests[x] - y) / LEVEL_PX * LEVEL_M;
+      const side = (x - t.foot.x) / TILE_W;
+      const back = (rests[x] - t.foot.y) / TILE_H; // a lying column rests nearer or further than the foot
+      const i = t.spot.i + side + back + up * SHADOW_RUN[0];
+      const j = t.spot.j - side + back + up * SHADOW_RUN[1];
+      // No shadows off the map, nor on water too deep for them to show.
+      if (!inside(this.map, Math.floor(i), Math.floor(j)) || SEA_LEVEL - heightAt(this.map, i, j) >= SHADOW_DEPTH) continue;
+      const level = standingHeight(this.map, i, j);
+      const at = footOf(g, { i, j, level });
+      if (at.x < 0 || at.y < 0 || at.x >= g.w || at.y >= g.h) continue;
+      const p = at.y * g.w + at.x;
+      // Nearer, higher ground drawn over that point hides the shadow there.
+      if (Math.abs(Math.max(SEA_LEVEL, g.height[p]) - level) > 0.5) continue;
+      hit.add(p);
     }
     const pixels = Int32Array.from(hit);
-    // shortcut: a walker leaves one entry per spot it stood on; forget them past a few dozen.
-    if (byPicture.size > 48) byPicture.clear();
+    // A walker leaves one entry per spot it stood on: past a few dozen, the oldest goes.
+    if (byPicture.size >= 48) byPicture.delete(byPicture.keys().next().value!);
     byPicture.set(key, pixels);
     return pixels;
   }

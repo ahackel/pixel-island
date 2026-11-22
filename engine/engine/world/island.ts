@@ -102,9 +102,9 @@ export function blend(image: Pixels, x: number, y: number, hex: string): void {
  * the whole canvas, which is mostly empty. Worked out at a picture's first stamp, so a picture
  * must not change once it has been stamped.
  */
-interface Packed { n: number; xy: Int16Array; rgba: Uint8Array }
+export interface Packed { n: number; xy: Int16Array; rgba: Uint8Array }
 const packed = new WeakMap<Picture, Packed>();
-function packedOf(picture: Picture, w: number, h: number): Packed {
+export function packedOf(picture: Picture, w: number, h: number): Packed {
   const p = packed.get(picture);
   return p ?? drew('packed', () => pack(picture, w, h), (q) => q.n * 8);
 }
