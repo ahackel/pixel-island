@@ -262,9 +262,10 @@ export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { tur
     const made = grow(plantOf(entry), { seed: p.seed, size: sizeStep(p.size), turn: (turn * 360) / TURNS });
     grownCache.set(key, (grown = { grown: made, still: isStill(made) }));
   }
-  // What the wind does not move is drawn and kept once, not once per frame.
-  const at = grown.still ? 0 : frame;
-  return cached('plant', `${key}|${at}|${grown.still ? 0 : wind}`, () => drawPlantCropped(grown.grown, { frame: at, wind }));
+  // What the wind does not move, or no wind moves, is one picture for every frame.
+  const calm = grown.still || !wind;
+  const at = calm ? 0 : frame;
+  return cached('plant', `${key}|${at}|${calm ? 0 : wind}`, () => drawPlantCropped(grown.grown, { frame: at, wind }));
 }
 
 /** Whether a plant may grow on a tile: each group keeps to its own ground, as on the generated islands. */
@@ -638,12 +639,12 @@ export class World {
       const turn = (p.turn ?? 0) + this.rot * (TURNS / 4);
       const spot = { i: p.vi, j: p.vj, level: standingHeight(this.map, p.vi, p.vj) };
       // A plant frozen in the props tool is drawn from its painted pixels.
-      const locked = lockedPicture(p.plant, turn, (frame + lag) % FRAMES, plantWind(this.weather));
+      const locked = lockedPicture(p.plant, turn, (frame + lag) % FRAMES, this.windLevel());
       if (locked) {
         out.push({ spot, picture: locked, w: locked.w, h: locked.h, foot: locked.foot });
         continue;
       }
-      const raster = rasterOf({ ...p, turn }, (frame + lag) % FRAMES, plantWind(this.weather));
+      const raster = rasterOf({ ...p, turn }, (frame + lag) % FRAMES, this.windLevel());
       if (raster) out.push({ spot, picture: raster, w: raster.w, h: raster.h, foot: raster.foot });
     }
     return out;
@@ -683,7 +684,7 @@ export class World {
       const kind = propKind(p.kind);
       if (!kind) continue;
       const lag = ((Math.imul(Math.floor(p.i * 97), 73856093) ^ Math.imul(Math.floor(p.j * 89), 19349663)) >>> 0) % WIND_LAG;
-      const picture = propPicture(kind, p.turn + this.rot * 2, frame + lag, plantWind(this.weather), p.seed, p.size);
+      const picture = propPicture(kind, p.turn + this.rot * 2, frame + lag, this.windLevel(), p.seed, p.size);
       if (picture) out.push({ spot: { i: p.vi, j: p.vj, level: standingHeight(this.map, p.vi, p.vj) }, picture, w: picture.w, h: picture.h, foot: picture.foot });
     }
     return out;
@@ -914,6 +915,11 @@ export class World {
 
   /** The ground and water of the last window composed without a highlight: it is redrawn `WATER_MS` apart, the rest every frame. */
   private base: { key: string; ground: TerrainImage; data: Uint8ClampedArray } | null = null;
+  private wind = -1;
+  /** The plants' wind level now, held a little past a change of weather (`plantWind`). */
+  private windLevel(): number {
+    return (this.wind = plantWind(this.weather, this.wind));
+  }
   private image: Pixels | null = null;
   private mask = new Uint8Array(0);
   private shadows = new WeakMap<Picture, Map<string, Int32Array>>();
