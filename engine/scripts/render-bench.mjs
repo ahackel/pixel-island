@@ -84,8 +84,10 @@ if (!only || only === 'pan') {
 {
   const fresh = new World(scene);
   const ms = 12345;
-  // Sideways only, then also up: the shaded copy is moved along in the one, shaded anew in the other.
-  for (const a of [{ ...view, x: view.x + 7 }, { ...view, x: view.x - 5, y: view.y - 40 }]) {
+  // Sideways only, then also up: the shaded copy is moved along in the one, shaded anew in the other. Then a zoom in and
+  // out: a smaller window inside the last one, a larger one round it.
+  const zoomIn = { x: view.x + 40, y: view.y + 25, w: view.w - 80, h: view.h - 50 }, zoomOut = { x: view.x - 33, y: view.y - 21, w: view.w + 66, h: view.h + 42 };
+  for (const a of [{ ...view, x: view.x + 7 }, { ...view, x: view.x - 5, y: view.y - 40 }, zoomIn, zoomOut]) {
     world.compose(view, [], undefined, false, ms);
     const moved = hash(world.compose(a, [], undefined, false, ms));
     if (moved !== hash(fresh.compose(a, [], undefined, false, ms))) throw new Error(`a view moved to ${a.x}, ${a.y} differs from a fresh one`);

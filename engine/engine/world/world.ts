@@ -844,21 +844,26 @@ export class World {
     else {
       // The ground and water are kept from frame to frame: moved along when the view moves, drawing only the strips it
       // uncovers, and refreshed for the waves a band of rows at a time, each band every WATER_MS, so no frame redraws it all.
-      const key = `${w},${h}|${grid}`;
-      let b = this.base;
-      const dx = b ? view.x - b.x : 0, dy = b ? view.y - b.y : 0;
       const bandOf = (k: number) => Math.floor((ms + (k * WATER_MS) / BANDS) / WATER_MS);
-      if (!b || b.ground !== g || b.key !== key || Math.abs(dx) >= w || Math.abs(dy) >= h) {
-        const reuse = b?.data.length === d.length ? b : null;
-        b = this.base = { key, ground: g, x: view.x, y: view.y, data: reuse?.data ?? new Uint8ClampedArray(d.length), lit: reuse?.lit ?? new Uint8ClampedArray(d.length), bands: new Float64Array(BANDS) };
+      const old = this.base?.ground === g && this.base.grid === grid ? this.base : null;
+      // The part of the window last drawn that is still in view.
+      const x0 = old ? Math.max(view.x, old.x) : 0, x1 = old ? Math.min(view.x + w, old.x + old.w) : 0;
+      const y0 = old ? Math.max(view.y, old.y) : 0, y1 = old ? Math.min(view.y + h, old.y + old.h) : 0;
+      // A buffer for this window's size, in the memory of `a` where that is big enough (a zoom changes the size often).
+      const sized = (a?: Uint8ClampedArray) => (a && a.buffer.byteLength >= d.length ? new Uint8ClampedArray(a.buffer, 0, d.length) : new Uint8ClampedArray(d.length));
+      let b: NonNullable<World['base']>;
+      if (!old || x1 <= x0 || y1 <= y0) {
+        const was = this.base;
+        b = this.base = { ground: g, grid, x: view.x, y: view.y, w, h, data: sized(was?.data), spare: sized(was?.spare), lit: sized(was?.lit), bands: new Float64Array(BANDS) };
         this.drawBase({ data: b.data, width: w, height: h }, view, ms, grid, false);
         for (let k = 0; k < BANDS; k++) b.bands[k] = bandOf(k);
         horizon(b.data, b.lit, w, h, 0, 0, w, h);
       } else {
+        b = old;
+        const kept = old;
         // The shading toward the horizon goes by the window's rows: kept where the view only moves sideways, so only what
-        // is drawn anew is shaded, and all shaded again when it moves up or down.
+        // is drawn anew is shaded, and all shaded again when it moves up or down or changes size.
         const drawn: [number, number, number, number][] = [];
-        const kept = b;
         const strip = (x: number, y: number, sw: number, sh: number) => {
           if (sw <= 0 || sh <= 0) return;
           if (this.strip.length < sw * sh * 4) this.strip = new Uint8ClampedArray(sw * sh * 4);
@@ -867,26 +872,39 @@ export class World {
           for (let r = 0; r < sh; r++) kept.data.set(s.data.subarray(r * sw * 4, (r + 1) * sw * 4), ((y + r) * w + x) * 4);
           drawn.push([x, y, sw, sh]);
         };
-        if (dx || dy) {
-          const from = Math.max(0, -dx), len = (w - Math.abs(dx)) * 4;
-          const move = (a: Uint8ClampedArray, y: number) => a.copyWithin((y * w + from) * 4, ((y + dy) * w + from + dx) * 4, ((y + dy) * w + from + dx) * 4 + len);
-          if (dy >= 0) for (let y = 0; y < h - dy; y++) move(kept.data, y);
-          else for (let y = h - 1; y >= -dy; y--) move(kept.data, y);
-          if (!dy) for (let y = 0; y < h; y++) move(kept.lit, y);
-          kept.x = view.x;
-          kept.y = view.y;
-          strip(0, dy > 0 ? h - dy : 0, w, Math.abs(dy));
-          strip(dx > 0 ? w - dx : 0, 0, Math.abs(dx), h);
+        const dy = view.y - kept.y;
+        const resized = w !== kept.w || h !== kept.h;
+        if (view.x !== kept.x || dy || resized) {
+          // What is still in view is copied to where it now is (into the spare buffer, then swapped), the rest drawn anew.
+          const next = sized(kept.spare), len = (x1 - x0) * 4;
+          for (let y = y0; y < y1; y++) {
+            const from = ((y - kept.y) * kept.w + x0 - kept.x) * 4, to = ((y - view.y) * w + x0 - view.x) * 4;
+            next.set(kept.data.subarray(from, from + len), to);
+            if (!dy && !resized) kept.lit.copyWithin(to, from, from + len);
+          }
+          kept.spare = kept.data;
+          kept.data = next;
+          if (resized) {
+            kept.lit = sized(kept.lit);
+            // Bands are rows of the new size: each is next refreshed when its turn comes.
+            for (let k = 0; k < BANDS; k++) kept.bands[k] = bandOf(k);
+          }
+          Object.assign(kept, { x: view.x, y: view.y, w, h });
+          const top = y0 - view.y, bottom = y1 - view.y, left = x0 - view.x, right = x1 - view.x;
+          strip(0, 0, w, top);
+          strip(0, bottom, w, h - bottom);
+          strip(0, top, left, bottom - top);
+          strip(right, top, w - right, bottom - top);
         }
         for (let k = 0; k < BANDS; k++) {
           const now = bandOf(k);
           if (now === kept.bands[k]) continue;
           kept.bands[k] = now;
-          const y0 = Math.floor((k * h) / BANDS);
-          strip(0, y0, w, Math.floor(((k + 1) * h) / BANDS) - y0);
+          const r0 = Math.floor((k * h) / BANDS);
+          strip(0, r0, w, Math.floor(((k + 1) * h) / BANDS) - r0);
         }
         t0 = part('water', t0);
-        if (dy) horizon(kept.data, kept.lit, w, h, 0, 0, w, h);
+        if (dy || resized) horizon(kept.data, kept.lit, w, h, 0, 0, w, h);
         else for (const [x, y, sw, sh] of drawn) horizon(kept.data, kept.lit, w, h, x, y, sw, sh);
         t0 = part('horizon', t0);
       }
@@ -1017,10 +1035,10 @@ export class World {
   }
 
   /**
-   * The ground and water of the last window composed without a highlight, where it is (`x`, `y`), the wave time each
-   * band of rows was last drawn at, and `lit`, the same with the water shaded toward the horizon.
+   * The ground and water of the last window composed without a highlight, where it is, the wave time each band of rows
+   * was last drawn at, `lit`, the same with the water shaded toward the horizon, and a `spare` buffer to move it into.
    */
-  private base: { key: string; ground: TerrainImage; x: number; y: number; data: Uint8ClampedArray; lit: Uint8ClampedArray; bands: Float64Array } | null = null;
+  private base: { ground: TerrainImage; grid: boolean; x: number; y: number; w: number; h: number; data: Uint8ClampedArray; spare: Uint8ClampedArray; lit: Uint8ClampedArray; bands: Float64Array } | null = null;
   /** Room to draw a strip of the base in. */
   private strip = new Uint8ClampedArray(0);
   private wind = -1;
