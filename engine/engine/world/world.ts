@@ -7,13 +7,13 @@ import { plantById, plantOf } from '../flora/flora-catalog.ts';
 import { blend, footOf, HOMES, packedOf, stamp, type Picture, type Pixels, type Spot, type Thing } from './island.ts';
 import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
-import { cached } from '../core/cache.ts';
+import { cached, has } from '../core/cache.ts';
 import {
   GROUNDS, heightAt, hiddenBehind, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
-import { turnFacing, type Facing } from '../core/puppet.ts';
+import { FACING_VIEWS, turnFacing, type Facing } from '../core/puppet.ts';
 import type { Herd } from './herd.ts';
 import { decorById, decorPixels } from './decor.ts';
 import { flameFrame } from './flame.ts';
@@ -85,6 +85,8 @@ const PRINT_MS = 60_000;
  * exact, so weather, lightning and footprints still move every frame.
  */
 const WATER_MS = 100;
+/** New animal frames drawn a frame at most (`animalFrame`): each takes a few milliseconds. */
+const COLD_DRAWS = 1;
 /** The alpha of a kept water pixel still to be shaded toward the horizon. */
 const WATER_ALPHA = 254;
 /** Bands of rows the water is refreshed in, one after another over WATER_MS. */
@@ -689,6 +691,19 @@ export class World {
   }
 
   /** The decorations that stand up (crystals, a torch) as things; the rest lie on the ground. */
+  /**
+   * One picture per kind's colours and set of rows (its own, or one of its flame frames; kinds can share rows), so its
+   * packed pixels and shadow are kept from frame to frame.
+   */
+  private decorPictures = new WeakMap<Record<string, string>, WeakMap<readonly string[], Picture>>();
+  private decorPicture(rows: readonly string[], colors: Record<string, string>): Picture {
+    let byRows = this.decorPictures.get(colors);
+    if (!byRows) this.decorPictures.set(colors, (byRows = new WeakMap()));
+    let p = byRows.get(rows);
+    if (!p) byRows.set(rows, (p = { get: (x: number, y: number) => colors[rows[y]?.[x]] ?? null }));
+    return p;
+  }
+
   decorThings(ms = 0): Thing[] {
     return this.viewDecor().flatMap((d) => {
       const kind = decorById(d.decor);
@@ -700,7 +715,7 @@ export class World {
       return [{
         // One on a wall stands at its own cell's floor, not the slope blended toward the rock behind (under the floor in a cave).
         spot: { i: d.vi, j: d.vj, level: lift ? levelAt(this.map, Math.floor(d.vi), Math.floor(d.vj)) : standingHeight(this.map, d.vi, d.vj) }, w, h, foot: { x: Math.floor(w / 2), y: h - 1 + lift },
-        picture: { get: (x: number, y: number) => kind.colors[rows[y]?.[x]] ?? null }, ...(lift && { shadow: [] }),
+        picture: this.decorPicture(rows, kind.colors), ...(lift && { shadow: [] }),
       }];
     });
   }
@@ -754,8 +769,41 @@ export class World {
     const facing = facingNow ?? turnFacing((pose ?? placed).facing, this.rot * 2);
     let same = this.animalKeys.get(placed.animal);
     if (!same) this.animalKeys.set(placed.animal, (same = JSON.stringify(placed.animal)));
-    const sprite = cached('animal', `${same}|${clipId}|${n}|${facing}`, () => crop(drawAnimal(placed.animal, clipId, n, facing).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN));
+    const sprite = this.animalFrame(placed.animal, same, clipId, n, facing, this.lastShown.get(placed));
+    this.lastShown.set(placed, sprite);
     return { spot: { i: v.i, j: v.j, level: standingHeight(this.map, v.i, v.j) }, picture: sprite, w: sprite.w, h: sprite.h, foot: sprite.foot };
+  }
+
+  /** An animal's frame from the picture store; a mirrored facing is the facing it mirrors, flipped, not drawn again. */
+  private animalPicture(animal: Animal, same: string, clip: ClipId, n: number, facing: Facing): Cropped {
+    const { mirror, drawn } = FACING_VIEWS[facing];
+    return cached('animal', `${same}|${clip}|${n}|${facing}`, () =>
+      mirror ? this.animalPicture(animal, same, clip, n, drawn).mirrored(ANIMAL_W, ANIMAL_ORIGIN.x) : crop(drawAnimal(animal, clip, n, facing).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN));
+  }
+
+  /** New animal frames still to be drawn this frame (reset by `compose`). */
+  private coldLeft = COLD_DRAWS;
+  /** The picture each animal showed last. */
+  private lastShown = new WeakMap<PlacedAnimal, Cropped>();
+  /**
+   * An animal's frame, drawn if need be, but only COLD_DRAWS new ones a frame: a herd setting off together would
+   * otherwise draw dozens at once. Past that, the nearest earlier frame of the clip already drawn stands in, or with
+   * none of its clip and facing drawn yet, the `last` picture the animal showed: it sets off or turns a few frames late.
+   * One never shown before is drawn anyway, so none goes missing.
+   */
+  private animalFrame(animal: Animal, same: string, clip: ClipId, n: number, facing: Facing, last?: Cropped): Cropped {
+    const { mirror, drawn } = FACING_VIEWS[facing];
+    const ready = (m: number) => has('animal', `${same}|${clip}|${m}|${facing}`) || (mirror && has('animal', `${same}|${clip}|${m}|${drawn}`));
+    if (!ready(n)) {
+      const frames = CLIPS[clip].frames;
+      if (this.coldLeft <= 0) for (let k = 1; k < frames; k++) {
+        const m = (n - k + frames) % frames;
+        if (ready(m)) return this.animalPicture(animal, same, clip, m, facing);
+      }
+      if (this.coldLeft <= 0 && last) return last;
+      this.coldLeft--;
+    }
+    return this.animalPicture(animal, same, clip, n, facing);
   }
 
   /**
@@ -834,6 +882,7 @@ export class World {
    */
   compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
     const { w, h } = view;
+    this.coldLeft = COLD_DRAWS;
     const g = this.ground;
     let t0 = performance.now();
     // The picture and the shadow mask are reused from frame to frame rather than made anew each time.
@@ -962,16 +1011,18 @@ export class World {
     }
     t0 = part('shadows', t0);
     const spots = this.trackSpots ? this.spotsOf(view, g) : null;
+    if (spots) t0 = part('spots', t0);
     for (const t of paintOrder(placed)) {
       // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
-      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.spot.level) + 0.4;
-      const hides = !!t.bases || this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
+      // A wall's pixels stand at heights of their own: none can be hidden if its lowest cannot.
+      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
+      const hides = this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
       if (!spots && !t.bases) {
         stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => hiddenBehind(this.map, g, x + view.x, y + view.y, diag, limit) : undefined);
         continue;
       }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
-        const hidden = hides && hiddenByGround(this.map, g, x + view.x, y + view.y, t.spot.i, t.spot.j, Math.max(SEA_LEVEL, t.bases ? t.bases[(y - t.dy) * t.w + x - t.dx] : t.spot.level));
+        const hidden = hides && hiddenBehind(this.map, g, x + view.x, y + view.y, diag, t.bases ? Math.max(SEA_LEVEL, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
         if (!hidden && spots) {
           const b = t.box;
           if (b) {
@@ -995,20 +1046,36 @@ export class World {
     return image;
   }
 
+  /** Where on the map the ground seen at each pixel of the ground image lies; NaN where no ground is. Made once per ground. */
+  private groundSpots: { ground: TerrainImage; i: Float32Array; j: Float32Array } | null = null;
   /** `spots` for a window, filled with where the ground seen at each pixel lies on the map. */
   private spotsOf(view: Rect, g: TerrainImage): { i: Float32Array; j: Float32Array } {
     const n = view.w * view.h;
     if (this.spots?.i.length !== n) this.spots = { i: new Float32Array(n), j: new Float32Array(n) };
+    if (this.groundSpots?.ground !== g) {
+      const gi = new Float32Array(g.w * g.h), gj = new Float32Array(g.w * g.h);
+      for (let q = 0; q < g.w * g.h; q++) {
+        if (g.cell[q] < 0) { gi[q] = gj[q] = NaN; continue; }
+        // Back from the screen to the map: x tells i - j, y with the height there tells i + j.
+        const gx = q % g.w, gy = Math.floor(q / g.w);
+        const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2);
+        const b = (gy + 0.5 - g.origin.y + g.height[q] * LEVEL_PX) / (TILE_H / 2);
+        gi[q] = (a + b) / 2;
+        gj[q] = (b - a) / 2;
+      }
+      this.groundSpots = { ground: g, i: gi, j: gj };
+    }
     const { i: si, j: sj } = this.spots;
-    for (let y = 0; y < view.h; y++) for (let x = 0; x < view.w; x++) {
-      const gx = x + view.x, gy = y + view.y, p = y * view.w + x;
-      const q = gy * g.w + gx;
-      if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h || g.cell[q] < 0) { si[p] = sj[p] = NaN; continue; }
-      // Back from the screen to the map: x tells i - j, y with the height there tells i + j.
-      const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2);
-      const b = (gy + 0.5 - g.origin.y + g.height[q] * LEVEL_PX) / (TILE_H / 2);
-      si[p] = (a + b) / 2;
-      sj[p] = (b - a) / 2;
+    const { i: gi, j: gj } = this.groundSpots;
+    // Copied row by row; off the ground image, NaN.
+    const x0 = Math.max(0, -view.x), x1 = Math.min(view.w, g.w - view.x);
+    for (let y = 0; y < view.h; y++) {
+      const gy = y + view.y, p = y * view.w;
+      if (gy < 0 || gy >= g.h || x1 <= x0) { si.fill(NaN, p, p + view.w); sj.fill(NaN, p, p + view.w); continue; }
+      si.fill(NaN, p, p + x0); sj.fill(NaN, p, p + x0);
+      si.set(gi.subarray(gy * g.w + view.x + x0, gy * g.w + view.x + x1), p + x0);
+      sj.set(gj.subarray(gy * g.w + view.x + x0, gy * g.w + view.x + x1), p + x0);
+      si.fill(NaN, p + Math.max(x0, x1), p + view.w); sj.fill(NaN, p + Math.max(x0, x1), p + view.w);
     }
     return this.spots;
   }
@@ -1057,6 +1124,18 @@ export class World {
    * Whether any ground in a box of the ground image is in front of tile diagonal `diag` and higher than `limit`:
    * only such ground can hide a thing there (`hiddenByGround`), so where there is none no pixel needs asking.
    */
+  /** The lowest height a wall's pixels stand at. */
+  private lowestOf = new WeakMap<ArrayLike<number>, number>();
+  private lowest(bases: ArrayLike<number>): number {
+    let low = this.lowestOf.get(bases);
+    if (low === undefined) {
+      low = Infinity;
+      for (let k = 0; k < bases.length; k++) if (bases[k] < low) low = bases[k];
+      this.lowestOf.set(bases, low);
+    }
+    return low;
+  }
+
   private groundAbove(x: number, y: number, w: number, h: number, diag: number, limit: number): boolean {
     const g = this.ground;
     if (this.tallest?.ground !== g) {

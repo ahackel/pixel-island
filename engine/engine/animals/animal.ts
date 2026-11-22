@@ -818,25 +818,39 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   const byMass = new Map<number, number[]>();
   model.prims.forEach((p, i) => byMass.set(p.mass, [...(byMass.get(p.mass) ?? []), i]));
   const blend = Math.max(1, a.girth * s * 0.3);
+  // Beyond this distance a part is too far to count below (its gap over blend * 3): the axes are at right angles and of
+  // unit length, so the part's own scaled distance is at least the plain one over its largest radius. 0.1% to spare
+  // for rounding, so only parts the exact test would skip are skipped by this one.
+  const reach2 = model.prims.map((p, j) => (Math.max(...p.r) * (1 + (blend * 3) / inView[j].small) * 1.001) ** 2);
   /**
    * The surface normal at a point, blended over every part of the same mass near it, so a body
    * built from several blobs is lit as one smooth shape (one highlight, no seams), not as a cluster of balls.
    */
+  // Written out in numbers, not small arrays: it runs for every pixel and every part near it. Same sums, same order.
   const normalAt = (P: V, own: number): V => {
-    let sum: V = [0, 0, 0];
+    let s0 = 0, s1 = 0, s2 = 0;
     for (const j of byMass.get(model.prims[own].mass)!) {
-      const { c, axes, small } = inView[j];
+      const { c, axes: [a, b, e], small } = inView[j];
       const r = model.prims[j].r;
-      const off = sub(P, c);
-      const u = axes.map((ax, i) => dot(off, ax) / r[i]);
-      const q = Math.hypot(u[0], u[1], u[2]);
+      const f0 = P[0] - c[0], f1 = P[1] - c[1], f2 = P[2] - c[2];
+      if (f0 * f0 + f1 * f1 + f2 * f2 > reach2[j]) continue;
+      const u0 = (f0 * a[0] + f1 * a[1] + f2 * a[2]) / r[0];
+      const u1 = (f0 * b[0] + f1 * b[1] + f2 * b[2]) / r[1];
+      const u2 = (f0 * e[0] + f1 * e[1] + f2 * e[2]) / r[2];
+      const q = Math.hypot(u0, u1, u2);
       const gap = Math.max(0, (q - 1) * small);
       if (gap > blend * 3) continue;
-      let n: V = [0, 0, 0];
-      for (let i = 0; i < 3; i++) n = add(n, axes[i], u[i] / r[i]);
-      sum = add(sum, norm(n), Math.exp(-gap / blend));
+      const k0 = u0 / r[0], k1 = u1 / r[1], k2 = u2 / r[2];
+      const n0 = 0 + a[0] * k0 + b[0] * k1 + e[0] * k2;
+      const n1 = 0 + a[1] * k0 + b[1] * k1 + e[1] * k2;
+      const n2 = 0 + a[2] * k0 + b[2] * k1 + e[2] * k2;
+      const inv = 1 / (Math.hypot(n0, n1, n2) || 1);
+      const w = Math.exp(-gap / blend);
+      s0 = s0 + n0 * inv * w;
+      s1 = s1 + n1 * inv * w;
+      s2 = s2 + n2 * inv * w;
     }
-    return norm(sum);
+    return norm([s0, s1, s2]);
   };
   model.prims.forEach((p, index) => {
     const { c, axes } = inView[index];
@@ -845,23 +859,23 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
     const hitR = p.part === 'leg' || p.part === 'foot' ? p.r.map((r) => Math.max(r, 0.6)) : p.r;
     const cx = OX + c[0];
     const cy = OY - c[1] + 0.5 * c[2];
+    // The ray through a pixel: x fixed, and every step towards the viewer one up and two forward. Its direction in the
+    // part's own axes is the same for every pixel; written out in numbers, as it runs for every pixel of every part.
+    const [a, b, e] = axes;
+    const dl0 = (0 * a[0] + 1 * a[1] + 2 * a[2]) / hitR[0];
+    const dl1 = (0 * b[0] + 1 * b[1] + 2 * b[2]) / hitR[1];
+    const dl2 = (0 * e[0] + 1 * e[1] + 2 * e[2]) / hitR[2];
+    const qa = 0 + dl0 * dl0 + dl1 * dl1 + dl2 * dl2;
     for (let py = Math.floor(cy - R * 1.15) - 1; py <= Math.ceil(cy + R * 1.15) + 1; py++) {
       if (py < 0 || py >= Hh) continue;
       for (let px = Math.floor(cx - R) - 1; px <= Math.ceil(cx + R) + 1; px++) {
         if (px < 0 || px >= W) continue;
-        // The ray through this pixel: x fixed, and every step towards the viewer one up and two forward.
-        const o: V = [px + 0.5 - OX, OY - (py + 0.5), 0];
-        const d: V = [0, 1, 2];
-        const oc = sub(o, c);
-        let qa = 0, qb = 0, qc = -1;
-        const ol: number[] = [], dl: number[] = [];
-        for (let i = 0; i < 3; i++) {
-          ol[i] = dot(oc, axes[i]) / hitR[i];
-          dl[i] = dot(d, axes[i]) / hitR[i];
-          qa += dl[i] * dl[i];
-          qb += ol[i] * dl[i];
-          qc += ol[i] * ol[i];
-        }
+        const f0 = px + 0.5 - OX - c[0], f1 = OY - (py + 0.5) - c[1], f2 = 0 - c[2];
+        const ol0 = (f0 * a[0] + f1 * a[1] + f2 * a[2]) / hitR[0];
+        const ol1 = (f0 * b[0] + f1 * b[1] + f2 * b[2]) / hitR[1];
+        const ol2 = (f0 * e[0] + f1 * e[1] + f2 * e[2]) / hitR[2];
+        const qb = 0 + ol0 * dl0 + ol1 * dl1 + ol2 * dl2;
+        const qc = -1 + ol0 * ol0 + ol1 * ol1 + ol2 * ol2;
         const disc = qb * qb - qa * qc;
         if (disc < 0) continue;
         const t = (-qb + Math.sqrt(disc)) / qa;

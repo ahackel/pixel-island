@@ -31,6 +31,21 @@ export class Cropped {
   shaded(x: number, y: number): boolean {
     return !!this.shade && x >= 0 && y >= 0 && x < this.w && y < this.h && this.shade[y * this.w + x] === 1;
   }
+  /**
+   * The picture mirrored left to right on its full `fullW`-wide canvas, where it stands at column `footX`: the same as
+   * cropping the mirrored canvas.
+   */
+  mirrored(fullW: number, footX: number): Cropped {
+    const { w, h } = this;
+    const x0 = footX - this.foot.x;
+    const px = new Uint16Array(w * h);
+    const shade = this.shade && new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      px[y * w + w - 1 - x] = this.px[y * w + x];
+      if (shade) shade[y * w + w - 1 - x] = this.shade![y * w + x];
+    }
+    return new Cropped(w, h, { x: footX - (fullW - x0 - w), y: this.foot.y }, px, shade);
+  }
   get bytes(): number {
     return this.px.byteLength + (this.shade?.byteLength ?? 0);
   }

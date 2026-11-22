@@ -53,6 +53,9 @@ export function cached<T>(cache: string, key: string, draw: () => T, bytes: (mad
   return value;
 }
 
+/** Whether the picture `key` of `cache` is drawn and kept, without counting as a use. */
+export const has = (cache: string, key: string): boolean => entries.has(`${cache}|${key}`);
+
 /** Forgets the pictures of `cache` whose keys start with `prefix`, as when what they show was edited. */
 export function forget(cache: string, prefix = ''): void {
   const start = `${cache}|${prefix}`;

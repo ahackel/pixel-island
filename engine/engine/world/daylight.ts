@@ -103,12 +103,17 @@ export function lightByTile(
   const d = image.data;
   const { w, h, open, lamps } = field;
   const cells = [0, 0, 0, 0], weights = [0, 0, 0, 0];
+  // A thing's pixels all take its spot: the light worked out for one serves the run of them after it.
+  let lastI = NaN, lastJ = NaN, lastR = fr, lastG = fg, lastB = fb;
   for (let p = 0; p < d.length >> 2; p++) {
     const o = p * 4;
-    if (d[o + 3] === GLOW_ALPHA) continue;
+    // Black stays black, and glowing pixels keep their own light.
+    if (d[o + 3] === GLOW_ALPHA || !(d[o] | d[o + 1] | d[o + 2])) continue;
     let r = fr, g = fg, b = fb;
     const si = spots.i[p], sj = spots.j[p];
-    if (si === si && lamps.length) {
+    if (si === lastI && sj === lastJ) {
+      r = lastR; g = lastG; b = lastB;
+    } else if (si === si && lamps.length) {
       // The open cells among the four whose middles are round the spot, and how much each counts.
       const fi = si - 0.5, fj = sj - 0.5;
       const i0 = Math.floor(fi), j0 = Math.floor(fj);
@@ -124,9 +129,15 @@ export function lightByTile(
         // Lamps add up as light does, each pulling the colour toward its own by how much it gives.
         let dark = 1, lk = 0, lr = 0, lg = 0, lb = 0;
         for (const lamp of lamps) {
+          // The detour only adds: out of a lamp's reach in a straight line is out of it. Squared first, with a little to
+          // spare for rounding, as hypot is slow; the exact test after it decides.
+          const di = si - lamp.i, dj = sj - lamp.j;
+          if (di * di + dj * dj > lamp.r * lamp.r * 1.0001) continue;
+          const straight = Math.hypot(di, dj);
+          if (straight >= lamp.r) continue;
           let detour = 0;
           for (let c = 0; c < n; c++) detour += lamp.detour[cells[c]] * weights[c];
-          const dist = Math.hypot(si - lamp.i, sj - lamp.j) + detour / sum;
+          const dist = straight + detour / sum;
           if (dist >= lamp.r) continue;
           const q = 1 - dist / lamp.r;
           const v = lamp.amount * q * q * (3 - 2 * q);
@@ -140,6 +151,7 @@ export function lightByTile(
           b += (keep * (lb / lk / 255) - b) * e;
         }
       }
+      lastI = si; lastJ = sj; lastR = r; lastG = g; lastB = b;
     }
     d[o] *= r;
     d[o + 1] *= g;
