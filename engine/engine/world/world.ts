@@ -6,7 +6,8 @@ import { crop, type Cropped } from '../core/cropped.ts';
 import { plantById, plantOf } from '../flora/flora-catalog.ts';
 import { blend, footOf, HOMES, stamp, type Picture, type Pixels, type Spot, type Thing } from './island.ts';
 import { SHADOW } from '../core/palette.ts';
-import { drew, holding, part, watch } from '../../shared/stats.ts';
+import { drew, part } from '../../shared/stats.ts';
+import { cached } from '../core/cache.ts';
 import {
   GROUNDS, heightAt, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
@@ -249,8 +250,6 @@ export { plantOf };
 /** Up to how many wind frames a plant runs behind the shared wind. */
 const WIND_LAG = 3;
 const grownCache = new Map<string, { grown: Grown; still: boolean }>();
-const rasterCache = new Map<string, Cropped>();
-watch('plant', () => holding(rasterCache));
 const sizeStep = (s: number) => Math.round(s * 10) / 10;
 /** One wind frame of a placed plant. Shared by every plant with the same recipe, variant, size and turn. */
 export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { turn?: number }, frame: number, wind = 1): Cropped | null {
@@ -265,13 +264,7 @@ export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { tur
   }
   // What the wind does not move is drawn and kept once, not once per frame.
   const at = grown.still ? 0 : frame;
-  const full = `${key}|${at}|${grown.still ? 0 : wind}`;
-  let raster = rasterCache.get(full);
-  if (!raster) {
-    // shortcut: unbounded only by the number of distinct plants a scene uses; clear if memory ever matters.
-    rasterCache.set(full, (raster = drew('plant', () => drawPlantCropped(grown.grown, { frame: at, wind }), (r) => r.bytes)));
-  }
-  return raster;
+  return cached('plant', `${key}|${at}|${grown.still ? 0 : wind}`, () => drawPlantCropped(grown.grown, { frame: at, wind }));
 }
 
 /** Whether a plant may grow on a tile: each group keeps to its own ground, as on the generated islands. */
@@ -435,8 +428,6 @@ export class World {
   }
 
   constructor(scene: Scene, rot = 0) {
-    // The newest world's animals are the ones counted.
-    watch('animal', () => [...this.animalKinds.values()].map(holding).reduce(([n, b], [m, c]) => [n + m, b + c], [0, 0]));
     this.scene = scene;
     this.rot = ((rot % 4) + 4) % 4;
     this.map = this.viewMap();
@@ -698,8 +689,8 @@ export class World {
     return out;
   }
 
-  private animalFrames = new WeakMap<Animal, Map<string, Cropped>>();
-  private animalKinds = new Map<string, Map<string, Cropped>>();
+  /** Every placed animal is its own copy, so the same animal placed twice is known by what it is. */
+  private animalKeys = new WeakMap<Animal, string>();
 
   /**
    * The animals as things: standing where placed and idling, each a little out of step with the
@@ -722,24 +713,16 @@ export class World {
     const n = (Math.floor(((ms - (pose?.started ?? 0)) / 1000) * clip.rate) + lag) % clip.frames;
     const v = this.toView(pose ?? placed);
     const facing = facingNow ?? turnFacing((pose ?? placed).facing, this.rot * 2);
-    let frames = this.animalFrames.get(placed.animal);
-    if (!frames) {
-      // Every placed animal is its own copy, so the same animal placed twice is found by what it is.
-      const same = JSON.stringify(placed.animal);
-      if (this.animalKinds.size > 60) this.animalKinds.clear();
-      frames = this.animalKinds.get(same) ?? new Map();
-      this.animalKinds.set(same, frames);
-      this.animalFrames.set(placed.animal, frames);
-    }
-    const key = `${clipId}|${n}|${facing}`;
-    let sprite = frames.get(key);
-    if (!sprite) frames.set(key, (sprite = drew('animal', () => crop(drawAnimal(placed.animal, clipId, n, facing).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN), (c) => c.bytes)));
+    let same = this.animalKeys.get(placed.animal);
+    if (!same) this.animalKeys.set(placed.animal, (same = JSON.stringify(placed.animal)));
+    const sprite = cached('animal', `${same}|${clipId}|${n}|${facing}`, () => crop(drawAnimal(placed.animal, clipId, n, facing).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN));
     return { spot: { i: v.i, j: v.j, level: standingHeight(this.map, v.i, v.j) }, picture: sprite, w: sprite.w, h: sprite.h, foot: sprite.foot };
   }
 
   /**
    * Paints the camera window: the ground, every shadow at once, then things back to front with
    * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
+   * The picture is reused by the next call: copy it to keep it.
    */
   compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
     const { w, h } = view;
@@ -749,10 +732,13 @@ export class World {
     const g = this.ground;
     const shore = this.shoreOf(g);
     let t0 = performance.now();
-    const image: Pixels = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+    // The picture and the shadow mask are reused from frame to frame rather than made anew each time.
+    if (this.image?.width !== w || this.image.height !== h) this.image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+    const image = this.image;
     const d = image.data;
     const baseKey = `${view.x},${view.y},${w},${h}|${Math.floor(ms / WATER_MS)}|${grid}`;
     const kept = !highlight && this.base && this.base.ground === g && this.base.key === baseKey ? this.base.data : null;
+    if (!kept) d.fill(0);
     if (!kept) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const gx = x + view.x, gy = y + view.y;
       if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) continue;
@@ -807,7 +793,11 @@ export class World {
         if (highlight?.cells.has(g.cell[p])) blend(image, x, y, highlight.color);
       }
     }
-    if (!kept && !highlight) this.base = { key: baseKey, ground: g, data: d.slice() };
+    if (!kept && !highlight) {
+      const data = this.base?.data.length === d.length ? this.base.data : new Uint8ClampedArray(d.length);
+      data.set(d);
+      this.base = { key: baseKey, ground: g, data };
+    }
     const placed = things
       .map((t) => {
         const at = footOf(g, t.spot);
@@ -834,7 +824,8 @@ export class World {
     // Shadows reach past a thing's picture, so things just outside the window cast into it too.
     // Each ground pixel is darkened once, and not where the ground already lies in shadow.
     t0 = part('ground', t0);
-    const mask = new Uint8Array(w * h);
+    if (this.mask.length !== w * h) this.mask = new Uint8Array(w * h);
+    const mask = this.mask.fill(0);
     // A lightning flash throws hard shadows, darker than the sun's.
     const flash = flashAt(ms, this.weather);
     for (const t of things) {
@@ -923,6 +914,8 @@ export class World {
 
   /** The ground and water of the last window composed without a highlight: it is redrawn `WATER_MS` apart, the rest every frame. */
   private base: { key: string; ground: TerrainImage; data: Uint8ClampedArray } | null = null;
+  private image: Pixels | null = null;
+  private mask = new Uint8Array(0);
   private shadows = new WeakMap<Picture, Map<string, Int32Array>>();
   private shadowsOf: TerrainImage | null = null;
 

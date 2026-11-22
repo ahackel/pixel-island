@@ -8,6 +8,7 @@ import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt } fr
 import { ocean, rgb } from './ocean.ts';
 import type { Thing, World } from './world.ts';
 import { drew, slots } from '../../shared/stats.ts';
+import { cached, idOf } from '../core/cache.ts';
 
 export const EMOTES = ['wave', 'use'] as const;
 export type Emote = (typeof EMOTES)[number];
@@ -129,9 +130,6 @@ export class Actor {
   /** Held in one frame of a clip, as a prop: no fidgets, no blinks, no moving on. */
   frozen: { clip: string; frame: number } | null = null;
   private look: Look;
-  private frames = new Map<string, Sprite>();
-  /** Drawn frames kept per look, so going back to a look (a flickering torch) draws nothing again. */
-  private framesOf = new WeakMap<Look, Map<string, Sprite>>();
   /** Wading pictures of each drawn picture, by rows under water. */
   private wet = new WeakMap<Picture, Map<number, Picture>>();
   private drops: Drop[] = [];
@@ -163,9 +161,8 @@ export class Actor {
   }
 
   setLook(look: Look): void {
-    this.framesOf.set(this.look, this.frames);
+    // Frames are kept per look, so going back to a look (a flickering torch) draws nothing again.
     this.look = look;
-    this.frames = this.framesOf.get(look) ?? new Map();
   }
 
   emote(emote: Emote, ms: number): void {
@@ -361,8 +358,7 @@ export class Actor {
 
   /** The character standing in a three-quarter front view, whatever it is doing: for a portrait. */
   portrait(): { picture: Picture; w: number; h: number } {
-    let body = this.frames.get('portrait');
-    if (!body) this.frames.set('portrait', (body = drawCharacter(this.look, STAND, 0)));
+    const body = cached('character', `${idOf(this.look)}|portrait`, () => drawCharacter(this.look, STAND, 0), () => slots(SPRITE_W, SPRITE_H, 1));
     return { picture: body, w: SPRITE_W, h: SPRITE_H };
   }
 
@@ -377,12 +373,11 @@ export class Actor {
     const facing = fidget?.glance ? turnFacing(this.facing, fidget.glance) : this.facing;
     const key = `${this.frozen?.clip ?? this.clip}|${n}|${facing}|${face}|${look}|${!!this.carrying}|${!!this.lies.back}|${!!this.lies.down}`;
     const pose = look ? { ...STAND, look } : clip.frames[n];
-    let body = this.frames.get(key);
-    // Hands full, the tool is put away.
-    if (!body) {
+    const body = cached('character', `${idOf(this.look)}|${key}`, () => {
+      // Hands full, the tool is put away.
       const worn = this.carrying ? { ...this.look, items: this.look.items.filter((it) => it.slot !== 'tool') } : this.look;
-      this.frames.set(key, (body = drew('character', () => drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies }), () => slots(SPRITE_W, SPRITE_H, 1))));
-    }
+      return drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies });
+    }, () => slots(SPRITE_W, SPRITE_H, 1));
     let sprite: Picture = body;
     if (this.carrying) {
       const held = this.carrying(facing, ms);

@@ -4,8 +4,8 @@
 import { drawObject, OBJECT_H, OBJECT_ORIGIN, OBJECT_W, type Build } from '../objects/object.ts';
 import { OPENING, objectPresetById } from '../objects/object-presets.ts';
 import type { Thing } from './world.ts';
-import { drew, watch } from '../../shared/stats.ts';
-import { crop, type Cropped } from '../core/cropped.ts';
+import { cached } from '../core/cache.ts';
+import { crop } from '../core/cropped.ts';
 
 /** The ids of a scene's own objects, made in the object editor, start with this; their builds are in `Scene.objects`. */
 export const OWN = 'own:';
@@ -48,17 +48,10 @@ export function itemCovers(it: PlacedItem & { vi: number; vj: number }, rot: num
 }
 
 // shortcut: own objects are cached by id, so one changed in the object editor shows changed after a reload; key by content if that bothers.
-const frames = new Map<string, Pick<Thing, 'picture' | 'w' | 'h' | 'foot'>>();
-watch('item', () => [frames.size, [...frames.values()].reduce((b, v) => b + (v.picture as Cropped).bytes, 0)]);
 /** An object's picture in a camera turn (quarter turns on the ground, eighths in a character's arms), `open` frames open. */
 export function itemPicture(id: string, turn: number, props?: Record<string, Build>, open = 0): Pick<Thing, 'picture' | 'w' | 'h' | 'foot'> {
-  const key = `${id}|${turn}|${open}`;
-  let out = frames.get(key);
-  if (!out) {
-    const prop = (open > 0 && OPENING[id]?.[Math.min(open, OPENING[id].length) - 1]) || propOf(id, props);
-    if (!prop) return { picture: { get: () => null }, w: 1, h: 1, foot: { x: 0, y: 0 } };
-    const c = drew('item', () => crop(drawObject(prop, ((turn % 4) + 4) % 4).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN), (c) => c.bytes);
-    frames.set(key, (out = { picture: c, w: c.w, h: c.h, foot: c.foot }));
-  }
-  return out;
+  const prop = (open > 0 && OPENING[id]?.[Math.min(open, OPENING[id].length) - 1]) || propOf(id, props);
+  if (!prop) return { picture: { get: () => null }, w: 1, h: 1, foot: { x: 0, y: 0 } };
+  const c = cached('item', `${id}|${turn}|${open}`, () => crop(drawObject(prop, ((turn % 4) + 4) % 4).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN));
+  return { picture: c, w: c.w, h: c.h, foot: c.foot };
 }

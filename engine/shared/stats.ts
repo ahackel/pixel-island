@@ -38,13 +38,6 @@ export const frameDone = () => void (frames++, allFrames++);
 /** Lets the counters see what a cache holds now: its entries and their bytes. */
 export const watch = (cache: string, holds: () => [number, number]) => void (held[cache] = holds);
 
-/** Entries and bytes of a map of pictures that know their size. */
-export const holding = (map: Map<unknown, { bytes: number }>): [number, number] => {
-  let bytes = 0;
-  for (const v of map.values()) bytes += v.bytes;
-  return [map.size, bytes];
-};
-
 /** Bytes of a canvas kept as one string-or-null slot per pixel (a pointer each), plus `extra` per pixel. */
 export const slots = (w: number, h: number, extra = 0) => w * h * (8 + extra);
 
