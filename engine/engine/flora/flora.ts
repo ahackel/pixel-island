@@ -1,3 +1,4 @@
+import { crop, type Cropped } from '../core/cropped.ts';
 import { hexOf, LIT_KEYS, PAINT_KEYS, PALETTE, SHADOW, type Cell, type PaletteKey } from '../core/palette.ts';
 import { hashOf, pixelHash, rng } from '../../shared/random.ts';
 
@@ -608,6 +609,12 @@ export class Raster {
     }
     this.pixels[y * this.w + x] = color;
   }
+  /** Empties the canvas to draw on again. */
+  clear(): void {
+    this.pixels.fill(null);
+    this.shadow.fill(0);
+    this.lost = 0;
+  }
   /** Marks ground shadow. */
   shade(x: number, y: number): void {
     if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.shadow[y * this.w + x] = 1;
@@ -631,6 +638,17 @@ const tone = (key: PaletteKey, t: 'base' | 'shade' | 'light') => PALETTE[key][t]
 
 /** Whether the wind leaves a grown plant alone, as it does cacti, rocks and driftwood: every frame of it is the same picture. */
 export const isStill = (grown: Grown): boolean => grown.elements.every((el) => !el.bend && !el.flex);
+
+const scratch = new Map<string, Raster>();
+/** A plant drawn on a canvas shared by all plants of its size and cropped to what it paints: the form caches keep. */
+export function drawPlantCropped(grown: Grown, options: DrawPlantOptions = {}): Cropped {
+  const { w, h } = canvasFor(grown.size);
+  let r = scratch.get(`${w}x${h}`);
+  if (r) r.clear();
+  else scratch.set(`${w}x${h}`, (r = new Raster(w, h)));
+  drawPlant(grown, options, r);
+  return crop(r, w, h, r.origin);
+}
 
 /** Paints a grown plant for one frame of the wind loop. */
 export function drawPlant(grown: Grown, options: DrawPlantOptions = {}, raster = new Raster(canvasFor(grown.size).w, canvasFor(grown.size).h)): Raster {

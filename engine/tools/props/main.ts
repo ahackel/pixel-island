@@ -14,15 +14,15 @@ import { FLORA_STORE, plantById } from '../../engine/flora/flora-catalog.ts';
 import { cleanBuild, OBJECT_STORE, savedProps, type Build } from '../../engine/objects/object.ts';
 import { gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts';
 import {
-  changeKind, deleteKind, dirOfView, duplicateKind, FEATURES, generatedViews, importPropKind, isHidden, lockKind, newPainted, ownViews, propKind, propKinds,
+  blockRadius, changeKind, deleteKind, dirOfView, duplicateKind, FEATURES, generatedViews, importPropKind, isHidden, lockKind, newPainted, ownViews, propKind, propKinds,
   propKindFile, propPicture, reloadProps, setEditedPlant, setHidden, SOURCES, unlockKind, VIEW_COUNTS, viewOf, type Feature, type PropKind, type Source, type ViewCount,
 } from '../../engine/world/prop.ts';
 import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { box, choice, pixelButton, searchField, tileGrid, toggle, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
-import { button, checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
+import { choice, pixelButton, searchField, tileGrid, toggle, turnView, viewTools, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
+import { checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
 
@@ -47,13 +47,13 @@ const DIR_NAMES = ['0°', '45°', '90°', '135°', '180°', '225°', '270°', '3
 
 interface Prefs {
   id: string; tab: Tab; dir: number; query: string; source: Source | 'all'; feature: Feature | 'all';
-  hidden: boolean; person: boolean; ground: string; playing: boolean; view: number; shape: BuildTab;
+  hidden: boolean; person: boolean; colliders: boolean; ground: string; playing: boolean; view: number; shape: BuildTab;
 }
 type Tab = 'views' | 'shape' | 'features' | 'pixels';
 const PREFS_KEY = 'pixel-props-tool';
 const GROUNDS = [['Sand', 'Sand', '#e9d9a0'], ['Grass', 'Gras', '#8fcf78'], ['Floor', 'Boden', '#d9d3c4'], ['Rock', 'Fels', '#aeaba3']] as const;
 const prefs: Prefs = {
-  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, query: '', source: 'all', feature: 'all', hidden: false, person: true,
+  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, query: '', source: 'all', feature: 'all', hidden: false, person: true, colliders: false,
   ground: GROUNDS[0][2], playing: true, view: 0, shape: 'parts',
   ...readStore<Partial<Prefs>>(PREFS_KEY, {}),
 };
@@ -155,28 +155,27 @@ function drawStage(frame: number): void {
   const p = propPicture(k, prefs.dir, frame, prefs.playing ? 1 : 0);
   if (p) draw(p, cx, cy);
   if (prefs.person && back) person();
+  // The collider: the ground circle walkers keep out of (red), over everything so it shows through the prop.
+  const r = blockRadius(k);
+  if (prefs.colliders && r) {
+    for (let y = 0; y < STAGE_H; y++) for (let x = 0; x < STAGE_W; x++) {
+      const d = Math.hypot((x - cx) / 48 + (y - cy) / 24, (y - cy) / 24 - (x - cx) / 48);
+      if (d <= r) put(x, y, d > r - 0.07 ? '#e0332ee6' : '#e0332e33');
+    }
+  }
   ctx.putImageData(image, 0, 0);
 }
 
-/** The eight directions round the stage: which views are a prop's own, shared or mirrored. */
-const SOURCE_ICON: Record<string, string> = { painted: 'pencil', grown: 'sprout', built: 'tool' };
-
-function ring(): HTMLElement {
+/** Which of the prop's views the direction shows: its own, shared with one drawn before, or mirrored. */
+function viewWord(): string {
   const k = kind();
-  const seen = new Set<number>();
-  return h('div', { class: 'props__ring', role: 'radiogroup', 'aria-label': L('Direction', 'Richtung') },
-    ...DIR_NAMES.map((name, d) => {
-      const { view, mirror } = viewOf(k.views, k.mirror, d);
-      const own = !mirror && !seen.has(view);
-      if (!mirror) seen.add(view);
-      const what = mirror ? L(`view ${view + 1}, mirrored`, `Ansicht ${view + 1}, gespiegelt`) : own ? L(`view ${view + 1}`, `Ansicht ${view + 1}`) : L(`shares view ${view + 1}`, `teilt Ansicht ${view + 1}`);
-      return button({ class: `props__dir props__dir--${mirror ? 'mirror' : own ? 'own' : 'shared'}`, role: 'radio', 'aria-checked': String(d === prefs.dir), title: `${name}: ${what}`, 'aria-label': `${name}: ${what}`, style: `--a: ${d * 45}deg` }, () => {
-        prefs.dir = d;
-        savePrefs();
-        render();
-      }, mirror ? `${view + 1}′` : String(view + 1));
-    }));
+  const { view, mirror } = viewOf(k.views, k.mirror, prefs.dir);
+  const own = !mirror && [...Array(prefs.dir).keys()].every((d) => viewOf(k.views, k.mirror, d).view !== view || viewOf(k.views, k.mirror, d).mirror);
+  return mirror ? L(`view ${view + 1}, mirrored`, `Ansicht ${view + 1}, gespiegelt`) : own ? L(`view ${view + 1}`, `Ansicht ${view + 1}`) : L(`shares view ${view + 1}`, `teilt Ansicht ${view + 1}`);
 }
+
+const FEATURE_ICON: Record<Feature, string> = { wind: 'storm', loop: 'reset', glow: 'sun', blocks: 'box', carry: 'hand' };
+const SOURCE_ICON: Record<string, string> = { painted: 'pencil', grown: 'sprout', built: 'tool' };
 
 // ------------------------------------------------------------------ the library
 
@@ -207,7 +206,7 @@ function chips(): HTMLElement {
   const sources: Pick[] = [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }))];
   return h('div', { class: 'urow' },
     choice(L('Source', 'Herkunft'), sources, () => prefs.source, (id) => flip(() => (prefs.source = id as typeof prefs.source)), 'buttons'),
-    ...FEATURES.map((f) => toggle(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), { words: L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]) }, prefs.feature === f, () => flip(() => (prefs.feature = prefs.feature === f ? 'all' : f)))),
+    ...FEATURES.map((f) => toggle(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), { icon: FEATURE_ICON[f] }, prefs.feature === f, () => flip(() => (prefs.feature = prefs.feature === f ? 'all' : f)))),
     toggle(L('Hidden too', 'Auch verborgene'), { icon: 'eye' }, prefs.hidden, () => flip(() => (prefs.hidden = !prefs.hidden))));
 }
 
@@ -282,10 +281,9 @@ function panelFor(tab: Tab): (Node | string)[] {
       return [section(L('Views', 'Ansichten'),
         row(L('How many', 'Wie viele'), segmented(L('Views', 'Ansichten'), VIEW_COUNTS.map((n) => ({ id: String(n), label: String(n) })), String(k.views), (v) => setCount(Number(v) as ViewCount))),
         row('', checkbox(L('Mirror: the far half shows the near half flipped', 'Spiegeln: die hintere Hälfte zeigt die vordere umgedreht'), k.mirror, setMirror)),
-        ring(),
         h('p', { class: 'note' }, L(
-          `Each of the eight directions shows one of ${k.views} view${k.views > 1 ? 's' : ''}. A number is a view of its own, a faint one shares a view drawn before it, a ′ is mirrored. ${ownViews(k)} picture${ownViews(k) > 1 ? 's are' : ' is'} drawn${k.art ? ' and painted' : ''}. Tap a direction to look from there.`,
-          `Jede der acht Richtungen zeigt eine von ${k.views} Ansicht${k.views > 1 ? 'en' : ''}. Eine Zahl ist eine eigene Ansicht, eine blasse teilt eine vorher gezeichnete, ein ′ ist gespiegelt. ${ownViews(k)} Bild${ownViews(k) > 1 ? 'er werden' : ' wird'} gezeichnet${k.art ? ' und gemalt' : ''}. Tippe eine Richtung an, um von dort zu schauen.`)),
+          `Each of the eight directions shows one of ${k.views} view${k.views > 1 ? 's' : ''}. The tag under the picture says which, and whether it is mirrored or shares a view drawn before. ${ownViews(k)} picture${ownViews(k) > 1 ? 's are' : ' is'} drawn${k.art ? ' and painted' : ''}. Turn the picture to look from there.`,
+          `Jede der acht Richtungen zeigt eine von ${k.views} Ansicht${k.views > 1 ? 'en' : ''}. Die Beschriftung unter dem Bild sagt welche, und ob sie gespiegelt ist oder eine vorher gezeichnete teilt. ${ownViews(k)} Bild${ownViews(k) > 1 ? 'er werden' : ' wird'} gezeichnet${k.art ? ' und gemalt' : ''}. Drehe das Bild, um von dort zu schauen.`)),
       )];
     }
     case 'shape':
@@ -444,7 +442,9 @@ const stageTag = h('span', { class: 'stage__tag' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
-const ringSlot = h('div', { class: 'props__under' });
+const views = viewTools();
+// Arrows at its sides and a drag on it turn the prop an eighth at a time.
+const arrows = turnView(stage, (step) => { prefs.dir = (prefs.dir + step + 8) % 8; savePrefs(); render(); });
 const libraryHead = h('div', { class: 'props__libhead' });
 const name = nameTag();
 name.onRename((n) => {
@@ -473,6 +473,7 @@ function renderBar(): void {
   const { bar, undo: u, redo: r, pops } = topBar({
     tool: 'props',
     title: word('props'),
+    name: name.el,
     about: [
       L('Everything that stands in the world, in one library: plants grown by rule, objects built from parts, decorations, and props painted on this device. Search by name, tag, source or feature.',
         'Alles, was in der Welt steht, in einer Bibliothek: nach Regeln gewachsene Pflanzen, aus Teilen gebaute Objekte, Dekorationen und auf diesem Gerät gemalte Requisiten. Suche nach Name, Schlagwort, Herkunft oder Eigenschaft.'),
@@ -513,14 +514,14 @@ function render(): void {
   stage.style.setProperty('--ground', prefs.ground);
   renderBar();
   name.set(k.name, L('Prop', 'Requisite'));
-  stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
+  stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${viewWord()} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
   libraryHead.replaceChildren(search, chips());
   renderLibrary();
-  ringSlot.replaceChildren(ring(),
-    h('div', { class: 'toggles props__stagetools' },
-      checkbox(L('Wind', 'Wind'), prefs.playing, (on) => { prefs.playing = on; savePrefs(); stageDirty = true; }),
-      checkbox(L('Survivor', 'Gestrandeter'), prefs.person, (on) => { prefs.person = on; savePrefs(); stageDirty = true; }),
-      segmented(L('Ground', 'Boden'), GROUNDS.map(([en, de, c]) => ({ id: c as string, label: L(en, de) })), prefs.ground, (c) => { prefs.ground = c; savePrefs(); stageDirty = true; render(); })));
+  views.replaceChildren(snapButton(() => savePicture(hero, kind().name)),
+    toggle(L('Wind', 'Wind'), { icon: 'storm' }, prefs.playing, (on) => { prefs.playing = on; savePrefs(); stageDirty = true; }),
+    toggle(L('Survivor', 'Gestrandeter'), { icon: 'person' }, prefs.person, (on) => { prefs.person = on; savePrefs(); stageDirty = true; }),
+    toggle(L('Colliders', 'Kollision'), { icon: 'collider' }, prefs.colliders, (on) => { prefs.colliders = on; savePrefs(); stageDirty = true; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, de, color]) => ({ id: color as string, words: L(en, de), color })), () => prefs.ground, (c) => { prefs.ground = c; savePrefs(); stageDirty = true; render(); }, 'list'));
   tabSlot.replaceChildren(tabs(L('Sections', 'Bereiche'), TABS.map(([id, en, de, ic]) => ({ id, label: L(en, de), icon: ic })), prefs.tab, (id) => {
     prefs.tab = id;
     savePrefs();
@@ -536,20 +537,12 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Props', 'Requisiten');
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, kind().name)));
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-props', left: [libraryHead, h('div', { class: 'uside__list' }, libraryGrid)], centre: [stage, box(ringSlot)], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+    key: 'pixel-props', left: [libraryHead, h('div', { class: 'uside__list' }, libraryGrid)], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
   })));
 }
 
-window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLCanvasElement || e.metaKey || e.ctrlKey) return;
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    prefs.dir = (prefs.dir + (e.key === 'ArrowRight' ? 1 : 7)) % 8;
-    savePrefs();
-    render();
-  }
-});
 undoKeys(undo.undo, undo.redo);
 // Another page (the object editor, the flora tool) may have changed what the library shows.
 window.addEventListener('focus', () => { reloadProps(); render(); });

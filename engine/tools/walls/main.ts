@@ -20,7 +20,7 @@ import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
 import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
-import { box, choice, numberField, pixelButton, tileGrid, type Option, confirmDialog, workspace } from '../../ui/components.ts';
+import { choice, numberField, pixelButton, tileGrid, toggle, viewTools, type Option, confirmDialog, workspace } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
@@ -203,7 +203,7 @@ const list = h('div', { class: 'props__grid' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
-const under = h('div', { class: 'props__under' });
+const views = viewTools();
 const name = nameTag();
 name.onRename((n) => { if (n.trim() && !wall().builtin) changed({ name: n.trim() }); });
 
@@ -214,6 +214,7 @@ function renderBar(): void {
   const { bar, undo: u, redo: r, pops } = topBar({
     tool: 'walls',
     title: word('walls'),
+    name: name.el,
     about: [
       L('The pieces buildings are made of: walls standing on the edges of map cells. Each is shown on a small test ground with a hut, a ramp and a cliff, with or without the thatch roof.',
         'Die Teile, aus denen Gebäude bestehen: Wände auf den Kanten der Kartenfelder. Jede wird auf einem kleinen Testgelände mit Hütte, Rampe und Klippe gezeigt, mit oder ohne Strohdach.'),
@@ -258,10 +259,11 @@ function render(): void {
   name.set(w.name, L('Wall', 'Wand'));
   stageTag.textContent = `${w.art ? (w.locked ? L('frozen', 'eingefroren') : L('painted', 'gemalt')) : L('rule', 'Regel')} · ${w.builtin ? prefs.height : w.height} ${L('levels', 'Stufen')}`;
   list.replaceChildren(tileGrid(wallKinds().map((k) => ({ id: k.id, icon: k.art ? 'pencil' : 'wall', words: k.name, mark: k.locked ? 'lock' : undefined })), prefs.id, pick));
-  const zooms: Option[] = [2, 3, 4].map((z) => ({ id: String(z), words: `${z}×` }));
-  under.replaceChildren(h('div', { class: 'urow props__stagetools' },
-    pb(L('Thatch roof on the hut', 'Strohdach auf der Hütte'), { icon: 'roof', pressed: prefs.roof }, () => { prefs.roof = !prefs.roof; savePrefs(); benchDirty = true; render(); }),
-    choice(L('Zoom', 'Zoom'), zooms, () => String(prefs.zoom), (z) => { prefs.zoom = Number(z); savePrefs(); benchDirty = true; }, 'buttons')));
+  const zoom = (by: number) => { prefs.zoom = Math.max(2, Math.min(4, prefs.zoom + by)); savePrefs(); benchDirty = true; };
+  views.replaceChildren(snapButton(() => savePicture(bench, wall().name, 2)),
+    pixelButton(L('Zoom in', 'Vergrößern'), { icon: 'zoomin' }, () => zoom(1)),
+    pixelButton(L('Zoom out', 'Verkleinern'), { icon: 'zoomout' }, () => zoom(-1)),
+    toggle(L('Thatch roof on the hut', 'Strohdach auf der Hütte'), { icon: 'roof' }, prefs.roof, (on) => { prefs.roof = on; savePrefs(); benchDirty = true; render(); }));
   tabSlot.replaceChildren(choice(L('Sections', 'Bereiche'), TABS, () => prefs.tab, (id) => { prefs.tab = id as Tab; savePrefs(); render(); }, 'buttons'));
   const scroll = panel.scrollTop;
   panel.replaceChildren(...panelFor(prefs.tab));
@@ -274,9 +276,9 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Walls', 'Wände');
-  stage.replaceChildren(h('div', { class: 'walls__scroll' }, bench), stageTag, name.el, snapButton(() => savePicture(bench, wall().name, 2)));
+  stage.replaceChildren(h('div', { class: 'walls__scroll' }, bench), stageTag, views);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-walls', left: [h('div', { class: 'uside__list' }, list)], centre: [stage, box(under)], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+    key: 'pixel-walls', left: [h('div', { class: 'uside__list' }, list)], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
   })));
 }
 

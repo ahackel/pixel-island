@@ -221,6 +221,7 @@ function renderBar(): void {
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'wardrobe',
     title: word('wardrobe'),
+    name: name.el,
     about: [t('lede'), t('foot.items', { count: CATALOG.length, paint: paintCount, recipe: CATALOG.length - paintCount }), t('foot.rules'), t('foot.base')],
     things: thingsPicker(),
     more: [
@@ -366,7 +367,7 @@ function mount(): void {
     // The shape editor edits the view the preview shows.
     turned: () => shapesPage && render(),
   });
-  stage.replaceChildren(editor, h('div', { class: 'wardrobe__name' }, name.el), shapes.panel);
+  stage.replaceChildren(editor, shapes.panel);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, h('main', { class: 'shell__main wardrobe__main' }, stage)));
 }
 

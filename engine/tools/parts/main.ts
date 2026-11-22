@@ -16,7 +16,7 @@ import { SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { box, choice, confirmDialog, pixelButton, searchField, tileGrid, workspace } from '../../ui/components.ts';
+import { box, choice, confirmDialog, pixelButton, searchField, tileGrid, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { h, history, row, savePicture, section, segmented, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -70,27 +70,11 @@ function pick(id: string): void {
 // ------------------------------------------------------------------ the figure
 
 const lookWith = (item: Item) => ({ ...wear(baseLook(prefs.skin, prefs.hair), weathered(item, prefs.wear)), faces: facesFor(prefs.skin, DEFAULT_FACE, prefs.hair, 'happy') });
-const figures = h('canvas', { class: 'parts__figures' });
 const big = h('canvas', { class: 'stage__sprite parts__big' });
-/** All eight sides in a row, and the picked one large. */
+/** The picked side, large. */
 function drawFigures(): void {
   const look = lookWith(shown);
   const pose = AUTHORED.idle.frames[0];
-  const cell = 40;
-  figures.width = cell * 8;
-  figures.height = 56;
-  const ctx = figures.getContext('2d')!;
-  const image = ctx.createImageData(figures.width, figures.height);
-  FACING_RING.forEach((facing, k) => {
-    const s = drawCharacter(look, pose, facing);
-    for (let y = 0; y < 56; y++) for (let x = 0; x < cell; x++) {
-      const hex = s.get(x + (SPRITE_W - cell) / 2, y + 6);
-      const o = (y * figures.width + k * cell + x) * 4;
-      if (hex) { for (let c = 0; c < 3; c++) image.data[o + c] = parseInt(hex.slice(1 + 2 * c, 3 + 2 * c), 16); image.data[o + 3] = hex.length === 9 ? parseInt(hex.slice(7, 9), 16) : 255; }
-      else if (facing === prefs.facing) { image.data[o] = 58; image.data[o + 1] = 123; image.data[o + 2] = 213; image.data[o + 3] = 30; }
-    }
-  });
-  ctx.putImageData(image, 0, 0);
   const s = drawCharacter(look, pose, prefs.facing);
   big.width = SPRITE_W;
   big.height = SPRITE_H;
@@ -106,10 +90,9 @@ function drawFigures(): void {
   bctx.putImageData(bi, 0, 0);
   big.style.width = big.style.height = `${SPRITE_W * 6}px`;
 }
-figures.addEventListener('click', (e) => {
-  const r = figures.getBoundingClientRect();
-  const k = Math.floor(((e.clientX - r.left) / r.width) * 8);
-  prefs.facing = FACING_RING[Math.max(0, Math.min(7, k))];
+/** Turns the figure to the next side round, to the layer that side shows where the item has one. */
+function turnFigure(step: number): void {
+  prefs.facing = FACING_RING[(FACING_RING.indexOf(prefs.facing) + step + 8) % 8];
   // The layer that side shows, where the item has one.
   const side = [5, 7].includes(prefs.facing) ? 'E' : [2, 3, 6].includes(prefs.facing) ? 'back' : 'front';
   const layers = layersOf(working);
@@ -117,7 +100,7 @@ figures.addEventListener('click', (e) => {
   if (want) prefs.layer = want.key;
   savePrefs();
   render();
-});
+}
 
 // ------------------------------------------------------------------ library
 
@@ -180,6 +163,7 @@ function layerPanel(): (Node | string)[] {
 const root = document.getElementById('parts')!;
 const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
+const arrows = turnView(stage, turnFigure);
 const under = h('div', { class: 'props__under' });
 const head = h('div', { class: 'props__libhead' });
 const panel = h('div', { class: 'uside__list' });
@@ -231,7 +215,7 @@ function render(): void {
   const wearInput = rangeInput({ min: '0', max: String(WEAR_MAX), step: '1', 'aria-label': L('Wear', 'Abnutzung') });
   wearInput.value = String(prefs.wear);
   wearInput.addEventListener('input', () => { prefs.wear = Number(wearInput.value); savePrefs(); dirty = true; });
-  under.replaceChildren(figures,
+  under.replaceChildren(
     row(L('Wear', 'Abnutzung'), wearInput),
     row(L('Skin', 'Haut'), segmented(L('Skin', 'Haut'), SKIN_KEYS.map((k, n) => ({ id: k, label: String(n + 1) })), prefs.skin, (k) => { prefs.skin = k; savePrefs(); thumbs.of('', () => h('canvas')); render(); })));
   const scroll = panel.scrollTop;
@@ -243,7 +227,7 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Parts', 'Teile');
-  stage.replaceChildren(big, stageTag, snapButton(() => savePicture(big, entry().label)));
+  stage.replaceChildren(big, stageTag, ...arrows, viewTools(snapButton(() => savePicture(big, entry().label))));
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
     key: 'pixel-parts', left: [head, h('div', { class: 'uside__list' }, grid)], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,
   })));

@@ -1,7 +1,7 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { box, tileGrid, confirmDialog, section as pixelSection, choice, workspace } from '../../ui/components.ts';
+import { box, tileGrid, confirmDialog, section as pixelSection, choice, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
@@ -13,7 +13,7 @@ import { download, newId, pickFile, readStore, writeStore } from '../../shared/f
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { FACING_NAMES, turnFacing, type Facing } from '../../engine/core/puppet.ts';
 import {
-  checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word,
+  cheer, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word,
   type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
@@ -379,9 +379,12 @@ panel.addEventListener('click', (e) => (e.target as Element).closest('button') &
 const barSlot = h('div', { style: 'display: contents' });
 const name = nameTag();
 name.onRename(renameThing);
+const views = viewTools();
 const FACING_DE = ['vorne rechts', 'vorne links', 'hinten links', 'hinten rechts', 'vorne', 'links', 'hinten', 'rechts'];
 const facingName = (at: Facing) => L(FACING_NAMES[at], FACING_DE[at]);
 let sizeText = '';
+// Arrows at its sides and a drag on it turn the animal round, an eighth of a turn at a time.
+const arrows = turnView(stage, (step) => setFacing(turnFacing(facing, step)));
 
 function setFacing(next: Facing): void {
   facing = next;
@@ -403,6 +406,7 @@ function renderBar(): void {
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'animals',
     title: word('animals'),
+    name: name.el,
     about: [
       L('Pick a species, then style its coat, markings, ears, tail and face. Rules draw it in the island look, in eight facings and six actions. Made for Animal Hospital.',
         'Wähle eine Tierart und gestalte Fell, Zeichnung, Ohren, Schwanz und Gesicht. Regeln zeichnen es im Insel-Stil, in acht Blickrichtungen und sechs Aktionen. Gemacht für Animal Hospital.'),
@@ -484,6 +488,11 @@ function render(): void {
   panel.replaceChildren(...panelFor(tab));
   panel.scrollTop = scroll;
 
+  views.replaceChildren(snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))),
+    // Unticked holds the frame shown.
+    pixelToggle(word('animate'), { icon: 'play' }, !paused, (on) => { paused = !on; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, words: L(en, german), color })), () => ground, (color) => { ground = color; render(); }, 'list'),
+    ...(expert ? [pixelToggle(L('Show anchor points', 'Ankerpunkte zeigen'), { icon: 'pin' }, showPoints, (on) => { showPoints = on; render(); })] : []));
   const symptoms = choice('Symptom', [{ id: '', words: L('None', 'Keins') }, ...Object.keys(SYMPTOMS).map((s) => ({ id: s, words: s }))], () => symptom, (id) => { symptom = id; }, 'list');
   const actions = CLIP_IDS.map((id) => ({ id: id as string, label: id === 'run' && animal.hops ? L('Hop', 'Hoppeln') : L(CLIPS[id].name, CLIP_DE[id]) }));
   previewRows.replaceChildren(
@@ -492,19 +501,7 @@ function render(): void {
       paused = false;
       render();
     })),
-    // Unticked holds the frame shown.
-    row('', checkbox(word('animate'), !paused, (on) => {
-      paused = !on;
-    })),
-    row(L('Ground', 'Boden'), segmented(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, label: L(en, german) })), ground, (color) => {
-      ground = color;
-      render();
-    })),
     row('Symptom', symptoms),
-    expert ? row(L('Points', 'Punkte'), h('div', { class: 'toggles' }, toggle(L('Show anchor points', 'Ankerpunkte zeigen'), showPoints, () => {
-      showPoints = !showPoints;
-      render();
-    }))) : '',
   );
 }
 
@@ -512,17 +509,11 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Animal Editor', 'Tier-Editor');
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))));
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
   const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-animals', centre: [stage, box(preview)], right: [tabSlot, panel], rightWidth: 460 })));
 }
 
-// Dragging sideways on the preview turns the animal round, an eighth of a turn at a time.
-dragToTurn(stage, (step) => setFacing(turnFacing(facing, step)));
-window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
-  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') setFacing(turnFacing(facing, event.key === 'ArrowRight' ? 1 : -1));
-});
 undoKeys(undo.undo, undo.redo);
 
 mount();

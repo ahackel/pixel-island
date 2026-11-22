@@ -39,7 +39,8 @@ import { BAG_ITEMS, BAG_SLOTS, clearGame, loadGame, saveGame, type BagItem, type
 import { t, type Key } from './i18n.ts';
 import { advance, next, QUESTS, stonesOut, type Goal, type Progress, type QuestIcon } from './quests.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
-import { cheatDrawer } from '@pixel/shared/cheats.ts';
+import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
+import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE, stoneThing } from './fishing.ts';
 import { BUILD_KINDS, BUILDS, finished, HUT_AT, lacking, LOOSE, recipeFor, takeFrom, type Build, type BuildKind, type Loose } from './crafts.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
@@ -794,7 +795,9 @@ let weatherCheat: Forced | undefined;
 if (params.has('cheats')) {
   const cheat = (words: string, on: () => void) => ({ words, on });
   // Under the menu, so it does not show over it.
+  const stats = statsOverlay(app, S);
   cheatDrawer(app, [
+    cheat('STATS', stats),
     ...(import.meta.env.DEV ? [cheat('EDITOR', () => (location.href = '/engine/tools/scene/index.html'))] : []),
     cheat('FULL', () => Object.assign(game, { hunger: 1, energy: 1 })),
     cheat('HUNGRY', () => (game.hunger = LOW - 0.01)),
@@ -1559,6 +1562,7 @@ let bursts: Burst[] = [];
 const sparks = new Sparks();
 let last = performance.now();
 function frame(ms: number): void {
+  const begun = performance.now();
   const dt = Math.min(0.1, (ms - last) / 1000);
   last = ms;
   view.update(dt);
@@ -1671,7 +1675,9 @@ function frame(ms: number): void {
   ];
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
   const rect = view.rect();
+  let t0 = part('things', begun);
   const image = world.compose(rect, things, undefined, false, ms);
+  t0 = performance.now();
   if (game.struck !== null || game.fires.length || hand === 'fire') sparks.spawn(image, rect, ms, paused ? 0 : dt);
   if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(ms)));
   else {
@@ -1682,12 +1688,16 @@ function frame(ms: number): void {
     light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, me, ms));
     lightning(image, flash);
   }
+  t0 = part('light', t0);
   sparks.draw(image, rect, ms);
   strikeFx?.draw(image, rect, ms);
   if (strikeFx?.done(ms)) strikeFx = null;
   for (const b of bursts) b.draw(image, rect, ms);
   bursts = bursts.filter((b) => !b.done(ms));
   view.show(image);
+  part('show', t0);
+  part('whole frame', begun);
+  frameDone();
 
   // The page around the picture.
   const { phase } = phaseAt(time);

@@ -9,7 +9,7 @@ import TEXT from './editor-text.json' with { type: 'json' };
 import { PALETTE, SHADOW, SKIN_KEYS, type PaletteKey } from '../core/palette.ts';
 import { AUTHORED, STAND } from '../core/poses.ts';
 import { BUILDS, drawCharacter, SPRITE_W, turnFacing, type Facing, type Sprite } from '../core/puppet.ts';
-import { C, caps, pixelButton, S, type Icon } from '../../shared/game-ui.ts';
+import { C, caps, pixelButton, S, turnView, type Icon } from '../../shared/game-ui.ts';
 import { choice } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { textWidth } from '../../shared/pixel-font.ts';
@@ -237,24 +237,10 @@ export function characterEditor(start: State, options: EditorOptions = {}): Edit
     options.turned?.(facing);
     paint();
   };
-  /** A step round for every this many screen pixels dragged. */
-  const DRAG_STEP = 40;
-  let dragX: number | null = null;
-  canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); dragX = e.clientX; });
-  canvas.addEventListener('pointermove', (e) => {
-    if (dragX === null) return;
-    const steps = Math.trunc((e.clientX - dragX) / DRAG_STEP);
-    if (!steps) return;
-    dragX += steps * DRAG_STEP;
-    turn(-steps);
-  });
-  const lift = () => (dragX = null);
-  canvas.addEventListener('pointerup', lift);
-  canvas.addEventListener('pointercancel', lift);
-  const turner = el('div', 'editor__turn');
-  turner.append(pixelButton(say('char.turnLeft'), { icon: 'left' }, () => turn(-1)), pixelButton(say('char.turnRight'), { icon: 'right' }, () => turn(1)));
+  // The arrows at its sides and a drag on it turn the character round.
+  const arrows = turnView(canvas, turn, { left: say('char.turnLeft'), right: say('char.turnRight') });
   const stage = el('div', 'editor__stage');
-  stage.append(canvas, turner);
+  stage.append(canvas, ...arrows);
 
   // One row: its name on the left; then arrows either side of what is chosen, or a bar of colours.
   const all = tabs.flatMap((tab) => tab.rows);

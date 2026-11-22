@@ -1,10 +1,10 @@
 /* The character editor (editor.ts), over what the page shows: the survivor turning, tabs, a row per choice. */
 .editor { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 32px; background: #0006; padding: 12px; overflow-y: auto; }
-.editor .editor__stage { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.editor .editor__stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .editor .editor__preview { touch-action: none; cursor: grab; }
 .editor .editor__preview.editor__hop { animation: hop 0.35s ease-out; }
 @keyframes hop { 40% { transform: translateY(-16px); } }
-.editor .editor__turn, .editor .editor__end { display: flex; gap: 8px; }
+.editor .editor__end { display: flex; gap: 8px; }
 .editor .editor__end { position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom)); }
 .editor .editor__side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .editor .editor__tabs { display: flex; gap: 8px; }

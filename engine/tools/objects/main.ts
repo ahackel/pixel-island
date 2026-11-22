@@ -1,7 +1,7 @@
 // The object editor: pick a thing, then change its size, parts and colours, see it in all four
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { box, choice, tileGrid, confirmDialog, section as pixelSection, workspace } from '../../ui/components.ts';
+import { choice, tileGrid, confirmDialog, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, isShadow, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
@@ -11,8 +11,8 @@ import { buildPanel, type BuildContext } from './build-panel.ts';
 import { download, newId, pickFile, readStore, writeStore } from '../../shared/files.ts';
 import { type PaletteKey } from '../../engine/core/palette.ts';
 import {
-  checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, topBar, undoKeys, word,
-  type IconName, rangeInput } from '../../shared/shell.ts';
+  cheer, h, history, NAMES, nameTag, pick, pickStart, savePicture, section, shuffled, snapButton, tabs, tabTools, topBar, undoKeys, word,
+  type IconName } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
 
@@ -201,9 +201,7 @@ const root = document.getElementById('objects')!;
 const stage = h('div', { class: 'stage' });
 const hero = h('canvas', { class: 'stage__sprite', style: 'cursor: crosshair' });
 const stageTag = h('span', { class: 'stage__tag' });
-const sideSlider = rangeInput({ min: '0', max: '3', step: '1' });
-const sideValue = h('b');
-const previewRows = h('div', { class: 'ufields' });
+const views = viewTools();
 const tabSlot = h('div');
 const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('.utile, .ubar, .uslider') && cheer(stage));
@@ -212,12 +210,11 @@ const name = nameTag();
 name.onRename(renameThing);
 const TURN_NAMES = ['0°', '90°', '180°', '270°'];
 let sizeText = '';
+// Arrows at its sides and a drag on it turn the object a quarter at a time.
+const arrows = turnView(stage, (step) => setTurn(((turn + step + 4) % 4) as Turn));
 
 function setTurn(next: Turn): void {
   turn = next;
-  sideSlider.value = String(turn);
-  sideSlider.setAttribute('aria-valuetext', TURN_NAMES[turn]);
-  sideValue.textContent = TURN_NAMES[turn];
   stageTag.textContent = `${TURN_NAMES[turn]} · ${sizeText}`;
 }
 
@@ -252,6 +249,7 @@ function renderBar(): void {
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'objects',
     title: word('objects'),
+    name: name.el,
     about: [
       L('Build furniture, devices and cars from boxes, cylinders and balls on a tile footprint. Rules draw them in the island look, in all four camera turns. Made for Animal Hospital.',
         'Baue Möbel, Geräte und Autos aus Quadern, Zylindern und Kugeln auf einer Grundfläche aus Feldern. Regeln zeichnen sie im Insel-Stil, in allen vier Kameradrehungen. Gemacht für Animal Hospital.'),
@@ -314,16 +312,9 @@ function render(): void {
   const scroll = panel.scrollTop;
   panel.replaceChildren(...panelFor(tab));
   panel.scrollTop = scroll;
-  previewRows.replaceChildren(
-    row(L('Turn', 'Drehung'), sideSlider, sideValue),
-    row('', checkbox(word('animate'), !paused, (on) => {
-      paused = !on;
-    })),
-    row(L('Ground', 'Boden'), segmented(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, label: L(en, german) })), ground, (color) => {
-      ground = color;
-      render();
-    })),
-  );
+  views.replaceChildren(snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))),
+    pixelToggle(word('animate'), { icon: 'play' }, !paused, (on) => { paused = !on; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, words: L(en, german), color })), () => ground, (color) => { ground = color; render(); }, 'list'));
   shown = '';
 }
 
@@ -331,10 +322,8 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Object Editor', 'Objekt-Editor');
-  sideSlider.setAttribute('aria-label', L('Turn', 'Drehung'));
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))));
-  const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', centre: [stage, box(preview)], right: [tabSlot, panel], rightWidth: 460 })));
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', centre: [stage], right: [tabSlot, panel], rightWidth: 460 })));
 }
 
 // What the preview shows now; render() clears `shown` so marks follow the panel.
@@ -355,12 +344,6 @@ hero.addEventListener('click', (event) => {
   render();
 });
 
-sideSlider.addEventListener('input', () => setTurn(Number(sideSlider.value) as Turn));
-dragToTurn(stage, (step) => setTurn(((turn + step + 4) % 4) as Turn));
-window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
-  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') setTurn(((turn + (event.key === 'ArrowRight' ? 1 : 3)) % 4) as Turn);
-});
 undoKeys(undo.undo, undo.redo);
 
 mount();

@@ -1,5 +1,5 @@
 import './style.css';
-import { box, tileGrid, section as pixelSection, choice, pixelButton, toast, workspace } from '../../ui/components.ts';
+import { box, tileGrid, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
@@ -11,7 +11,7 @@ import { cleanSwap, FLORA, FLORA_CALLS, FLORA_REJECTED, FLORA_STORE, plantById, 
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
-import { cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
+import { cheer, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
@@ -20,6 +20,7 @@ import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
 
 type Tab = 'all' | Category;
 const TABS: Tab[] = ['all', ...CATEGORIES];
+const WIND_ICON: Record<string, string> = { calm: 'sun', breeze: 'leaf', storm: 'storm' };
 const WINDS = { calm: 0, breeze: 1, storm: 2.5 } as const;
 type Wind = keyof typeof WINDS;
 const GROUNDS = [
@@ -259,8 +260,7 @@ const drySlider = rangeInput({ min: '0', max: '1', step: '0.05' });
 const dryValue = h('b');
 const sizeSlider = rangeInput({ min: String(SIZE_MIN), max: String(SIZE_MAX), step: '0.05' });
 const sizeValue = h('b');
-const turnSlider = rangeInput({ min: '0', max: String(TURNS - 1), step: '1' });
-const turnValue = h('b');
+const views = viewTools();
 const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
 const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
@@ -273,7 +273,6 @@ let editorFor = '';
 
 const TAB_ICONS: Record<Panel, IconName> = { all: 'grid', palm: 'palm', grass: 'grass', cactus: 'cactus', jungle: 'leaf', rock: 'rock', driftwood: 'driftwood', island: 'mountain' };
 const dryName = (d: number) => t(`dry.${Math.round(d * 2)}` as Key);
-const turnName = (n: number) => `${(n * 360) / TURNS}°`;
 const sizeName = (s: number) => `${Math.round(sizeStep(s) * 100)}%`;
 
 /** The plants of the group picked. */
@@ -473,30 +472,18 @@ function render(): void {
   drySlider.value = String(state.dryness);
   drySlider.setAttribute('aria-valuetext', dryName(state.dryness));
   dryValue.textContent = dryName(state.dryness);
-  turnSlider.value = String(state.turn);
-  turnSlider.setAttribute('aria-valuetext', turnName(state.turn));
-  turnValue.textContent = turnName(state.turn);
   sizeSlider.value = String(state.size);
   sizeSlider.setAttribute('aria-valuetext', sizeName(state.size));
   sizeValue.textContent = sizeName(state.size);
   previewRows.replaceChildren(
     row(t('variant'), variants()),
-    row(t('turn'), turnSlider, turnValue),
     row(t('size'), sizeSlider, sizeValue),
     row(t('dryness'), drySlider, dryValue),
-    row(t('wind'), segmented(t('wind'), (Object.keys(WINDS) as Wind[]).map((w) => ({ id: w, label: t(`wind.${w}` as Key) })), state.wind, (w) => {
-      state.wind = w;
-      changed();
-    })),
-    row(t('ground'), segmented(t('ground'), GROUNDS.map((g) => ({ id: g.id, label: t(`ground.${g.id}` as Key) })), state.ground, (g) => {
-      state.ground = g;
-      changed();
-    })),
-    row('', h('div', { class: 'toggles' }, toggle(t('person'), state.person, () => {
-      state.person = !state.person;
-      changed();
-    }))),
   );
+  views.replaceChildren(snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)),
+    choice(t('wind'), (Object.keys(WINDS) as Wind[]).map((w) => ({ id: w, icon: WIND_ICON[w], words: t(`wind.${w}` as Key) })), () => state.wind, (w) => { state.wind = w as Wind; changed(); }, 'list'),
+    choice(t('ground'), GROUNDS.map((g) => ({ id: g.id, color: g.color, words: t(`ground.${g.id}` as Key) })), () => state.ground, (g) => { state.ground = g as Ground; changed(); }, 'list'),
+    pixelToggle(t('person'), { icon: 'person' }, state.person, (on) => { state.person = on; changed(); }));
 }
 
 function mount(): void {
@@ -505,8 +492,7 @@ function mount(): void {
   editorFor = '';
   drySlider.setAttribute('aria-label', t('dryness'));
   sizeSlider.setAttribute('aria-label', t('size'));
-  turnSlider.setAttribute('aria-label', t('turn'));
-  stage.replaceChildren(preview, snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)));
+  stage.replaceChildren(preview, ...arrows, views);
   const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', centre: [stage, box(previewSec)], right: [tabSlot, panel], rightWidth: 460 })));
 }
@@ -527,13 +513,10 @@ sizeSlider.addEventListener('input', () => {
 sizeSlider.addEventListener('change', changed);
 function setTurn(next: number): void {
   state.turn = ((next % TURNS) + TURNS) % TURNS;
-  turnSlider.setAttribute('aria-valuetext', turnName(state.turn));
-  turnValue.textContent = turnName(state.turn);
   version++;
 }
-turnSlider.addEventListener('input', () => setTurn(Number(turnSlider.value)));
-turnSlider.addEventListener('change', changed);
-dragToTurn(stage, (step) => {
+// Arrows at its sides and a drag on it turn the plant round.
+const arrows = turnView(stage, (step) => {
   setTurn(state.turn + step);
   changed();
 });

@@ -1,15 +1,17 @@
 // The running world of a scene: its ground drawn once per change, its plants drawn per wind
 // frame, and a camera window composed each frame with everything standing on the ground. Also
 // answers where a screen pixel is on the map, and where a walker may go.
-import { drawPlant, FRAMES, grow, isStill, type Category, type Grown, type Raster } from '../flora/flora.ts';
+import { drawPlantCropped, FRAMES, grow, isStill, type Category, type Grown } from '../flora/flora.ts';
+import { crop, type Cropped } from '../core/cropped.ts';
 import { plantById, plantOf } from '../flora/flora-catalog.ts';
 import { blend, footOf, HOMES, stamp, type Picture, type Pixels, type Spot, type Thing } from './island.ts';
 import { SHADOW } from '../core/palette.ts';
+import { drew, holding, part, watch } from '../../shared/stats.ts';
 import {
   GROUNDS, heightAt, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
-import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type AnimalSprite, type ClipId } from '../animals/animal.ts';
+import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
 import { turnFacing, type Facing } from '../core/puppet.ts';
 import type { Herd } from './herd.ts';
 import { decorById, decorPixels } from './decor.ts';
@@ -17,7 +19,7 @@ import { flameFrame } from './flame.ts';
 import { GLOWING } from './daylight.ts';
 import { fishPixels, type Fish } from './fish.ts';
 import { CLEAR, drawWeather, flashAt, plantWind, shadowLight, weatherSea, type Weather } from './weather.ts';
-import { itemCovers, itemPicture, type PlacedItem } from './props.ts';
+import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
 import { mapOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
@@ -67,6 +69,7 @@ export function paintOrder<T extends Thing & { dx: number; dy: number }>(things:
 }
 
 const EDGE = '#e0332e';
+const COLLIDER = '#e0332ee0';
 const GRID_SHADE = 0.2; // how much darker grid lines are than the ground
 const SHADE_RGB = rgb(SHADE);
 /** How deep, in levels, a shadow still shows on the water; it fades out toward there. */
@@ -246,10 +249,11 @@ export { plantOf };
 /** Up to how many wind frames a plant runs behind the shared wind. */
 const WIND_LAG = 3;
 const grownCache = new Map<string, { grown: Grown; still: boolean }>();
-const rasterCache = new Map<string, Raster>();
+const rasterCache = new Map<string, Cropped>();
+watch('plant', () => holding(rasterCache));
 const sizeStep = (s: number) => Math.round(s * 10) / 10;
 /** One wind frame of a placed plant. Shared by every plant with the same recipe, variant, size and turn. */
-export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { turn?: number }, frame: number, wind = 1): Raster | null {
+export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { turn?: number }, frame: number, wind = 1): Cropped | null {
   const entry = plantById(p.plant);
   if (!entry) return null;
   const turn = ((p.turn ?? 0) % TURNS + TURNS) % TURNS;
@@ -265,7 +269,7 @@ export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { tur
   let raster = rasterCache.get(full);
   if (!raster) {
     // shortcut: unbounded only by the number of distinct plants a scene uses; clear if memory ever matters.
-    rasterCache.set(full, (raster = drawPlant(grown.grown, { frame: at, wind })));
+    rasterCache.set(full, (raster = drew('plant', () => drawPlantCropped(grown.grown, { frame: at, wind }), (r) => r.bytes)));
   }
   return raster;
 }
@@ -431,6 +435,8 @@ export class World {
   }
 
   constructor(scene: Scene, rot = 0) {
+    // The newest world's animals are the ones counted.
+    watch('animal', () => [...this.animalKinds.values()].map(holding).reduce(([n, b], [m, c]) => [n + m, b + c], [0, 0]));
     this.scene = scene;
     this.rot = ((rot % 4) + 4) % 4;
     this.map = this.viewMap();
@@ -543,8 +549,8 @@ export class World {
       const raster = rasterOf({ ...p, turn: (p.turn ?? 0) + this.rot * (TURNS / 4) }, 0);
       if (!raster) return;
       const at = footOf(this.ground, { i: p.vi, j: p.vj, level: standingHeight(this.map, p.vi, p.vj) });
-      const px = Math.floor(x) - (at.x - raster.origin.x);
-      const py = Math.floor(y) - (at.y - raster.origin.y);
+      const px = Math.floor(x) - (at.x - raster.foot.x);
+      const py = Math.floor(y) - (at.y - raster.foot.y);
       if (px < 0 || py < 0 || px >= raster.w || py >= raster.h) return;
       const c = raster.get(px, py);
       if (!c || c === SHADOW || p.vi + p.vj < front) return;
@@ -647,7 +653,7 @@ export class World {
         continue;
       }
       const raster = rasterOf({ ...p, turn }, (frame + lag) % FRAMES, plantWind(this.weather));
-      if (raster) out.push({ spot, picture: raster, w: raster.w, h: raster.h, foot: raster.origin });
+      if (raster) out.push({ spot, picture: raster, w: raster.w, h: raster.h, foot: raster.foot });
     }
     return out;
   }
@@ -692,8 +698,8 @@ export class World {
     return out;
   }
 
-  private animalFrames = new WeakMap<Animal, Map<string, AnimalSprite>>();
-  private animalKinds = new Map<string, Map<string, AnimalSprite>>();
+  private animalFrames = new WeakMap<Animal, Map<string, Cropped>>();
+  private animalKinds = new Map<string, Map<string, Cropped>>();
 
   /**
    * The animals as things: standing where placed and idling, each a little out of step with the
@@ -727,8 +733,8 @@ export class World {
     }
     const key = `${clipId}|${n}|${facing}`;
     let sprite = frames.get(key);
-    if (!sprite) frames.set(key, (sprite = drawAnimal(placed.animal, clipId, n, facing).sprite));
-    return { spot: { i: v.i, j: v.j, level: standingHeight(this.map, v.i, v.j) }, picture: sprite, w: ANIMAL_W, h: ANIMAL_H, foot: ANIMAL_ORIGIN };
+    if (!sprite) frames.set(key, (sprite = drew('animal', () => crop(drawAnimal(placed.animal, clipId, n, facing).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN), (c) => c.bytes)));
+    return { spot: { i: v.i, j: v.j, level: standingHeight(this.map, v.i, v.j) }, picture: sprite, w: sprite.w, h: sprite.h, foot: sprite.foot };
   }
 
   /**
@@ -742,6 +748,7 @@ export class World {
     const FAR = rgb(ocean.far);
     const g = this.ground;
     const shore = this.shoreOf(g);
+    let t0 = performance.now();
     const image: Pixels = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
     const d = image.data;
     const baseKey = `${view.x},${view.y},${w},${h}|${Math.floor(ms / WATER_MS)}|${grid}`;
@@ -826,12 +833,14 @@ export class World {
     for (const [o, strength] of pressed) for (let k = 0; k < 3; k++) d[o + k] += (PRINT_RGB[k] - d[o + k]) * strength;
     // Shadows reach past a thing's picture, so things just outside the window cast into it too.
     // Each ground pixel is darkened once, and not where the ground already lies in shadow.
+    t0 = part('ground', t0);
     const mask = new Uint8Array(w * h);
     // A lightning flash throws hard shadows, darker than the sun's.
     const flash = flashAt(ms, this.weather);
     for (const t of things) {
       const at = footOf(g, t.spot);
-      if (at.x + 2 * t.w < view.x || at.x - 2 * t.w > view.x + w || at.y - t.h > view.y + h || at.y + t.h < view.y) continue;
+      const reach = 2 * Math.max(t.w, t.h);
+      if (at.x + reach < view.x || at.x - reach > view.x + w || at.y - reach / 2 > view.y + h || at.y + reach / 2 < view.y) continue;
       const shadow = t.shadow ?? this.shadowOf(t);
       for (let k = 0; k < shadow.length; k++) {
         const p = shadow[k];
@@ -845,6 +854,7 @@ export class World {
         }
       }
     }
+    t0 = part('shadows', t0);
     const spots = this.trackSpots ? this.spotsOf(view, g) : null;
     for (const t of paintOrder(placed)) {
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
@@ -863,10 +873,12 @@ export class World {
         return hidden;
       });
     }
+    t0 = part('stamp', t0);
     if (this.weather !== CLEAR) {
       drawWeather(image, view, (gx, gy) => (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h ? Infinity : g.depth[gy * g.w + gx]), ms, this.weather);
     }
     if (outline) this.drawEdge(image, view);
+    part('weather', t0);
     return image;
   }
 
@@ -930,6 +942,11 @@ export class World {
     const key = `${t.spot.i},${t.spot.j}`;
     const known = byPicture.get(key);
     if (known) return known;
+    return drew('shadow', () => this.castShadow(t, byPicture, key), (s) => s.length * 4);
+  }
+
+  private castShadow(t: Thing, byPicture: Map<string, Int32Array>, key: string): Int32Array {
+    const g = this.ground;
     const hit = new Set<number>();
     // Where each column meets the ground: the foot's row, or lying flat, the column's lowest pixel.
     const rests = Array.from({ length: t.w }, (_, x) => {
@@ -1037,6 +1054,37 @@ export class World {
       if (blocked(b, to.i, to.j, WALL_ROOM) && !blocked(b, from.i, from.j, WALL_ROOM)) return false;
     }
     return true;
+  }
+
+  /**
+   * Marks in red what stops a walker, over a finished picture: a ring round each plant and prop, the outline of each object's
+   * footprint and the line of each wall, with the same numbers `canWalk` uses. (Deep water and cliffs are not marked.)
+   */
+  drawColliders(image: Pixels, view: Rect): void {
+    const line = (a: [number, number], b: [number, number]) => {
+      const pa = this.screenOf(...a);
+      const pb = this.screenOf(...b);
+      const n = Math.max(Math.abs(pb.x - pa.x), Math.abs(pb.y - pa.y), 1);
+      for (let s = 0; s <= n; s++) blend(image, Math.round(pa.x + ((pb.x - pa.x) * s) / n) - view.x, Math.round(pa.y + ((pb.y - pa.y) * s) / n) - view.y, COLLIDER);
+    };
+    const loop = (pts: [number, number][]) => pts.forEach((p, k) => line(p, pts[(k + 1) % pts.length]));
+    const ring = (i: number, j: number, r: number) => loop(Array.from({ length: 32 }, (_, k): [number, number] => [i + r * Math.cos((k * Math.PI) / 16), j + r * Math.sin((k * Math.PI) / 16)]));
+    for (const p of this.viewPlants()) {
+      const r = BLOCK[plantById(p.plant)!.category] * p.size;
+      if (r) ring(p.vi, p.vj, r);
+    }
+    for (const p of this.viewProps()) {
+      const kind = propKind(p.kind);
+      const r = kind ? blockRadius(kind, p.size) : 0;
+      if (r) ring(p.vi, p.vj, r);
+    }
+    for (const it of this.viewItems()) {
+      const [a, b] = itemHalf(it, this.rot, this.scene.objects);
+      loop([[it.vi - a, it.vj - b], [it.vi + a, it.vj - b], [it.vi + a, it.vj + b], [it.vi - a, it.vj + b]]);
+    }
+    for (const b of this.buildings) {
+      for (const { edge: e } of b.edges.values()) line([e.i, e.j], e.axis === 'H' ? [e.i + 1, e.j] : [e.i, e.j + 1]);
+    }
   }
 
   /** A dry tile near a point, for a spawn that ended up in the sea. */

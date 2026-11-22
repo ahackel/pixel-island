@@ -2,7 +2,6 @@
 .wardrobe__main { display: block; position: relative; min-height: 0; }
 .wardrobe { position: absolute; inset: 0; background: #8cc3c9; --gap: 12px; overflow: hidden; }
 .wardrobe .editor { overflow-y: auto; }
-.wardrobe__name { position: absolute; top: var(--gap); left: var(--gap); z-index: 1; }
 /* While the shapes are drawn the choices step aside for them, beside the preview. */
 .wardrobe .wardrobe__shapes { display: none; }
 .wardrobe--shapes .editor { right: var(--shapes-w, 50%); }

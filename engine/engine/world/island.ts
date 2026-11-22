@@ -5,6 +5,7 @@ import type { Category } from '../flora/flora.ts';
 import { SHADOW } from '../core/palette.ts';
 import { GLOW_ALPHA, GLOWING } from './daylight.ts';
 import { rng } from '../../shared/random.ts';
+import { drew } from '../../shared/stats.ts';
 import { hiddenByGround, standingHeight, surfaceAt, toScreen, type HeightMap, type Surface, type TerrainImage } from './terrain.ts';
 
 /** Where each group grows. Rocks may stand in the shallows; driftwood only lies on the beach. */
@@ -104,8 +105,11 @@ export function blend(image: Pixels, x: number, y: number, hex: string): void {
 interface Packed { n: number; xy: Int16Array; rgba: Uint8Array }
 const packed = new WeakMap<Picture, Packed>();
 function packedOf(picture: Picture, w: number, h: number): Packed {
-  let p = packed.get(picture);
-  if (p) return p;
+  const p = packed.get(picture);
+  return p ?? drew('packed', () => pack(picture, w, h), (q) => q.n * 8);
+}
+function pack(picture: Picture, w: number, h: number): Packed {
+  let p: Packed;
   const xy: number[] = [];
   const rgba: number[] = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {

@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, confirmDialog, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, confirmDialog, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -44,6 +44,8 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ]],
   ['toggle', [() => toggle('Toggle', { icon: 'lock' }, true, noop), () => toggle('Words', { words: 'Wind' }, false, noop)]],
   ['tile grid', [() => tileGrid([{ id: 'a', icon: 'sun' }, { id: 'b', icon: 'moon', mark: 'lock' }, { id: 'c', picture: iconPicture('storm') }], 'b', noop)]],
+  ['turn view', [() => { const view = div('position:relative;width:260px;height:110px;background:#e9d9a0'); view.append(...turnView(view, noop)); return view; }]],
+  ['view tools', [() => { const view = div('position:relative;width:260px;height:150px;background:#e9d9a0'); view.append(viewTools(pixelButton('Picture', { icon: 'camera' }, noop), toggle('Wind', { icon: 'storm' }, true, noop), choice('Ground', colors, ...pickOf('colors'), 'list'))); return view; }]],
   ['preview frame', [() => previewFrame(Object.assign(div('width:160px;height:90px;background:#e9d9a0'), {}), { tag: label('TAG', C.ink, 2), tools: [pixelButton('Picture', { icon: 'camera' }, noop)] })]],
   ['confirm', [() => pixelButton('Ask', { icon: 'trash' }, () => void confirmDialog('Delete this?'))]],
   ['form', [() => pixelButton('Form', { icon: 'pencil' }, () => formDialog('New', [textField('Name', 'Mara', noop), numberField({ words: 'W' }, 24, noop, { min: 0, max: 99, width: 50 })], noop))]],

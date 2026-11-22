@@ -19,11 +19,14 @@ export function iconPicture(name: string, scale = S): HTMLCanvasElement {
   return canvas;
 }
 
-export interface ButtonFace { icon?: string; words?: string; dark?: boolean; lit?: boolean; pressed?: boolean; flat?: boolean }
+/** A colour as a button's picture: a square with an ink edge. */
+const COLOR_ROWS = ['.#######.', '#ooooooo#', '#ooooooo#', '#ooooooo#', '#ooooooo#', '#ooooooo#', '#ooooooo#', '#ooooooo#', '.#######.'];
+
+export interface ButtonFace { icon?: string; color?: string; words?: string; dark?: boolean; lit?: boolean; pressed?: boolean; flat?: boolean }
 
 /** A button with an icon, words, or an icon then words. `flat`: no shadow, for a bar of the same paper. `dark`: the night's own button; `lit`: the one chosen of a row; `pressed`: an on/off button that is on (shown lit). */
 export function pixelButton(label: string, face: ButtonFace, on: () => void): HTMLButtonElement {
-  const icon = face.icon ? iconRows(face.icon) : null;
+  const icon = face.icon ? iconRows(face.icon) : face.color ? COLOR_ROWS : null;
   const iconW = icon ? icon[0].length : 0;
   const words = face.words && caps(face.words);
   const wordsW = words ? textWidth(words) : 0;
@@ -31,7 +34,7 @@ export function pixelButton(label: string, face: ButtonFace, on: () => void): HT
   const h = 13;
   const { canvas, ctx } = pixelCanvas(w, face.flat ? h : h + 1, S); // no shadow row when flat, so it centres
   panel(ctx, 0, 0, w, h, face.dark ? C.night : face.lit || face.pressed ? C.lit : C.paper, face.flat ? undefined : C.shadow);
-  if (icon) drawRows(ctx, icon, words ? 4 : Math.floor((w - iconW) / 2), 2, PAINT);
+  if (icon) drawRows(ctx, icon, words ? 4 : Math.floor((w - iconW) / 2), 2, face.color ? { '#': C.ink, o: face.color } : PAINT);
   if (words) text(ctx, words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
   const b = el('button', 'pbtn');
   b.setAttribute('aria-label', label);
@@ -249,7 +252,7 @@ export interface Option { id: string; icon?: string; words?: string; color?: str
 /** How the options are drawn: `arrows` one at a time between two arrows, `buttons` all in a row, `colors` a bar of colours, `list` a popup. */
 export type Look = 'arrows' | 'buttons' | 'colors' | 'list';
 
-const faceOf = (o: Option): ButtonFace => ({ icon: o.icon, words: o.icon ? undefined : o.words });
+const faceOf = (o: Option): ButtonFace => ({ icon: o.icon, color: o.icon ? undefined : o.color, words: o.icon || o.color ? undefined : o.words });
 
 /** A button that opens a panel of `content` under it; a tap outside or inside (given `close`) shuts it. */
 export function opener(label: string, face: ButtonFace, content: (close: () => void) => Node): HTMLElement {
@@ -360,12 +363,12 @@ export function section(name: Name, content: Node[], open = true, onToggle?: (op
   return wrap;
 }
 
-/** A line of text to type in: the same drawn well as the search field. `dice` (optional) is a button beside it that makes a new text; `done` is told when typing ends (leaving the field, Enter). `width` is in pixels of the raster. */
-export function textField(label: string, value: string, change: (value: string) => void, options: { placeholder?: string; dice?: () => string; done?: (value: string) => void; width?: number } = {}): HTMLElement {
+/** A line of text to type in: the same drawn well as the search field. `dice` (optional) is a button beside it that makes a new text; `done` is told when typing ends (leaving the field, Enter). `width` is in pixels of the raster; `flat`: the die has no shadow. */
+export function textField(label: string, value: string, change: (value: string) => void, options: { placeholder?: string; dice?: () => string; done?: (value: string) => void; width?: number; flat?: boolean } = {}): HTMLElement {
   const well = inputWell(label, { value, change, done: options.done, placeholder: options.placeholder, width: options.width ?? 60 });
   const row = el('span', 'urow');
   row.append(well);
-  if (options.dice) row.append(pixelButton(label, { icon: 'dice' }, () => { well.input.value = options.dice!(); well.redraw(); change(well.input.value); options.done?.(well.input.value); }));
+  if (options.dice) row.append(pixelButton(label, { icon: 'dice', flat: options.flat }, () => { well.input.value = options.dice!(); well.redraw(); change(well.input.value); options.done?.(well.input.value); }));
   return row;
 }
 
@@ -550,6 +553,8 @@ export interface HeaderOptions {
   more?: { icon: string; label: string; on: () => void; danger?: boolean; disabled?: boolean }[];
   /** Actions on the whole file or library, as buttons in their own group (new, copy, delete). */
   actions?: { icon: string; label: string; on: () => void; disabled?: boolean }[];
+  /** The name of the thing being edited (a text field), right after the page's icon. */
+  name?: Node;
   /** Short status text next to the menu (saved, an error). */
   status?: Node;
   /** Old-style controls the page still brings itself (a picker of its things). */
@@ -574,7 +579,7 @@ function groups(...list: (Node | null | undefined | false)[][]): HTMLElement {
   return row;
 }
 
-/** The header of every tool page, groups divided by lines: switcher, about, menu | actions on the file | its things and status; at the right undo, redo | save | extras | language. */
+/** The header of every tool page, groups divided by lines: page icon | name, save, actions, menu, status | undo, redo | extras, about; a space; language. */
 export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null } {
   const t = { about: 'About', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle', language: 'Language', tools: 'Tools', ...o.labels };
   const bar = el('header', 'uheader');
@@ -584,24 +589,33 @@ export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonEl
   const redo = o.redo ? pixelButton(t.redo, { icon: 'redo', flat: true }, o.redo) : null;
   const l = o.languages;
   const left = groups(
+    [choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true)],
     [
-      choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true),
+      o.name,
+      o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled }),
+      ...(o.actions ?? []).map((a) => Object.assign(pixelButton(a.label, { icon: a.icon, flat: true }, a.on), { disabled: !!a.disabled })),
+      o.more && menu(t.more, o.more, 'more', true),
+      o.things,
+      o.status,
+    ],
+  );
+  const right = groups(
+    [undo, redo],
+    [
+      o.shuffle && pixelButton(t.shuffle, { icon: 'dice', flat: true }, o.shuffle),
+      o.extra,
       paras && opener(t.about, { icon: 'info', flat: true }, () => {
         const text = el('div', 'uabout');
         text.append(...paras.map((p) => Object.assign(el('p', ''), { textContent: p })));
         return text;
       }),
-      o.more && menu(t.more, o.more, 'more', true),
     ],
-    (o.actions ?? []).map((a) => Object.assign(pixelButton(a.label, { icon: a.icon, flat: true }, a.on), { disabled: !!a.disabled })),
-    [o.things, o.status],
   );
-  const right = groups(
-    [undo, redo],
-    [o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled })],
-    [o.shuffle && pixelButton(t.shuffle, { icon: 'dice', flat: true }, o.shuffle), o.extra],
-    [l && choice(t.language, l.ids.map((id) => ({ id, icon: id })), () => l.current, l.pick, 'list', 60, true)],
-  );
+  if (l) {
+    const lang = choice(t.language, l.ids.map((id) => ({ id, icon: id })), () => l.current, l.pick, 'list', 60, true);
+    lang.classList.add('uheader__lang');
+    right.append(lang);
+  }
   bar.append(left, right);
   return { bar, undo, redo };
 }
@@ -644,6 +658,46 @@ export function previewFrame(content: Node, options: { tag?: Node; tools?: Node[
   if (options.tag) { const t = el('div', 'uframe__tag'); t.append(options.tag); frame.append(t); }
   if (options.tools?.length) { const t = el('div', 'uframe__tools urow'); t.append(...options.tools); frame.append(t); }
   return frame;
+}
+
+/**
+ * Turning a preview: a left and a right arrow at its sides, and a sideways drag on it, each `turn(1)` or `turn(-1)` (the right
+ * arrow is +1; a drag to the right turns the other way, as the wardrobe's does), and the arrow keys outside text fields. Call
+ * it once for the preview's own element and put the two arrows it returns into that element, which must be positioned.
+ */
+export function turnView(view: HTMLElement, turn: (step: 1 | -1) => void, words: { left: string; right: string } = { left: 'Turn left', right: 'Turn right' }): HTMLElement[] {
+  const STEP = 40; // pixels dragged for one step
+  let x0: number | null = null;
+  view.style.touchAction = 'pan-y';
+  view.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('button, input, [contenteditable]')) return;
+    x0 = e.clientX;
+    view.setPointerCapture(e.pointerId);
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (x0 === null) return;
+    while (Math.abs(e.clientX - x0) >= STEP) {
+      const to = e.clientX > x0 ? 1 : -1;
+      turn(-to as 1 | -1);
+      x0 += to * STEP;
+    }
+  });
+  const end = () => (x0 = null);
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+  addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || !view.isConnected) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') turn(e.key === 'ArrowRight' ? 1 : -1);
+  });
+  const arrow = (side: 'left' | 'right', step: 1 | -1) => Object.assign(pixelButton(words[side], { icon: side }, () => turn(step)), { className: `pbtn uturn uturn--${side}` });
+  return [arrow('left', -1), arrow('right', 1)];
+}
+
+/** The options of a preview as a column of buttons floating at its top right, as in the scene editor (toggles, a choice as `list`). */
+export function viewTools(...tools: (Node | null | false)[]): HTMLElement {
+  const column = el('div', 'uview');
+  column.append(...tools.filter((t): t is Node => !!t));
+  return column;
 }
 
 /** Asks for a yes or a no in a pixel box over the page (check or cross, Escape is no): replaces the browser's own confirm. */

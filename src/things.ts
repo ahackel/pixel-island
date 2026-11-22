@@ -42,7 +42,7 @@ export function driftThing(spot: Thing['spot']): Thing {
   const n = Math.floor(spot.i * 7 + spot.j * 13);
   const r = rasterOf({ plant: n % 2 ? 'plant-driftwood-1' : 'plant-driftwood-0', seed: n, size: 0.5, turn: n % TURNS }, 0);
   if (!r) return thing(DRIFT)(spot);
-  return { spot, picture: r, w: r.w, h: r.h, foot: r.origin };
+  return { spot, picture: r, w: r.w, h: r.h, foot: r.foot };
 }
 /** The axe in the bag: a stick, a big stone lashed across its top. */
 export const AXE_IN_BAG: Rows = {

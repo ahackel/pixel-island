@@ -1,4 +1,5 @@
 import './style.css';
+import { frameDone, part } from '../../shared/stats.ts';
 import { box, choice, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
@@ -87,6 +88,8 @@ interface Prefs {
   rot: number;
   /** Tile lines on the ground while editing. */
   grid: boolean;
+  /** What stops a walker drawn in red. */
+  colliders: boolean;
   /** Frames per second under the zoom buttons. */
   fps: boolean;
   /** A cave evenly lit while editing, rather than as dark as in Play. */
@@ -94,7 +97,7 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
@@ -114,6 +117,7 @@ function loadPrefs(): Prefs {
     if (Number.isInteger(saved?.poseFrame) && saved.poseFrame >= 0) prefs.poseFrame = saved.poseFrame;
     if ([0, 1, 2, 3].includes(saved?.rot)) prefs.rot = saved.rot;
     prefs.grid = saved?.grid === true;
+    prefs.colliders = saved?.colliders === true;
     prefs.fps = saved?.fps === true;
     prefs.bright = saved?.bright === true;
   } catch {
@@ -1113,8 +1117,9 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}`;
   if (prefs.mode === 'play' || key !== shown) {
+    const begun = performance.now();
     const cave = world.scene.cave;
     const things: Thing[] = [
       ...world.plantThings(wind), ...world.decorThings(ms), ...world.animalThings(ms, herd ?? undefined), ...world.itemThings(), ...world.propThings(wind), ...world.scene.people.map((p) => personThing(p, ms)),
@@ -1144,7 +1149,9 @@ function frame(ms: number): void {
       highlight = v ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: canStand(selected!, v) ? '#ffd84a99' : '#e0332e99' } : undefined;
     }
     canvas.style.cursor = prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
+    let t0 = part('things', begun);
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
+    t0 = performance.now();
     // A cave is as dark as in the game, but where its lights and the character's lantern reach; while editing it can be seen into.
     if (cave && !(prefs.mode === 'edit' && prefs.bright)) {
       const lantern = prefs.mode === 'play' && actor ? [{ i: actor.i, j: actor.j, r: 4.2 * flicker(ms), amount: 1 }] : [];
@@ -1153,7 +1160,12 @@ function frame(ms: number): void {
     // The selected object, outlined over everything (lights included), so it shows even behind rock or in the dark.
     const sel = prefs.mode === 'edit' && selected?.kind === 'item' ? world.scene.items.indexOf(selected.obj as PlacedItem) : -1;
     if (sel >= 0) outline(image, view, world.itemThings()[sel], OUTLINE);
+    if (prefs.colliders) world.drawColliders(image, view);
+    t0 = part('light', t0);
     ctx.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), 0, 0);
+    part('show', t0);
+    part('whole frame', begun);
+    frameDone();
   }
   requestAnimationFrame(frame);
 }
@@ -1577,6 +1589,7 @@ function mount(): void {
       pixelButton(t('rotate.right'), { icon: 'turnright' }, () => rotate(1)),
       brightToggle,
       toggle(t('zoom.grid'), { icon: 'grid' }, prefs.grid, (grid) => set({ grid })),
+      toggle(t('zoom.colliders'), { icon: 'collider' }, prefs.colliders, (colliders) => set({ colliders })),
       toggle(t('zoom.fps'), { icon: 'gauge' }, prefs.fps, (fps) => set({ fps })),
       fpsLine,
     ),

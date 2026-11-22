@@ -5,6 +5,7 @@ import './ui.css';
 import { currentLang, LANGS, setLang, type Lang } from './lang.ts';
 import { choice, field, header, slider as pixelSlider, textField, section as pixelSection, toggle as pixelToggle, pixelButton, type Option as Pick } from '../ui/components.ts';
 import { TOOLS, toolHref, type ToolId } from './tools.ts';
+import { textWidth } from './pixel-font.ts';
 
 // ------------------------------------------------------------------ elements
 
@@ -182,6 +183,8 @@ export interface TopBar {
   tool: ToolId;
   title: string;
   about: string[];
+  /** The name of the thing being edited, a text field right after the page's icon. */
+  name?: Node;
   /** The "My things" picker, if the tool keeps a list. */
   things?: Node;
   more: MenuItem[];
@@ -201,7 +204,7 @@ export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement |
   if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/'));
   const tools = TOOLS.map((x) => ({ ...x, name: word(x.id as keyof typeof WORDS.en), href: toolHref(x.id) }));
   const { bar, undo, redo } = header({
-    tools, tool: o.tool, about: o.about, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
+    tools, tool: o.tool, about: o.about, name: o.name, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
     more: o.more.filter((m) => !m.main).map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
     actions: o.actions?.map((m) => ({ icon: m.icon, label: m.label, on: m.run, disabled: m.disabled })),
     save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled }))[0],
@@ -317,30 +320,6 @@ export function undoKeys(undo: () => void, redo: () => void): void {
   });
 }
 
-/** A sideways swipe on the stage turns the subject one side per swipe. */
-export function dragToTurn(el: HTMLElement, turn: (step: 1 | -1) => void): void {
-  // Every 24 pixels dragged sideways turns one step, while the drag goes on.
-  const STEP = 24;
-  let x0: number | null = null;
-  el.style.touchAction = 'pan-y';
-  el.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button, input, [contenteditable]')) return;
-    x0 = e.clientX;
-    el.setPointerCapture(e.pointerId);
-  });
-  el.addEventListener('pointermove', (e) => {
-    if (x0 === null) return;
-    while (Math.abs(e.clientX - x0) >= STEP) {
-      const step = e.clientX > x0 ? 1 : -1;
-      turn(step);
-      x0 += step * STEP;
-    }
-  });
-  const end = () => (x0 = null);
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-}
-
 // ------------------------------------------------------------------ small joys
 
 /** Friendly names that read the same in English and German. */
@@ -357,7 +336,7 @@ export function cheer(stage: HTMLElement): void {
 }
 
 /**
- * The name on the stage: type to rename, or roll a random one. `rename` gets the new name when
+ * The name of the thing being edited, in the top bar: type to rename. `rename` gets the new name when
  * editing ends, so a half-typed name is not saved.
  */
 export function nameTag(): { el: HTMLElement; set: (name: string, placeholder: string) => void; onRename: (fn: (name: string) => void) => void } {
@@ -365,11 +344,11 @@ export function nameTag(): { el: HTMLElement; set: (name: string, placeholder: s
   let rename: (name: string) => void = () => {};
   return {
     el,
-    // A pixel text field with a die; redrawn on every set, so typing in it is not interrupted by a render only when it has focus.
+    // A pixel text field; redrawn on every set, so typing in it is not interrupted by a render only when it has focus.
     set: (name, placeholder) => {
       if (el.contains(document.activeElement)) return;
       el.replaceChildren(textField(word('name'), name, () => {}, {
-        placeholder, width: 50, dice: () => pick(NAMES.filter((n) => n !== name)),
+        placeholder, width: Math.min(120, Math.max(30, textWidth((name || placeholder).toUpperCase()) + 8)), flat: true,
         done: (v) => { if (v.trim()) rename(v.trim()); },
       }));
     },
@@ -392,7 +371,7 @@ export function savePicture(canvas: HTMLCanvasElement, name: string, scale = 8):
 }
 
 export function snapButton(take: () => void): HTMLButtonElement {
-  return Object.assign(pixelButton(word('picture'), { icon: 'camera' }, take), { className: 'pbtn stage__button' });
+  return pixelButton(word('picture'), { icon: 'camera' }, take);
 }
 
 /** Die and lock beside the tab name: shuffle only this tab, or keep it when shuffling all. */

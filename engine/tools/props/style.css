@@ -5,16 +5,6 @@
 
 .stage.props__stage { min-height: 46vh; }
 .props__under { flex: none; }
-.props__ring { position: relative; width: 168px; height: 168px; margin: 8px auto; border-radius: 50%; border: 2px dashed #0002; }
-.props__dir {
-  position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px; border-radius: 50%; padding: 0;
-  border: 2px solid var(--fg); background: var(--panel, #fff); font-weight: 700; font-size: 13px;
-  transform: rotate(var(--a)) translateY(-66px) rotate(calc(-1 * var(--a)));
-}
-.props__dir--shared { opacity: 0.45; }
-.props__dir--mirror { font-style: italic; background: #e8eef9; }
-.props__dir[aria-checked='true'] { background: var(--accent); color: #fff; }
-.props__stagetools { justify-content: center; flex-wrap: wrap; }
 .props__feature { display: grid; gap: 0; margin-bottom: 6px; }
 .props__feature .note { margin: 0 0 0 26px; }
 .props__recipe { width: 100%; min-height: 320px; font: 12px/1.4 ui-monospace, Menlo, monospace; border: 2px solid var(--fg); border-radius: 8px; padding: 8px; resize: vertical; }

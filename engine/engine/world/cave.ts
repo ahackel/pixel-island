@@ -173,7 +173,7 @@ function pillarThing(world: World, c: number): Thing[] {
   const i = c % world.map.w, j = Math.floor(c / world.map.w);
   const r = (k: number) => h01(i, j, k);
   const raster = rasterOf({ plant: PILLAR, seed: Math.floor(r(1) * 4), size: 1.2, turn: Math.floor(r(2) * 8) }, 0);
-  return raster ? [{ spot: { i: i + 0.5, j: j + 0.5, level: CAVE_FLOOR }, picture: raster, w: raster.w, h: raster.h, foot: raster.origin }] : [];
+  return raster ? [{ spot: { i: i + 0.5, j: j + 0.5, level: CAVE_FLOOR }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
 }
 
 /** A hash of integers to 0..1, so the rubble of an edge stays put while other edges are carved. */
@@ -232,7 +232,7 @@ export function setUpCave(world: World, at?: { i: number; j: number }): void {
   world.buildings = [walls];
   const rubble = caveRubble(walls, world.scene.cave?.rubble ?? 0).flatMap((p) => {
     const raster = rasterOf(p, 0);
-    return raster ? [{ spot: { i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) }, picture: raster, w: raster.w, h: raster.h, foot: raster.origin }] : [];
+    return raster ? [{ spot: { i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
   });
   derived.set(world, { ground: world.ground, rooms, key, things: [...blocks.map((c) => blockThing(world, c)), ...pillars.flatMap((c) => pillarThing(world, c)), ...rubble] });
 }

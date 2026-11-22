@@ -7,6 +7,7 @@ import type { Picture } from './island.ts';
 import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt } from './terrain.ts';
 import { ocean, rgb } from './ocean.ts';
 import type { Thing, World } from './world.ts';
+import { drew, slots } from '../../shared/stats.ts';
 
 export const EMOTES = ['wave', 'use'] as const;
 export type Emote = (typeof EMOTES)[number];
@@ -380,7 +381,7 @@ export class Actor {
     // Hands full, the tool is put away.
     if (!body) {
       const worn = this.carrying ? { ...this.look, items: this.look.items.filter((it) => it.slot !== 'tool') } : this.look;
-      this.frames.set(key, (body = drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies })));
+      this.frames.set(key, (body = drew('character', () => drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies }), () => slots(SPRITE_W, SPRITE_H, 1))));
     }
     let sprite: Picture = body;
     if (this.carrying) {
@@ -388,7 +389,7 @@ export class Actor {
       let kept = this.held.get(held.picture);
       if (!kept) this.held.set(held.picture, (kept = new Map()));
       let both = kept.get(key);
-      if (!both) kept.set(key, (both = holding(body, held, handsOn(pose, facing))));
+      if (!both) kept.set(key, (both = drew('holding', () => holding(body, held, handsOn(pose, facing)), () => slots(SPRITE_W, SPRITE_H))));
       sprite = both;
     }
     const depth = this.depth(world);
@@ -398,7 +399,7 @@ export class Actor {
     let wet = this.wet.get(sprite);
     if (!wet) this.wet.set(sprite, (wet = new Map()));
     let picture = wet.get(rows);
-    if (!picture) wet.set(rows, (picture = wading(sprite, rows)));
+    if (!picture) wet.set(rows, (picture = drew('wading', () => wading(sprite, rows), () => slots(SPRITE_W, SPRITE_H))));
     return { spot: { i: this.i, j: this.j, level: SEA_LEVEL - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie };
   }
 }

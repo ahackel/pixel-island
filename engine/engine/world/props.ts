@@ -4,6 +4,8 @@
 import { drawObject, OBJECT_H, OBJECT_ORIGIN, OBJECT_W, type Build } from '../objects/object.ts';
 import { OPENING, objectPresetById } from '../objects/object-presets.ts';
 import type { Thing } from './world.ts';
+import { drew, watch } from '../../shared/stats.ts';
+import { crop, type Cropped } from '../core/cropped.ts';
 
 /** The ids of a scene's own objects, made in the object editor, start with this; their builds are in `Scene.objects`. */
 export const OWN = 'own:';
@@ -32,16 +34,22 @@ export const openFrames = (id: string) => OPENING[id]?.length ?? 0;
 
 /** How close a walker may come to an object's footprint, in metres: its parts stand a little in from the tile edges. */
 export const ITEM_ROOM = 0.2;
-/** Whether a view point is inside an object's footprint, turned with it and the view (`rot`). */
-export function itemCovers(it: PlacedItem & { vi: number; vj: number }, rot: number, props: Record<string, Build> | undefined, i: number, j: number): boolean {
+/** An object's footprint as half its width and depth, turned with it and the view (`rot`), less the room a walker keeps. */
+export function itemHalf(it: PlacedItem, rot: number, props: Record<string, Build> | undefined): [number, number] {
   const prop = propOf(it.item, props);
   const [w, d] = prop ? [prop.w, prop.d] : [1, 1];
   const [a, b] = ((it.turn ?? 0) + rot) % 2 ? [d, w] : [w, d];
-  return Math.abs(i - it.vi) < a / 2 - ITEM_ROOM && Math.abs(j - it.vj) < b / 2 - ITEM_ROOM;
+  return [a / 2 - ITEM_ROOM, b / 2 - ITEM_ROOM];
+}
+/** Whether a view point is inside an object's footprint, turned with it and the view (`rot`). */
+export function itemCovers(it: PlacedItem & { vi: number; vj: number }, rot: number, props: Record<string, Build> | undefined, i: number, j: number): boolean {
+  const [a, b] = itemHalf(it, rot, props);
+  return Math.abs(i - it.vi) < a && Math.abs(j - it.vj) < b;
 }
 
 // shortcut: own objects are cached by id, so one changed in the object editor shows changed after a reload; key by content if that bothers.
 const frames = new Map<string, Pick<Thing, 'picture' | 'w' | 'h' | 'foot'>>();
+watch('item', () => [frames.size, [...frames.values()].reduce((b, v) => b + (v.picture as Cropped).bytes, 0)]);
 /** An object's picture in a camera turn (quarter turns on the ground, eighths in a character's arms), `open` frames open. */
 export function itemPicture(id: string, turn: number, props?: Record<string, Build>, open = 0): Pick<Thing, 'picture' | 'w' | 'h' | 'foot'> {
   const key = `${id}|${turn}|${open}`;
@@ -49,7 +57,8 @@ export function itemPicture(id: string, turn: number, props?: Record<string, Bui
   if (!out) {
     const prop = (open > 0 && OPENING[id]?.[Math.min(open, OPENING[id].length) - 1]) || propOf(id, props);
     if (!prop) return { picture: { get: () => null }, w: 1, h: 1, foot: { x: 0, y: 0 } };
-    frames.set(key, (out = { picture: drawObject(prop, ((turn % 4) + 4) % 4).sprite, w: OBJECT_W, h: OBJECT_H, foot: OBJECT_ORIGIN }));
+    const c = drew('item', () => crop(drawObject(prop, ((turn % 4) + 4) % 4).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN), (c) => c.bytes);
+    frames.set(key, (out = { picture: c, w: c.w, h: c.h, foot: c.foot }));
   }
   return out;
 }
