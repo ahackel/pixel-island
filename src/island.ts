@@ -112,7 +112,8 @@ const ROCK = PAINTS.indexOf('rock') + 1;
 export function rockyIsland(): { scene: Scene; mouth: { i: number; j: number }; face: { i: number; j: number } } {
   const i0 = Math.floor(ROCKY.size / 2 - HILL / 2);
   const j0 = i0;
-  const scene = islandOf(ROCKY, 'Rocky island', (map: HeightMap & { paint?: Uint8Array }) => {
+  // The scene saved as `rocky-island` when there is one (the hill and cave mouth below stay where they were made), else the one made from its seed.
+  const scene = savedScene('rocky-island') ?? islandOf(ROCKY, 'Rocky island', (map: HeightMap & { paint?: Uint8Array }) => {
     map.paint = new Uint8Array(map.w * map.h);
     // The higher ground is rock, and a hill of it stands in the middle.
     let top = SEA_LEVEL;
