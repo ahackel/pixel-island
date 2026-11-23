@@ -18,11 +18,11 @@ import { along, light, lightByTile, mixTint, TINTS, type Tint } from '@pixel/eng
 import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
-import { emittersOf, halos, particleSystem, Particles } from '@pixel/engine/world/particles.ts';
+import { emittersOf, halos, particleSystem, Particles, tileHalo } from '@pixel/engine/world/particles.ts';
 import { heightAt, isLand, SEA_LEVEL, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
-import { caveLamps as caveOwnLamps, caveThings, caveTint, flicker, setUpCave } from '@pixel/engine/world/cave.ts';
+import { caveLamps as caveOwnLamps, caveThings, caveTint, setUpCave } from '@pixel/engine/world/cave.ts';
 import { openFrames, type PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
 import { findPath } from '@pixel/engine/world/path.ts';
@@ -46,7 +46,7 @@ import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fis
 import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, lacking, recipeFor, takeFrom, without, type BagItem, type Build, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
-import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
+import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
@@ -411,7 +411,7 @@ function hold(item: BagItem | null): void {
 }
 type Fish = (typeof FISH_ITEMS)[number];
 const BAG_PICTURES: Record<BagItem, Rows> = {
-  coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: { rows: TORCH_ROWS, colors: TORCH_COLORS },
+  coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: TORCH_IN_BAG,
   stone: STONE, spear: SPEAR_IN_BAG, ...(Object.fromEntries(FISH_ITEMS.map((f, k) => [f, FISH_IN_BAG[k]])) as Record<Fish, Rows>), crab: CRAB_IN_BAG,
   leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN,
 };
@@ -929,9 +929,9 @@ function press(p: { x: number; y: number }, start: boolean): void {
     const look = mapOffset(p.x - foot.x, p.y - foot.y);
     if (look.i || look.j) actor.lookAt(look.i, look.j);
     // In the cave nothing of the island's is to pick, only a torch off a wall (its picture stands on the wall, a stick
-    // and flame some 8 to 22 pixels over the floor).
+    // and flame some 4 to 22 pixels over the floor).
     if (inCave()) {
-      const torch = world.scene.decor.find((d) => d.decor === 'torch' && near(p, d, 7, 15));
+      const torch = world.scene.decor.find((d) => d.decor === 'torch' && near(p, d, 9, 13));
       if (torch) return goTo(torch, false, { torch });
       // A chest: walked up to, and opened.
       const chest = world.scene.items.find((it) => openFrames(it.item) && near(p, it, 10, 6));
@@ -1456,9 +1456,8 @@ function fadeAt(ms: number): number {
 function caveLamps(me: Thing | null, ms: number): TileLamp[] {
   if (!cave) return [];
   // The halo of what is in hand (its particle system's), in tiles.
-  const halo = me?.fx && particleSystem(me.fx.system)?.halo;
-  const f = halo?.flicker ? flicker(ms) : 1;
-  return [...caveOwnLamps(cave.world, ms), ...(halo ? [{ i: actor.i, j: actor.j, r: halo.tiles * f, amount: Math.min(1, f) }] : [])];
+  const held = me?.fx ? tileHalo(particleSystem(me.fx.system), actor, ms) : null;
+  return [...caveOwnLamps(cave.world, ms), ...(held ? [held] : [])];
 }
 
 /** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
@@ -1638,12 +1637,7 @@ function frame(ms: number): void {
     const b = breakOf(palm);
     strikeFx = new Strike({ x: foot.x + b.dx, y: foot.y + b.dy }, foot.y, ms);
   }
-  let stumpFlame: Thing | null = null;
-  if (struckAt >= 0) {
-    const stump = stumpThings(plants[struckAt], ms);
-    plants.splice(struckAt, 1, ...stump);
-    stumpFlame = stump[1];
-  }
+  if (struckAt >= 0) plants.splice(struckAt, 1, ...stumpThings(plants[struckAt], ms));
   const campfires = inCave() ? [] : game.fires.map((f) => campfireThing(groundSpot(f), ms));
   const hutBuild = buildOf('hut');
   island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
@@ -1672,8 +1666,8 @@ function frame(ms: number): void {
   let t0 = part('things', begun);
   const image = world.compose(rect, things, undefined, false, ms);
   t0 = performance.now();
-  // The particle systems of the fires and of what is in hand: their sparks, and their halos in the dark.
-  const emitters = emittersOf([...campfires, stumpFlame, me], world.ground);
+  // The particle systems of what is drawn (fires, wall torches, what is in hand): their sparks, and their halos in the dark.
+  const emitters = emittersOf(things, world.ground);
   particles.emit(emitters, ms, paused ? 0 : dt);
   if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(me, ms)));
   else {

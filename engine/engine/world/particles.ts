@@ -5,14 +5,13 @@
 // stepped, and they are drawn over the finished, lit picture, so they shine in the dark.
 import { PALETTE, PALETTE_KEYS, type PaletteKey, type Tone } from '../core/palette.ts';
 import { readStore, writeStore } from '../../shared/files.ts';
-import { flicker } from './cave.ts';
 import { GLOW_ALPHA, GLOWING, light, TINTS, type Lamp } from './daylight.ts';
-import { decorById } from './decor.ts';
-import { FLAME_COLORS, FLAME_GLOW, FLAMES, flameFrame, torchRows } from './flame.ts';
+import { FLAME_COLORS, FLAME_GLOW, FLAMES, flameFrame, flicker, TORCH } from './flame.ts';
 import { footOf, type Thing } from './island.ts';
 export type { Attach } from './island.ts';
 import { rgb } from './ocean.ts';
 import type { TerrainImage } from './terrain.ts';
+import type { TileLamp } from './world.ts';
 
 /** A colour of the palette in one of its tones: particles are painted in the palette like everything else. */
 export interface Paint { key: PaletteKey; tone: Tone }
@@ -37,10 +36,11 @@ export interface ParticleSystem {
   /** Each is one of these, picked at random. */
   colors: Paint[];
   /**
-   * The light round the point, or none: how far it reaches in pixels in the open (see daylight.ts `light`) and in
-   * tiles in a cave (see `World.lightField`), whether it flickers like a flame, and its colour (else a fire's orange).
+   * The light round the point, or none: how far it reaches in pixels in the open (see daylight.ts `light`), and in
+   * tiles in a cave with how strong it is there, 0 to 1 (see `World.lightField`); whether it flickers like a flame,
+   * and its colour (else a fire's orange).
    */
-  halo: { r: number; tiles: number; flicker: boolean; color?: Paint } | null;
+  halo: { r: number; tiles: number; amount: number; flicker: boolean; color?: Paint } | null;
 }
 
 export const PARTICLE_STORE = 'pixel-particles';
@@ -50,11 +50,11 @@ const fire = (tone: Tone = 'base'): Paint[] => (['blaze', 'flare', 'flame'] as c
 export const BUILT_IN: readonly ParticleSystem[] = [
   {
     id: 'sparks', name: 'Sparks', rate: 1.6, offset: { x: 0, y: -3 }, spread: { x: 3, y: 2 }, speed: { x: 0, y: -19 }, jitter: { x: 5, y: 7 },
-    gravity: 0, sway: { amount: 1.2, speed: 9 }, life: { min: 500, max: 1000 }, colors: fire(), halo: { r: 40, tiles: 3, flicker: true },
+    gravity: 0, sway: { amount: 1.2, speed: 9 }, life: { min: 500, max: 1000 }, colors: fire(), halo: { r: 40, tiles: 3, amount: 1, flicker: true },
   },
   {
     id: 'glow', name: 'Glow', rate: 0, offset: { x: 0, y: 0 }, spread: { x: 0, y: 0 }, speed: { x: 0, y: 0 }, jitter: { x: 0, y: 0 },
-    gravity: 0, sway: { amount: 0, speed: 0 }, life: { min: 500, max: 1000 }, colors: fire(), halo: { r: 48, tiles: 4, flicker: false },
+    gravity: 0, sway: { amount: 0, speed: 0 }, life: { min: 500, max: 1000 }, colors: fire(), halo: { r: 48, tiles: 4, amount: 1, flicker: false },
   },
 ];
 
@@ -70,7 +70,7 @@ export function cleanSystem(v: any): ParticleSystem | null {
   if (!v || typeof v.id !== 'string' || !v.id) return null;
   const life = pair(v.life, 'min', 'max', 50, 10000);
   const halo = v.halo && typeof v.halo === 'object'
-    ? { r: num(v.halo.r, 0, 200, 40), tiles: num(v.halo.tiles, 0, 12, 3), flicker: !!v.halo.flicker, ...(paintOf(v.halo.color) ? { color: paintOf(v.halo.color)! } : {}) }
+    ? { r: num(v.halo.r, 0, 200, 40), tiles: num(v.halo.tiles, 0, 12, 3), amount: num(v.halo.amount, 0, 1, 1), flicker: !!v.halo.flicker, ...(paintOf(v.halo.color) ? { color: paintOf(v.halo.color)! } : {}) }
     : null;
   return {
     id: v.id, name: typeof v.name === 'string' && v.name ? v.name : v.id, rate: num(v.rate, 0, 200, 0),
@@ -143,6 +143,14 @@ export function halos(from: readonly Emitter[], view: { x: number; y: number }, 
     out.push({ x: e.x - view.x, y: e.y - view.y, r: h.r * (h.flicker ? flicker(ms, e.salt) : 1), color: h.color && paintHex(h.color) });
   }
   return out;
+}
+
+/** A system's halo as a lamp of a cave's light field (`World.lightField`), at a point in view tiles; null without one. */
+export function tileHalo(system: ParticleSystem | null, at: { i: number; j: number }, ms: number, salt = 0): TileLamp | null {
+  const h = system?.halo;
+  if (!h || h.tiles <= 0) return null;
+  const f = h.flicker ? flicker(ms, salt) : 1;
+  return { i: at.i, j: at.j, r: h.tiles * f, amount: Math.min(1, h.amount * f), ...(h.color && { color: paintHex(h.color) }) };
 }
 
 const paintHex = (p: Paint) => PALETTE[p.key][p.tone];
@@ -219,7 +227,7 @@ export class ParticlePreview {
     for (let k = 0; k < this.w * this.h; k++) image.data.set([...GROUND, 255], k * 4);
     const at = { x: Math.round(this.w / 2), y: Math.round(this.h * 0.6) };
     const frame = flameFrame(FLAMES, ms);
-    const picture = o.on === 'flame' ? { rows: frame, colors: FLAME_COLORS } : o.on === 'torch' ? { rows: torchRows(frame, 10), colors: decorById('torch')!.colors } : null;
+    const picture = o.on === 'flame' ? { rows: frame, colors: FLAME_COLORS } : o.on === 'torch' ? { rows: flameFrame(TORCH.frames, ms), colors: TORCH.colors } : null;
     picture?.rows.forEach((row, y) => [...row].forEach((ch, x) => {
       const hex = picture.colors[ch];
       if (!hex) return;

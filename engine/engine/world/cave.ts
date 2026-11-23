@@ -7,6 +7,8 @@ import { edgeKey, emptyBuilding, type Building } from './building/building.ts';
 import { rockWall } from './building/pieces/rock-wall.ts';
 import type { Tint } from './daylight.ts';
 import { decorById } from './decor.ts';
+import { flicker } from './flame.ts';
+import { particleSystem, tileHalo } from './particles.ts';
 import type { Thing } from './island.ts';
 import type { Scene } from './scene.ts';
 import { inside, LEVEL_PX, MIN_LEVEL, PAINTS, SEA_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
@@ -256,10 +258,12 @@ export function caveTint(scene: Scene): Tint {
   return { r, g, b, amount: scene.cave?.dark ?? 0.9 };
 }
 
-/** How much a flame's reach breathes at this moment, about 1: a few percent either way, never in a steady beat. */
-export const flicker = (ms: number, phase = 0) => 1 + 0.04 * Math.sin(ms / 83 + phase) + 0.03 * Math.sin(ms / 31 + 1.7 + phase * 2.3);
+export { flicker };
 
-/** The cave's own lights, in view coordinates: the daylight at its ways out, and its glowing decorations. */
+/**
+ * The cave's own lights, in view coordinates: the daylight at its ways out, its glowing decorations, and the halos of
+ * the particle systems decorations carry (the wall torches').
+ */
 export function caveLamps(world: World, ms: number): TileLamp[] {
   const exits = (world.scene.cave?.exits ?? []).map((e) => ({ ...world.toView(e), r: DAY_REACH, color: CAVE_DAY, amount: 0.8 }));
   const glows = world.viewDecor().flatMap((d) => {
@@ -268,5 +272,10 @@ export function caveLamps(world: World, ms: number): TileLamp[] {
     const f = glow.flicker ? flicker(ms, d.vi * 3.1 + d.vj * 1.7) : 1;
     return [{ i: d.vi, j: d.vj, r: glow.r * f, color: glow.color, amount: Math.min(1, glow.amount * f) }];
   });
-  return [...exits, ...glows];
+  const halos = world.viewDecor().flatMap((d) => {
+    const fx = decorById(d.decor)?.fx;
+    const lamp = fx && tileHalo(particleSystem(fx.system), { i: d.vi, j: d.vj }, ms, d.vi * 3.1 + d.vj * 1.7);
+    return lamp ? [lamp] : [];
+  });
+  return [...exits, ...glows, ...halos];
 }

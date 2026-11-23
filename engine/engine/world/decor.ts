@@ -2,10 +2,10 @@
 // hand-drawn art, centred on where it was placed. They are drawn on the ground, under everything
 // standing, so walkers step over them and nothing sorts or blocks. A few stand up instead (crystals,
 // mushrooms, a wall torch): those are drawn as things, foot on the spot, and some glow and light
-// the cells round them.
-import { PALETTE } from '../core/palette.ts';
+// the cells round them. The wall torch is the torch (flame.ts `TORCH`), its light and sparks its particle system's.
 import { GLOWING } from './daylight.ts';
-import { FLAMES, torchRows } from './flame.ts';
+import { TORCH } from './flame.ts';
+import type { Attach } from './island.ts';
 
 export interface DecorKind {
   id: string;
@@ -23,6 +23,8 @@ export interface DecorKind {
    * flame, and which of its letters glow (kept bright in the dark, see daylight.ts `GLOWING`).
    */
   glow?: { color: string; r: number; amount: number; flicker?: boolean; keys: string };
+  /** A particle system attached at a point of its rows (world/particles.ts): the torch's sparks and halo. */
+  fx?: Attach;
 }
 
 const STAR = ['...a...', 'aaabaaa', '..aba..', '.a...c.', 'a.....c'];
@@ -47,10 +49,8 @@ export const DECOR: DecorKind[] = [
     colors: { b: '#e2ffb8', a: '#8cf06a', c: '#4fb04a', s: '#cfc6b0', d: '#8a8070' },
   },
   {
-    // The torch the survivor makes, hung on a wall.
-    id: 'torch', stands: true, lift: 8, glow: { color: '#ffb060', r: 3.6, amount: 0.9, flicker: true, keys: 'BYFf' },
-    rows: torchRows(FLAMES[0], 6), frames: FLAMES.map((f) => torchRows(f, 6)),
-    colors: { B: PALETTE.blaze.base, Y: PALETTE.flare.base, F: PALETTE.flame.base, f: PALETTE.flame.shade, W: PALETTE.wood.base, w: PALETTE.wood.shade },
+    // The torch, hung on a wall: its flame where the shorter wall torch's was, the stick reaching further down.
+    id: 'torch', stands: true, lift: 4, rows: TORCH.frames[0], frames: TORCH.frames, colors: TORCH.colors, fx: TORCH.fx,
   },
 ];
 for (const kind of DECOR) for (const key of kind.glow?.keys ?? '') GLOWING.add(kind.colors[key]);

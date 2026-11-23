@@ -6,8 +6,8 @@ import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Attach } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { compileSprite } from '@pixel/engine/character/items.ts';
-import { FLAME_COLORS, FLAME_GLOW, FLAMES, flameFrame, shaft, torchRows } from '@pixel/engine/world/flame.ts';
-import { picture } from './rows.ts';
+import { FLAME_COLORS, FLAME_GLOW, FLAMES, flameFrame, shaft, TORCH, torchRows } from '@pixel/engine/world/flame.ts';
+import { picture, type Rows } from './rows.ts';
 
 const FLAME_PICTURES = FLAMES.map((rows) => picture(rows, FLAME_COLORS));
 
@@ -38,12 +38,11 @@ export function tool(name: string, rows: readonly string[], more: Record<string,
   return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: o.hold ?? 'pole', fx: o.fx && { system: o.fx.system, front: at(9), back: at(23) } }).item;
 }
 export const STICK = tool('Stick', shaft(14));
-/** The torch, one item per frame of the flame on the stump: in the palette's letters (B blaze, Y flare, F flame, f its shade). */
-const TORCHES = FLAMES.map((rows) => tool('Torch', torchRows(rows, 10), {}, { fx: { ...FLAME_GLOW, system: 'torch' } }));
+/** The torch in hand, one item per frame of its flame: the engine's torch (the one on cave walls), its particle system with it. */
+const TORCHES = TORCH.frames.map((rows) => tool('Torch', rows, {}, { fx: TORCH.fx }));
 export const torchAt = (ms: number) => flameFrame(TORCHES, ms);
-// Fire carried in the bag: the same burning stick.
-export const TORCH_ROWS = [...FLAMES[0], ...shaft(4)];
-export const TORCH_COLORS: Record<string, string> = { ...FLAME_COLORS, ...WOOD_COLORS };
+/** The torch in the bag: the same torch, its stick short enough for a bag slot. */
+export const TORCH_IN_BAG: Rows = { rows: torchRows(FLAMES[0], 4), colors: TORCH.colors };
 
 // A campfire: crossed logs with a flame on them.
 const LOGS = ['.a.....a.', 'aba...aba', '.abaaaba.', '..ab.ba..'];

@@ -45,6 +45,7 @@
     "halo": {
       "r": 46,
       "tiles": 3.5,
+      "amount": 1,
       "flicker": true
     }
   },
@@ -94,6 +95,7 @@
     "halo": {
       "r": 40,
       "tiles": 3,
+      "amount": 1,
       "flicker": true
     }
   },
@@ -142,7 +144,8 @@
     ],
     "halo": {
       "r": 28,
-      "tiles": 3,
+      "tiles": 3.6,
+      "amount": 0.9,
       "flicker": true
     }
   },
@@ -192,6 +195,7 @@
     "halo": {
       "r": 64,
       "tiles": 4.2,
+      "amount": 1,
       "flicker": true
     }
   }

@@ -740,7 +740,7 @@ export class World {
       return [{
         // One on a wall stands at its own cell's floor, not the slope blended toward the rock behind (under the floor in a cave).
         spot: { i: d.vi, j: d.vj, level: lift ? levelAt(this.map, Math.floor(d.vi), Math.floor(d.vj)) : standingHeight(this.map, d.vi, d.vj) }, w, h, foot: { x: Math.floor(w / 2), y: h - 1 + lift },
-        picture: this.decorPicture(rows, kind.colors), ...(lift && { shadow: [] }),
+        picture: this.decorPicture(rows, kind.colors), ...(lift && { shadow: [] }), ...(kind.fx && { fx: kind.fx }),
       }];
     });
   }

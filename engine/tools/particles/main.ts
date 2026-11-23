@@ -119,12 +119,14 @@ function panel(): Node[] {
     section({ words: L('Colours', 'Farben') }, [colours]),
     section({ words: L('Halo', 'Schein') }, [
       h('div', { class: 'urow' },
-        toggle(L('Casts a halo of light', 'Wirft einen Lichtschein'), { icon: 'sun', words: L('Halo', 'Schein') }, !!halo, (on) => change((n) => (n.halo = on ? { r: 40, tiles: 3, flicker: true } : null))),
+        toggle(L('Casts a halo of light', 'Wirft einen Lichtschein'), { icon: 'sun', words: L('Halo', 'Schein') }, !!halo, (on) => change((n) => (n.halo = on ? { r: 40, tiles: 3, amount: 1, flicker: true } : null))),
         ...(halo ? [toggle(L('Flickers like a flame', 'Flackert wie eine Flamme'), { icon: 'storm', words: L('Flicker', 'Flackern') }, halo.flicker, (on) => change((n) => (n.halo!.flicker = on)))] : [])),
       ...(halo ? [
         fields(
           field({ words: L('Reach (px)', 'Reichweite (px)') }, num('R', L('How far it lights in the open, in pixels', 'Wie weit es im Freien leuchtet, in Pixeln'), halo.r, 0, 200, (n, v) => (n.halo!.r = v))),
-          field({ words: L('In caves (tiles)', 'In Höhlen (Felder)') }, num('T', L('How far it lights in a cave, in tiles', 'Wie weit es in einer Höhle leuchtet, in Feldern'), halo.tiles, 0, 12, (n, v) => (n.halo!.tiles = v), 0.5)),
+          field({ words: L('In caves (tiles)', 'In Höhlen (Felder)') }, h('span', { class: 'urow' },
+            num('T', L('How far it lights in a cave, in tiles', 'Wie weit es in einer Höhle leuchtet, in Feldern'), halo.tiles, 0, 12, (n, v) => (n.halo!.tiles = v), 0.5),
+            num('%', L('How strong its light is in a cave', 'Wie stark sein Licht in einer Höhle ist'), Math.round(halo.amount * 100), 0, 100, (n, v) => (n.halo!.amount = v / 100), 5))),
         ),
         h('div', { class: 'particles__swatches' },
           swatch(L('A fire\'s orange', 'Feuerorange'), null, !halo.color, () => change((n) => delete n.halo!.color)),
