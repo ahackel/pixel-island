@@ -561,7 +561,6 @@ export function textField(label: string, value: string, change: (value: string) 
   return row;
 }
 
-const MAGNIFIER = ['.xxx...', 'x...x..', 'x...x..', 'x...x..', '.xxxx..', '....xx.', '.....xx'];
 const CROSS = ['x...x', '.x.x.', '..x..', '.x.x.', 'x...x'];
 
 interface WellOptions { value?: string; change: (value: string) => void; done?: (value: string) => void; placeholder?: string; icon?: readonly string[]; clearable?: boolean; width?: number }
@@ -580,15 +579,17 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
   input.title = label;
   const clear = el('button', 'usearch__clear');
   clear.title = clear.ariaLabel = 'Clear';
-  const left = o.icon ? 2 + o.icon[0].length + 3 : 3;
+  let left = 3;
   let canvas: HTMLCanvasElement | null = null;
   let blink: number | undefined;
   const draw = () => {
+    const icon = input.value || document.activeElement === input ? undefined : o.icon;
+    left = icon ? 2 + icon[0].length + 3 : 3; // the icon goes once the field has the focus or text
     const w = o.width ?? Math.max(left + 14, Math.floor(wrap.clientWidth / S));
     const made = pixelCanvas(w, H, S);
     const { ctx } = made;
     panel(ctx, 0, 0, w, H, C.track);
-    if (o.icon) drawRows(ctx, o.icon, 2, Math.floor((H - o.icon.length) / 2), C.ink);
+    if (icon) drawRows(ctx, icon, 2, Math.floor((H - icon.length) / 2), PAINT);
     const crossed = o.clearable && input.value;
     const room = w - left - (crossed ? 11 : 3);
     const shown = input.value.toUpperCase();
@@ -623,7 +624,7 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
 
 /** A search box that stretches over its parent: a small magnifier at the left, a cross to clear at the right. */
 export function searchField(label: string, change: (value: string) => void, value = ''): HTMLElement {
-  return inputWell(label, { change, value, icon: MAGNIFIER, clearable: true });
+  return inputWell(label, { change, value, icon: iconRows('search'), clearable: true });
 }
 
 /**
