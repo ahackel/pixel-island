@@ -318,7 +318,7 @@ const SHADE_STEPS = 4;
  * worked out once: for the many lookups of shadows and of the water surface. Outside the map it is
  * the lowest level.
  */
-function groundOf(map: HeightMap): (i: number, j: number) => number {
+export function groundOf(map: HeightMap): (i: number, j: number) => number {
   const corners = new Float32Array(map.w * map.h * 4);
   for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) corners.set(cornersOf(map, i, j), (j * map.w + i) * 4);
   return (i, j) => {
@@ -714,8 +714,21 @@ export function hiddenByGround(map: HeightMap, image: TerrainImage, x: number, y
 export function hiddenBehind(map: HeightMap, image: TerrainImage, x: number, y: number, diag: number, limit: number): boolean {
   if (x < 0 || y < 0 || x >= image.w || y >= image.h) return false;
   const p = y * image.w + x;
-  const c = image.cell[p];
-  if (c < 0) return false;
-  if ((c % map.w) + Math.floor(c / map.w) <= diag) return false;
-  return Math.max(SEA_LEVEL, image.height[p]) > limit;
+  const { diags, highs } = frontOf(map, image);
+  return diags[p] > diag && highs[p] > limit;
+}
+/** Per pixel of a ground image, its cell's diagonal `i + j` (-Infinity where no cell is) and its height, at least the sea's. */
+const fronts = new WeakMap<TerrainImage, { map: HeightMap; diags: Float64Array; highs: Float64Array }>();
+export function frontOf(map: HeightMap, image: TerrainImage): { diags: Float64Array; highs: Float64Array } {
+  let f = fronts.get(image);
+  if (f?.map !== map) {
+    const diags = new Float64Array(image.cell.length), highs = new Float64Array(image.cell.length);
+    for (let p = 0; p < diags.length; p++) {
+      const c = image.cell[p];
+      diags[p] = c < 0 ? -Infinity : (c % map.w) + Math.floor(c / map.w);
+      highs[p] = Math.max(SEA_LEVEL, image.height[p]);
+    }
+    fronts.set(image, (f = { map, diags, highs }));
+  }
+  return f;
 }

@@ -9,7 +9,7 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, hiddenBehind, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
+  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
@@ -999,8 +999,9 @@ export class World {
       const shadow = t.shadow ?? this.shadowOf(t);
       for (let k = 0; k < shadow.length; k++) {
         const p = shadow[k];
-        const x = (p % g.w) - view.x;
-        const y = Math.floor(p / g.w) - view.y;
+        const gy = Math.floor(p / g.w);
+        const x = p - gy * g.w - view.x;
+        const y = gy - view.y;
         if (x >= 0 && y >= 0 && x < w && y < h && !g.shade[p] && !mask[y * w + x]) {
           mask[y * w + x] = 1;
           const o = (y * w + x) * 4;
@@ -1012,17 +1013,25 @@ export class World {
     t0 = part('shadows', t0);
     const spots = this.trackSpots ? this.spotsOf(view, g) : null;
     if (spots) t0 = part('spots', t0);
+    // `hiddenBehind`, with the ground's per-pixel table looked up once for the frame.
+    const { diags, highs } = frontOf(this.map, g);
+    const behind = (x: number, y: number, diag: number, limit: number) => {
+      const gx = x + view.x, gy = y + view.y;
+      if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) return false;
+      const p = gy * g.w + gx;
+      return diags[p] > diag && highs[p] > limit;
+    };
     for (const t of paintOrder(placed)) {
       // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
       // A wall's pixels stand at heights of their own: none can be hidden if its lowest cannot.
       const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
       const hides = this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
       if (!spots && !t.bases) {
-        stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => hiddenBehind(this.map, g, x + view.x, y + view.y, diag, limit) : undefined);
+        stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => behind(x, y, diag, limit) : undefined);
         continue;
       }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
-        const hidden = hides && hiddenBehind(this.map, g, x + view.x, y + view.y, diag, t.bases ? Math.max(SEA_LEVEL, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
+        const hidden = hides && behind(x, y, diag, t.bases ? Math.max(SEA_LEVEL, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
         if (!hidden && spots) {
           const b = t.box;
           if (b) {
@@ -1163,8 +1172,11 @@ export class World {
     return false;
   }
   private mask = new Uint8Array(0);
+  private hitMask = new Uint8Array(0);
   private shadows = new WeakMap<Picture, Map<string, Int32Array>>();
   private shadowsOf: TerrainImage | null = null;
+  /** `heightAt` on the map, with its cells' corners worked out once per ground. */
+  private groundHeight = (i: number, j: number) => heightAt(this.map, i, j);
 
   /**
    * The ground pixels a thing's shadow falls on. Each pixel of its picture stands upright over its
@@ -1176,6 +1188,7 @@ export class World {
     if (this.shadowsOf !== g) {
       this.shadows = new WeakMap();
       this.shadowsOf = g;
+      this.groundHeight = groundOf(this.map);
     }
     let byPicture = this.shadows.get(t.picture);
     if (!byPicture) this.shadows.set(t.picture, (byPicture = new Map()));
@@ -1187,7 +1200,10 @@ export class World {
 
   private castShadow(t: Thing, byPicture: Map<string, Int32Array>, key: string): Int32Array {
     const g = this.ground;
-    const hit = new Set<number>();
+    // The ground pixels hit, each once, in the order first hit: marked in a mask kept for the next cast.
+    if (this.hitMask.length !== g.w * g.h) this.hitMask = new Uint8Array(g.w * g.h);
+    const marked = this.hitMask, hit: number[] = [];
+    const height = this.groundHeight;
     // The painted pixels, as stamping has them: glowing ones (marked by their alpha) cast no shadow.
     const { n, xy, rgba } = packedOf(t.picture, t.w, t.h);
     // Where each column meets the ground: the foot's row, or lying flat, the column's lowest pixel.
@@ -1203,16 +1219,20 @@ export class World {
       const i = t.spot.i + side + back + up * SHADOW_RUN[0];
       const j = t.spot.j - side + back + up * SHADOW_RUN[1];
       // No shadows off the map, nor on water too deep for them to show.
-      if (!inside(this.map, Math.floor(i), Math.floor(j)) || SEA_LEVEL - heightAt(this.map, i, j) >= SHADOW_DEPTH) continue;
-      const level = standingHeight(this.map, i, j);
-      const at = footOf(g, { i, j, level });
-      if (at.x < 0 || at.y < 0 || at.x >= g.w || at.y >= g.h) continue;
-      const p = at.y * g.w + at.x;
+      if (!inside(this.map, Math.floor(i), Math.floor(j))) continue;
+      const ground = height(i, j);
+      if (SEA_LEVEL - ground >= SHADOW_DEPTH) continue;
+      const level = Math.max(SEA_LEVEL, ground);
+      // footOf, without making a point per pixel.
+      const ax = Math.round(g.origin.x + ((i - j) * TILE_W) / 2), ay = Math.round(g.origin.y + (((i + j) * TILE_H) / 2 - level * LEVEL_PX));
+      if (ax < 0 || ay < 0 || ax >= g.w || ay >= g.h) continue;
+      const p = ay * g.w + ax;
       // Nearer, higher ground drawn over that point hides the shadow there.
       if (Math.abs(Math.max(SEA_LEVEL, g.height[p]) - level) > 0.5) continue;
-      hit.add(p);
+      if (!marked[p]) marked[p] = 1, hit.push(p);
     }
     const pixels = Int32Array.from(hit);
+    for (const p of hit) marked[p] = 0;
     // A walker leaves one entry per spot it stood on: past a few dozen, the oldest goes.
     if (byPicture.size >= 48) byPicture.delete(byPicture.keys().next().value!);
     byPicture.set(key, pixels);

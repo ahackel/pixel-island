@@ -79,7 +79,7 @@ function run(label, frames, things, msOf) {
   console.log(`${label}: ${ms.toFixed(2)} ms/frame (things ${(gather / frames).toFixed(2)}, ${parts}) hash ${hash(last)}`);
 }
 // Silence the per-report table.
-console.table = () => {};
+console.table = process.env.TABLE ? console.table : () => {};
 const n0 = thingsAt(0).length;
 console.log(`${scene.plants.length} plants, ${animals} animals, ${people} people, ${scene.items.length} objects: ${n0} things; view ${view.w}x${view.h}`);
 const only = process.env.ONLY;

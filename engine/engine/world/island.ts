@@ -127,23 +127,32 @@ function pack(picture: Picture, w: number, h: number): Packed {
 /** Paints a picture's pixels, leaving out its ground shadow; `hide` can veto single pixels. Glowing ones are marked by their alpha. */
 export function stamp(image: Pixels, picture: Picture, w: number, h: number, dx: number, dy: number, hide?: (x: number, y: number) => boolean): void {
   const { n, xy, rgba } = packedOf(picture, w, h);
-  const d = image.data;
+  const d = image.data, iw = image.width;
+  // Whole pixels as 32-bit words: an opaque or glowing pixel, or one over nothing, is one write.
+  const px = wordsOf(image), words = new Uint32Array(rgba.buffer, rgba.byteOffset, n);
+  // A picture wholly inside the image needs no pixel kept inside it.
+  const within = dx >= 0 && dy >= 0 && dx + w <= iw && dy + h <= image.height;
   for (let k = 0; k < n; k++) {
     const x = xy[2 * k] + dx;
     const y = xy[2 * k + 1] + dy;
-    if (x < 0 || y < 0 || x >= image.width || y >= image.height) continue;
+    if (!within && (x < 0 || y < 0 || x >= iw || y >= image.height)) continue;
     if (hide?.(x, y)) continue;
-    const r = rgba[4 * k], g = rgba[4 * k + 1], b = rgba[4 * k + 2], a = rgba[4 * k + 3];
-    const o = (y * image.width + x) * 4;
-    if (a === 255 || a === GLOW_ALPHA || d[o + 3] === 0) {
-      d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a === GLOW_ALPHA ? a : Math.max(a, d[o + 3]);
+    const a = rgba[4 * k + 3], q = y * iw + x;
+    if (a === 255 || a === GLOW_ALPHA || px[q] >>> 24 === 0) {
+      px[q] = words[k];
       continue;
     }
-    const t = a / 255;
-    d[o] = Math.round(r * t + d[o] * (1 - t));
-    d[o + 1] = Math.round(g * t + d[o + 1] * (1 - t));
-    d[o + 2] = Math.round(b * t + d[o + 2] * (1 - t));
+    const o = q * 4, t = a / 255;
+    d[o] = Math.round(rgba[4 * k] * t + d[o] * (1 - t));
+    d[o + 1] = Math.round(rgba[4 * k + 1] * t + d[o + 1] * (1 - t));
+    d[o + 2] = Math.round(rgba[4 * k + 2] * t + d[o + 2] * (1 - t));
   }
+}
+const words32 = new WeakMap<Uint8ClampedArray, Uint32Array>();
+function wordsOf(image: Pixels): Uint32Array {
+  let px = words32.get(image.data);
+  if (!px) words32.set(image.data, (px = new Uint32Array(image.data.buffer, image.data.byteOffset, image.data.length >> 2)));
+  return px;
 }
 
 /**
