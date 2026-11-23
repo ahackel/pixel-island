@@ -10,7 +10,7 @@ import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
 import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
 import { heightAt, inside, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
-import { CARRIED, itemPicture, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
+import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
 import { savedProps, type Build } from '../../engine/objects/object.ts';
 import { LOOT } from '../../engine/world/loot.ts';
@@ -512,7 +512,9 @@ function placeItem(at: { i: number; j: number }): void {
   const choice = objectChoices().find((c) => c.id === prefs.item) ?? objectChoices()[0];
   // One of the object editor's goes into the scene with its parts, so the scene stands on its own.
   if (choice.id.startsWith(OWN)) world.scene.objects = { ...world.scene.objects, [choice.id]: choice.prop };
-  world.scene.items.push({ item: choice.id, ...world.toData({ i: at.i + 0.5, j: at.j + 0.5 }), ...(prefs.itemTurn && { turn: prefs.itemTurn }) });
+  const placed: PlacedItem = { item: choice.id, ...world.toData({ i: at.i + 0.5, j: at.j + 0.5 }), ...(prefs.itemTurn && { turn: prefs.itemTurn }) };
+  nameLink(world.scene.items, placed);
+  world.scene.items.push(placed);
 }
 
 /** The way the last prop set down was turned, in eighths: the next one is turned the same way. */
@@ -665,6 +667,7 @@ function duplicate(sel: Selected): Selected | null {
   const copy = structuredClone(sel.obj);
   const list = { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: s.props }[sel.kind as Exclude<Selected['kind'], 'spawn'>] as object[] | undefined;
   if (!list) return null;
+  if (sel.kind === 'item') { const it = copy as PlacedItem; delete it.id; delete it.to; nameLink(s.items, it); } // a copy is another way, not the same one
   list.push(copy);
   return { kind: sel.kind, obj: copy };
 }
@@ -1488,12 +1491,41 @@ function turnItem(it: PlacedItem, step: number): void {
   sceneChanged();
 }
 
+/** The scenes a way can lead to: the editor's own and the project's, by file name, with what each holds that a way can arrive at. */
+function linkTargets(): Map<string, PlacedItem[]> {
+  const out = new Map<string, PlacedItem[]>();
+  for (const p of projectScenes) { try { out.set(p.name, readSceneFile(p.text).items.filter((o) => LINKING.includes(o.item))); } catch { /* a broken file leads nowhere */ } }
+  for (const sc of library.scenes) out.set(slug(sc.name), (sc === sceneNow() ? world.scene : sc).items.filter((o) => LINKING.includes(o.item)));
+  return out;
+}
+
+/** For a hole or ladder: the scene it leads to and the way there it arrives at, and a note when the other end does not lead back. */
+function linkFields(it: PlacedItem): Node {
+  const targets = linkTargets();
+  const here = slug(sceneNow().name);
+  const target = it.to && targets.get(it.to.scene);
+  const there = target?.find((o) => o.id === it.to?.id);
+  const set = (to: PlacedItem['to']) => { remember(); if (to) it.to = to; else delete it.to; sceneChanged(); showOptions(); };
+  const scenes: Option[] = [{ id: '', words: t('link.none') }, ...[...targets.keys()].filter((n) => n !== here || (targets.get(n)?.length ?? 0) > 1).map((n) => ({ id: n, words: n }))];
+  const label = (o: PlacedItem) => `${t(`link.${o.item}` as Key)} ${o.id} (${Math.floor(o.i)}, ${Math.floor(o.j)})`;
+  const ways: Option[] = (target ?? []).filter((o) => o !== it).map((o) => ({ id: o.id!, words: label(o) }));
+  const note = !it.to ? '' : !target ? t('link.gone') : !there ? t('link.nowhere') : there.to?.scene === here && there.to.id === it.id ? '' : t('link.noreturn');
+  return h('div', {},
+    fields(
+      field({ words: t('link.scene') }, choice(t('link.scene'), scenes, () => it.to?.scene ?? '', (n) => set(n ? { scene: n, id: targets.get(n)?.find((o) => o !== it)?.id ?? '' } : undefined), 'list')),
+      ...(it.to && target ? [field({ words: t('link.way') }, choice(t('link.way'), ways, () => it.to?.id ?? null, (id) => set({ scene: it.to!.scene, id }), 'list'))] : []),
+    ),
+    ...(note ? [h('span', { class: 'opts__label' }, note)] : []),
+  );
+}
+
 /** For a selected object: turning it, and for a chest what lies in it. */
 function itemOptions(it: PlacedItem): Node[] {
   const out: Node[] = [h('div', { class: 'urow' },
     pixelButton(`${t('turn.left')} (Q)`, { icon: 'turnleft' }, () => turnItem(it, -1)),
     pixelButton(`${t('turn.right')} (R)`, { icon: 'turnright' }, () => turnItem(it, 1)),
   )];
+  if (LINKING.includes(it.item)) out.push(linkFields(it));
   if (!openFrames(it.item)) return out;
   const lang = currentLang() === 'de' ? 'de' : 'en';
   out.push(h('span', { class: 'opts__label' }, t('chest.loot')), h('div', { class: 'urow' }, ...LOOT.map((l) => {

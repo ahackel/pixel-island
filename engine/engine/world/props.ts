@@ -12,6 +12,9 @@ export const OWN = 'own:';
 /** Objects a character can pick up and carry; the rest stand where they are put. */
 export const CARRIED = ['crate'];
 
+/** The objects that lead to another scene: a hole down to a ladder below, and the ladder back up. */
+export const LINKING = ['ladder', 'hole'];
+
 export interface PlacedItem {
   /** An object preset id, or `OWN` and an id of the scene's own. */
   item: string;
@@ -22,8 +25,20 @@ export interface PlacedItem {
   turn?: number;
   /** What lies in it, for a chest: ids the game knows (see loot.ts). */
   loot?: string[];
+  /** For a way to another scene (see `LINKING`): its name among the scene's links, which the other end names in `to`. */
+  id?: string;
+  /** Where it leads: a scene (its file name) and the `id` of the object there the player arrives at. */
+  to?: { scene: string; id: string };
   /** How far open it is, for one that opens: 0 shut, up to `openFrames`. The game sets it; it is not saved with the scene. */
   open?: number;
+}
+
+/** Gives a way to another scene its name (ladder1, ladder2, ...) if it has none, one no other object of `items` has. */
+export function nameLink(items: readonly PlacedItem[], it: PlacedItem): void {
+  if (!LINKING.includes(it.item) || it.id) return;
+  let n = 1;
+  while (items.some((o) => o.id === `${it.item}${n}`)) n++;
+  it.id = `${it.item}${n}`;
 }
 
 /** The prop an object is drawn from: a preset, or one of the scene's own. */

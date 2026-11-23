@@ -11,7 +11,7 @@ import { cleanAnimal, savedAnimals, type Animal } from '../animals/animal.ts';
 import { PRESETS } from '../animals/animal-presets.ts';
 import { cleanState, defaultState, loadRoster, type State } from '../character/character.ts';
 import { decorById, type PlacedDecor } from './decor.ts';
-import { OWN, propOf, type PlacedItem } from './props.ts';
+import { LINKING, nameLink, OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
 import { createHeightMap, generateIsland, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, type HeightMap } from './terrain.ts';
@@ -256,7 +256,11 @@ export function cleanScene(input: unknown): Scene {
       item: it.item, i: num(it.i, 0, w, w / 2), j: num(it.j, 0, h, h / 2),
       ...(it.turn && { turn: Math.round(num(it.turn, 0, 3, 0)) }),
       ...(Array.isArray(it.loot) && it.loot.length && { loot: it.loot.filter((l: unknown) => typeof l === 'string').slice(0, 20) }),
+      ...(LINKING.includes(it.item) && typeof it.id === 'string' && it.id && { id: it.id.slice(0, 24) }),
+      ...(LINKING.includes(it.item) && it.to && typeof it.to.scene === 'string' && typeof it.to.id === 'string' && it.to.scene && { to: { scene: it.to.scene.slice(0, 60), id: it.to.id.slice(0, 24) } }),
     }));
+  // A way to another scene is always named, so the other end can point at it; a name given here is kept once saved.
+  for (const it of items) nameLink(items, it);
   // What the scene brought along first, so its props are known when they are checked.
   useCarried(s.carried);
   const props = (Array.isArray(s.props) ? s.props : []).map((p) => cleanPlacedProp(p, w, h)).filter((p): p is PlacedProp => !!p);
