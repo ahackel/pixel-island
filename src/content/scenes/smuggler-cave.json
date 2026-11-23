@@ -2,7 +2,7 @@
  "type": "pixel-scene",
  "version": 1,
  "scene": {
-  "id": "smuggler-cave",
+  "id": "o3cbtbi1",
   "name": "Smuggler cave",
   "w": 14,
   "h": 14,
@@ -429,16 +429,16 @@
    },
    {
     "plant": "plant-rocks-8",
-    "i": 4.63,
-    "j": 4.52,
+    "i": 4.565504399839203,
+    "j": 4.438501466613068,
     "seed": 0,
     "size": 0.8,
     "turn": 7
    },
    {
     "plant": "plant-rocks-6",
-    "i": 5.36,
-    "j": 6.58,
+    "i": 5.376938322476905,
+    "j": 6.626938322476905,
     "seed": 3,
     "size": 1,
     "turn": 4
@@ -508,9 +508,23 @@
    {
     "name": "Skeleton",
     "state": {
-     "skeleton": true,
-     "hair": null,
+     "skin": "skinB",
+     "build": "slim",
+     "frame": "m",
      "wear": 0,
+     "mood": "happy",
+     "face": {
+      "eyes": "round",
+      "eyeColor": null,
+      "brows": "none",
+      "blush": true,
+      "freckles": false,
+      "glasses": false,
+      "lashes": false
+     },
+     "hair": null,
+     "hairColor": "hairBrown",
+     "beardColor": null,
      "worn": {
       "top": null,
       "bottom": null,
@@ -518,18 +532,62 @@
       "hat": null,
       "beard": null,
       "tool": null
-     }
+     },
+     "colors": {},
+     "ground": "sand",
+     "skeleton": true
     },
-    "i": 4.5,
-    "j": 5.5,
+    "i": 4.4990234375,
+    "j": 5.5009765625,
     "turn": 0,
     "pose": {
      "clip": "sit",
      "frame": 0
     }
+   },
+   {
+    "name": "Skeleton",
+    "state": {
+     "skin": "skinB",
+     "build": "slim",
+     "frame": "m",
+     "wear": 0,
+     "mood": "happy",
+     "face": {
+      "eyes": "round",
+      "eyeColor": null,
+      "brows": "none",
+      "blush": true,
+      "freckles": false,
+      "glasses": false,
+      "lashes": false
+     },
+     "hair": null,
+     "hairColor": "hairBrown",
+     "beardColor": null,
+     "worn": {
+      "top": null,
+      "bottom": null,
+      "shoes": null,
+      "hat": null,
+      "beard": null,
+      "tool": null
+     },
+     "colors": {},
+     "ground": "sand",
+     "skeleton": true
+    },
+    "i": 3.241424560546875,
+    "j": 8.785919189453125,
+    "turn": 0,
+    "pose": {
+     "clip": "lie",
+     "frame": 0
+    }
    }
   ],
   "items": [],
+  "props": [],
   "spawn": {
    "i": 8.5,
    "j": 8.5

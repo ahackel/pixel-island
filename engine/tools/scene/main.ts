@@ -32,7 +32,7 @@ import { PRESETS } from '../../engine/animals/animal-presets.ts';
 import { ocean } from '../../engine/world/ocean.ts';
 import { plantName } from '../flora/i18n.ts';
 import { roundBrush } from '../../shared/brush.ts';
-import { h, topBar, word } from '../../shared/shell.ts';
+import { h, nameTag, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
 
@@ -648,6 +648,27 @@ const EXIT_MARK: Picture = {
 type Selected = { kind: 'plant' | 'decor' | 'animal' | 'person' | 'item' | 'prop' | 'spawn'; obj: { i: number; j: number } };
 let selected: Selected | null = null;
 
+/** Takes a placed thing out of the scene. */
+function removeObject(gone: object): void {
+  const s = world.scene;
+  s.plants = s.plants.filter((p) => p !== gone);
+  s.decor = s.decor.filter((d) => d !== gone);
+  s.animals = s.animals.filter((a) => a !== gone);
+  s.people = s.people.filter((p) => p !== gone);
+  s.items = s.items.filter((it) => it !== gone);
+  s.props = (s.props ?? []).filter((p) => p !== gone);
+}
+
+/** A copy of a placed thing, in the scene at the same place (the flag cannot be copied). */
+function duplicate(sel: Selected): Selected | null {
+  const s = world.scene;
+  const copy = structuredClone(sel.obj);
+  const list = { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: s.props }[sel.kind as Exclude<Selected['kind'], 'spawn'>] as object[] | undefined;
+  if (!list) return null;
+  list.push(copy);
+  return { kind: sel.kind, obj: copy };
+}
+
 /** The placed thing under a ground-image pixel, the front-most; decorations lie flat, so they come last. */
 function objectAt(x: number, y: number): Selected | null {
   const s = world.toView(world.scene.spawn);
@@ -905,14 +926,8 @@ window.addEventListener('keydown', (e) => {
   if (prefs.mode === 'play' && e.code === 'KeyE') emote('wave');
   if (prefs.mode === 'play' && e.code === 'KeyF') emote('use');
   if (prefs.mode === 'edit' && selected && selected.kind !== 'spawn' && (e.code === 'Delete' || e.code === 'Backspace')) {
-    const gone = selected.obj;
     remember();
-    world.scene.plants = world.scene.plants.filter((p) => p !== gone);
-    world.scene.decor = world.scene.decor.filter((d) => d !== gone);
-    world.scene.animals = world.scene.animals.filter((a) => a !== gone);
-    world.scene.people = world.scene.people.filter((p) => p !== gone);
-    world.scene.items = world.scene.items.filter((it) => it !== gone);
-    world.scene.props = (world.scene.props ?? []).filter((p) => p !== gone);
+    removeObject(selected.obj);
     selected = null;
     sceneChanged();
     showOptions();
@@ -943,7 +958,7 @@ function keyDirection(): [number, number] {
 type Gesture =
   | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; tile?: { i: number; j: number }; at: number }
   | { kind: 'walk' }
-  | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number } }
+  | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true }
   | { kind: 'pan'; x: number; y: number; cam: { x: number; y: number } }
   | { kind: 'pinch'; dist: number; zoom: number; mid: { x: number; y: number }; cam: { x: number; y: number } };
 let gesture: Gesture | null = null;
@@ -1010,13 +1025,16 @@ canvas.addEventListener('pointerdown', (e) => {
     else if (prefs.mode === 'edit' && prefs.tool === 'move') {
       const p = groundPixel(e);
       selected = objectAt(p.x, p.y);
+      // Shift-drag drags a copy and leaves the original where it is.
+      const copy = e.shiftKey && selected ? duplicate(selected) : null;
+      if (copy) selected = copy;
       version++;
       showOptions();
       if (selected) {
         const v = world.toView(selected.obj);
         const foot = world.screenOf(v.i, v.j);
         remember();
-        gesture = { kind: 'move', sel: selected, grab: { x: p.x - foot.x, y: p.y - foot.y }, from: { ...selected.obj } };
+        gesture = { kind: 'move', sel: selected, grab: { x: p.x - foot.x, y: p.y - foot.y }, from: { ...selected.obj }, ...(copy && { copy: true }) };
       } else gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
     } else if (prefs.mode === 'edit') {
       remember();
@@ -1052,7 +1070,12 @@ canvas.addEventListener('pointermove', (e) => {
 });
 const release = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
-  if (gesture?.kind === 'move' && !canStand(gesture.sel, world.toView(gesture.sel.obj))) {
+  if (gesture?.kind === 'move' && gesture.copy && (gesture.sel.obj.i === gesture.from.i && gesture.sel.obj.j === gesture.from.j || !canStand(gesture.sel, world.toView(gesture.sel.obj)))) {
+    // A copy that was not dragged anywhere, or dropped where it cannot stand, is not made.
+    removeObject(gesture.sel.obj);
+    selected = null;
+    sceneChanged();
+  } else if (gesture?.kind === 'move' && !canStand(gesture.sel, world.toView(gesture.sel.obj))) {
     Object.assign(gesture.sel.obj, gesture.from);
     sceneChanged();
   }
@@ -1170,9 +1193,9 @@ function frame(ms: number): void {
     const blocked = prefs.mode === 'edit' && !!hover && cannotEdit(hover);
     let highlight = prefs.mode === 'edit' && hover ? { cells: new Set(brushCells(hover)), color: blocked ? '#e0332e99' : '#ffffff66' } : undefined;
     if (prefs.mode === 'edit' && prefs.tool === 'move') {
-      // The Move tool marks the tile of what it holds, red where it may not stay.
+      // Objects are not tied to a tile, so the Move tool marks one only where what it holds may not stay.
       const v = selected && world.toView(selected.obj);
-      highlight = v ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: canStand(selected!, v) ? '#ffd84a99' : '#e0332e99' } : undefined;
+      highlight = v && !canStand(selected!, v) ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: '#e0332e99' } : undefined;
     }
     canvas.style.cursor = prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
     let t0 = part('things', begun);
@@ -1313,6 +1336,9 @@ function itemThumb(id: string, prop: Build): HTMLCanvasElement {
 }
 
 const barSlot = h('div', { style: 'display: contents' });
+/** The scene's name in the bar: type to rename. */
+const name = nameTag();
+name.onRename((n) => { sceneNow().name = n.slice(0, 40); sceneChanged(); render(); });
 /** What the character can do in Play, as buttons floating over the scene: the emotes, or putting down what it holds. */
 const actions = h('div', { class: 'actions' });
 const EMOTE_ICONS: Record<Emote, string> = { wave: 'hand', use: 'hammer' };
@@ -1329,7 +1355,7 @@ const dock = h('nav', { class: 'ubox__in toolbar' });
 /** The tools float over the scene in a pixel box (rounded corners, like every floating panel). */
 const dockBox = h('div', { class: 'ubox toolwrap' }, dock);
 /** The inspector: the tool's options while editing, and what the selected object lets you change. */
-const inspector = sidePanel('right', 'pixel-scene-inspector', 280);
+const inspector = sidePanel('right', 'pixel-scene-inspector', 384);
 const inspect = () => inspector.body.replaceChildren(...(prefs.mode === 'edit' ? [h('div', { class: 'opts__body' }, ...editOptions())] : []));
 /** A button to another editor. */
 const link = (href: string, label: string) => pixelButton(label, { icon: 'pencil' }, () => { location.href = href; });
@@ -1447,35 +1473,34 @@ function selectionOptions(sel: Selected): Node[] {
     spawn: () => t('tool.spawn'),
   }[sel.kind]();
   const num = (face: { icon?: string; words?: string }, tip: string, value: number, change: (n: number) => void, min: number, max: number, step = 1) =>
-    numberField({ ...face, tip }, value, change, { min, max, step, width: 46 });
+    numberField({ ...face, tip }, value, change, { min, max, step, width: 28 });
   const half = (v: number) => Math.round(v * 2) / 2;
+  /** A slider over whole steps 0 to `max`, with the number beside it. */
+  const steps = (label: string, value: number, max: number, change: (n: number) => void) =>
+    pixelSlider(label, value / max, (v) => { const n = Math.round(v * max); if (n !== value) { value = n; change(n); } }, 56, (v) => String(Math.round(v * max)));
   const out: Node[] = [
     h('div', { class: 'opts__head' }, iconPicture(KIND_ICON[sel.kind]), h('b', {}, title)),
-    h('span', { class: 'opts__label' }, t(`tool.${sel.kind === 'spawn' ? 'spawn' : sel.kind}` as Key)),
-    h('div', { class: 'urow' },
-      num({ words: 'X' }, t('sel.x'), half(o.i), (n) => moveTo(sel, n, o.j), 0, world.map.w, 0.5),
-      num({ words: 'Y' }, t('sel.y'), half(o.j), (n) => moveTo(sel, o.i, n), 0, world.map.h, 0.5)),
+    h('span', { class: 'opts__label' }, t(`tool.${sel.kind}` as Key)),
   ];
-  const rows: Node[] = [];
-  if (sel.kind === 'plant' || sel.kind === 'prop') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.turn, (n) => edit(() => (o.turn = n)), 0, 7));
-  if (sel.kind === 'person') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.turn, (n) => edit(() => (o.turn = n)), 0, 3));
-  if (sel.kind === 'animal') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.facing, (n) => edit(() => (o.facing = n)), 0, 7));
-  if (sel.kind === 'plant') rows.push(num({ icon: 'shapes' }, t('sel.variant'), o.seed, (n) => edit(() => (o.seed = n)), 0, SEEDS - 1));
-  if (sel.kind === 'prop') {
-    const kind = propKind(o.kind);
-    if (kind && variantsOf(kind) > 1) rows.push(num({ icon: 'shapes' }, t('sel.variant'), o.seed, (n) => edit(() => (o.seed = n)), 0, variantsOf(kind) - 1));
-  }
-  if (sel.kind === 'plant' || sel.kind === 'prop') rows.push(num({ icon: 'zoomin' }, t('sel.size'), Math.round(o.size * 100), (n) => edit(() => (o.size = n / 100)), 50, 200, 5));
-  if (rows.length) out.push(h('div', { class: 'urow' }, ...rows));
-  if (sel.kind === 'item') out.push(...itemOptions(o as PlacedItem));
+  const rows: Node[] = [field({ words: t('sel.position') }, h('div', { class: 'urow' },
+    num({ words: 'X' }, t('sel.x'), half(o.i), (n) => moveTo(sel, n, o.j), 0, world.map.w, 0.5),
+    num({ words: 'Y' }, t('sel.y'), half(o.j), (n) => moveTo(sel, o.i, n), 0, world.map.h, 0.5)))];
+  const turn = (max: number, key: 'turn' | 'facing') => rows.push(field({ words: t('sel.turn') }, steps(t('sel.turn'), o[key], max, (n) => edit(() => (o[key] = n)))));
+  if (sel.kind === 'plant' || sel.kind === 'prop') turn(7, 'turn');
+  if (sel.kind === 'person') turn(3, 'turn');
+  if (sel.kind === 'animal') turn(7, 'facing');
+  const variants = sel.kind === 'plant' ? SEEDS : sel.kind === 'prop' ? variantsOf(propKind(o.kind)!) : 1;
+  if (variants > 1) rows.push(field({ words: t('sel.variant') }, steps(t('sel.variant'), o.seed, variants - 1, (n) => edit(() => (o.seed = n)))));
+  // Foliage keeps the size it grew to; other props can be scaled.
+  if (sel.kind === 'prop' && propKind(o.kind)?.place !== 'plant') rows.push(field({ words: t('sel.size') }, num({ icon: 'zoomin' }, t('sel.size'), Math.round(o.size * 100), (n) => edit(() => (o.size = n / 100)), 50, 200, 5)));
   if (sel.kind === 'person') {
     const poses: Option[] = [{ id: '', words: t('pose.alive') }, ...Object.entries(AUTHORED).map(([id, clip]) => ({ id, words: clip.name }))];
     const frames = AUTHORED[o.pose?.clip]?.frames.length ?? 0;
-    out.push(fields(
-      field({ words: t('pose') }, choice(t('pose'), poses, () => o.pose?.clip ?? '', (clip) => { edit(() => (clip ? (o.pose = { clip, frame: 0 }) : delete o.pose)); showOptions(); }, 'list')),
-      ...(frames < 2 ? [] : [field({ words: t('pose.frame') }, num({ words: '#' }, t('pose.frame'), o.pose.frame, (n) => edit(() => (o.pose.frame = n)), 0, frames - 1))]),
-    ));
+    rows.push(field({ words: t('pose') }, choice(t('pose'), poses, () => o.pose?.clip ?? '', (clip) => { edit(() => (clip ? (o.pose = { clip, frame: 0 }) : delete o.pose)); showOptions(); }, 'list')));
+    if (frames > 1) rows.push(field({ words: t('pose.frame') }, steps(t('pose.frame'), o.pose.frame, frames - 1, (n) => edit(() => (o.pose.frame = n)))));
   }
+  out.push(fields(...rows));
+  if (sel.kind === 'item') out.push(...itemOptions(o as PlacedItem));
   return out;
 }
 
@@ -1549,6 +1574,7 @@ function set(change: Partial<Prefs>): void {
 }
 
 function render(): void {
+  name.set(sceneNow().name, t('scene.first'));
   // A tool the scene has no use for (raising the ground of a cave, say) gives way to Move.
   if (!toolsHere().includes(prefs.tool)) prefs.tool = 'move';
   const other = prefs.mode === 'edit' ? 'play' : 'edit';
@@ -1558,7 +1584,7 @@ function render(): void {
     tool: 'scene',
     title: word('scene'),
     about: [t('hint.edit'), t('hint.play')],
-    things: choice(word('scene'), library.scenes.map((s) => ({ id: s.id, words: s.name })), () => library.current, (id) => switchTo(library.scenes.find((s) => s.id === id)!), 'list', 60, true),
+    name: name.el,
     more: [
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
@@ -1667,9 +1693,27 @@ const projectScenes = Object.entries(import.meta.glob('/src/content/scenes/*.jso
   .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data) }));
 /** The scenes of the editor, then the project's own that the editor has not opened yet (a tap on one opens a copy of it). */
 const sceneTiles = () => [
-  ...library.scenes.map((s) => ({ id: s.id, words: s.name })),
-  ...projectScenes.filter((p) => !library.scenes.some((s) => slug(s.name) === p.name)).map((p) => ({ id: `file:${p.name}`, words: p.name })),
+  ...library.scenes.map((s) => ({ id: s.id, words: s.name, picture: sceneThumb(s) })),
+  ...projectScenes.filter((p) => !library.scenes.some((s) => slug(s.name) === p.name)).map((p) => {
+    let picture: HTMLCanvasElement | undefined;
+    try { picture = sceneThumb(readSceneFile(p.text)); } catch { /* a broken file shows its name */ }
+    return { id: `file:${p.name}`, words: p.name, picture };
+  }),
 ];
+/** A scene seen from above, one pixel per tile by its height, plants as dark dots. */
+function sceneThumb(s: Scene): HTMLCanvasElement {
+  const c = h('canvas', { width: String(s.w), height: String(s.h) });
+  const g = c.getContext('2d')!;
+  const im = g.createImageData(s.w, s.h);
+  const put = (i: number, rgb: number[]) => { im.data.set([...rgb, 255], i * 4); };
+  s.levels.forEach((l, i) => put(i, l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
+  for (const p of s.plants) { const i = Math.floor(p.j) * s.w + Math.floor(p.i); if (i >= 0 && i < s.w * s.h) put(i, [40, 90, 50]); }
+  g.putImageData(im, 0, 0);
+  const k = 52 / Math.max(s.w, s.h);
+  c.style.width = `${s.w * k}px`;
+  c.style.height = `${s.h * k}px`;
+  return c;
+}
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
 for (const p of projectScenes) {
   try { projectCanon.set(p.name, canon(readSceneFile(p.text))); } catch { /* a broken file counts as not saved */ }

@@ -66,6 +66,8 @@ export interface Pose {
    * quarter onto the floor, its feet left or right on the screen as the character faces (see `lying`).
    */
   lie?: boolean;
+  /** Lying face down (only with `lie`), unless `options.lying` says otherwise. */
+  down?: boolean;
   /** The head turned this many eighths of a turn to the character's left (negative: right), at most one. */
   look?: number;
   /**
@@ -314,6 +316,8 @@ function bodyRows(standing: Sprite): { top: number; bottom: number; middle: numb
 
 /** Facings whose feet point left on the screen, lying; the rest point right. */
 const FEET_LEFT = new Set<Facing>([1, 2, 5, 6]);
+/** Facings that turn away from the camera. */
+const BACK_FACINGS = new Set<Facing>([2, 3, 6]);
 
 /**
  * A figure lying, whatever its facing: drawn in a three-quarter view (front unless `options.lying`
@@ -323,7 +327,9 @@ const FEET_LEFT = new Set<Facing>([1, 2, 5, 6]);
 function lying(look: Look, pose: Pose, facing: Facing, options: DrawOptions): Sprite {
   // The hat comes off: lying, its brim would stand up off the floor like a board.
   const bare = { ...look, items: look.items.filter((it) => it.slot !== 'hat') };
-  const out = laidDown(drawFigure(bare, { ...pose, lie: false }, options.lying?.back ? 3 : 0, options), !!options.lying?.down);
+  // Facing away from the camera it is seen from behind, so turning a lying figure shows its back on that side.
+  const back = options.lying?.back ?? BACK_FACINGS.has(facing);
+  const out = laidDown(drawFigure(bare, { ...pose, lie: false }, back ? 3 : 0, options), options.lying?.down ?? !!pose.down);
   return FEET_LEFT.has(facing) ? out.mirrored() : out;
 }
 

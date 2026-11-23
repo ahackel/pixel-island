@@ -143,6 +143,7 @@ const waveFrames: Pose[] = [-0.6, 0.6, 1.8, 0.6].map((sway) => {
 // arms at the sides; the renderer lays the figure down. Both only blink.
 const SIT = buildPose({ bob: -9, legL: { swing: 90, out: 4 }, legR: { swing: 90, out: 4 }, armL: { swing: 35, bend: 25 }, armR: { swing: 35, bend: 25 } });
 const LIE: Pose = { ...buildPose({ armL: { swing: 0, out: 8 }, armR: { swing: 0, out: 8 }, legL: { swing: 0, out: 3 }, legR: { swing: 0, out: 3 } }), lie: true };
+const LIE_DOWN: Pose = { ...LIE, down: true };
 // Sitting down: bend the knees into a crouch leaning forward, drop onto the seat with the knees
 // up, then stretch the legs out. Each bob keeps the feet near the ground. Standing up is the same
 // played backwards.
@@ -182,6 +183,7 @@ export const AUTHORED: Record<string, Clip> = {
   sit: { name: 'Sit', ...resting(SIT) },
   standUp: { name: 'Stand up', rate: 8, frames: [...SIT_DOWN].reverse() },
   lie: { name: 'Lie', ...resting(LIE) },
+  lieFace: { name: 'Lie face-down', ...resting(LIE_DOWN) },
   // Lying down from sitting and sitting up again: straight from one to the other, held a moment.
   lieDown: { name: 'Lie down', rate: 6, frames: [LIE] },
   sitUp: { name: 'Sit up', rate: 6, frames: [LIE] },
