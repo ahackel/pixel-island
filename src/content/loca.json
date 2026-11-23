@@ -47,6 +47,10 @@
   "en": "A crate from the ship. Shut tight — a stone in my hand might smash it.",
   "de": "Eine Kiste vom Schiff. Fest verschlossen — mit einem Stein in der Hand könnte ich sie zerschlagen."
  },
+ "think.notSaved": {
+  "en": "This browser will not keep my game. Once the page is closed, my days here are gone.",
+  "de": "Dieser Browser behält mein Spiel nicht. Wird die Seite geschlossen, sind meine Tage hier verloren."
+ },
  "think.full": {
   "en": "My bag is full. I could drag something out of it onto the sand.",
   "de": "Mein Beutel ist voll. Ich könnte etwas herausziehen und in den Sand legen."

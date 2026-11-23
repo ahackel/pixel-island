@@ -36,16 +36,17 @@ import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
 import { wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
-import { BAG_SLOTS, clearGame, loadGame, saveGame, type Game, type Lying } from './save.ts';
+import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
-import { advance, KINDS, next, QUESTS, startProgress, stonesOut, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
+import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, lacking, recipeFor, takeFrom, without, type BagItem, type Build, type BuildKind } from './crafts.ts';
+import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
+import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -77,9 +78,6 @@ const saves = () => !TRYOUT && !ISLAND2 && !SCENE_TRY;
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
-/** How many sticks, and pieces of driftwood, the sea leaves lying on the beach at most. */
-const WOOD_LYING = 4;
-const DRIFT_LYING = 3;
 /** How many fish swim round the island; the ones caught are back by the next morning. */
 const FISH_COUNT = 14;
 /** How near a fish must swim to be speared, in metres. */
@@ -116,6 +114,8 @@ island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
 const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
 const palms = [...islandScene.plants];
+/** The island's fingerprint, kept in the save, so a save of another island (one edited since) is not loaded onto this one. */
+const ISLAND_ID = islandId(islandScene.levels, palms);
 /** The tall palms can be felled and draw lightning; the sapling is too small. */
 const tall = (k: number) => palms[k].plant !== 'plant-palms-2';
 /** Shows (and lets block the way) only the palms not cut down. */
@@ -168,7 +168,7 @@ function newGame(who = firstWho()): Game {
   if (side) for (let d = 0.05; d < 1.5 && !(dry(sideways(at, side, ends)) && dry(sideways(at, -side, ends))); d += 0.05) at = sideways(shore, -side, d);
   if (!dry(at)) at = { ...shore };
   // The hat came off in the sea and lies on the sand beyond their head.
-  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(at, 0.6, 0.3);
+  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(isle, at, 0.6, 0.3);
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
   const quest: Progress = { ...startProgress(), quest: START_QUEST };
   const g: Game = {
@@ -177,59 +177,15 @@ function newGame(who = firstWho()): Game {
   };
   if (ISLAND2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
-  for (let n = 0; n < 2; n++) dropCoconuts(g);
-  washWood(g);
-  washWood(g);
+  for (let n = 0; n < 2; n++) dropCoconuts(isle, g);
+  washWood(isle, g);
+  washWood(isle, g);
   // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
   for (let k = 0; k <= START_QUEST; k++) {
-    bring(g, k);
+    bring(isle, g, k);
     if (QUESTS[k].strike && k < START_QUEST) burnPalm(g, at);
   }
   return g;
-}
-
-/** What a quest brings as it starts: its wash-ups and stones (its lightning waits for the morning's thought to be read). */
-function bring(g: Game, k: number): void {
-  const q = QUESTS[k];
-  for (let n = 0; n < (q.stones ?? 0); n++) layStone(g);
-  washUp(g, q.washUps ?? []);
-}
-
-/** How many stones there should always be on the island, once a quest has brought them. */
-const STONES_OUT = 2;
-/** The stones to be found: those lying about and those in the bag (the one in a spear or axe is used up). */
-const stonesAbout = (g: Game) => lyingCount(g, 'stone') + g.bag.filter((it) => it === 'stone').length;
-/** How many of a thing lie on the ground. */
-const lyingCount = (g: Game, item: BagItem) => g.lying.filter((l) => l.item === item).length;
-/** Lays a thing on the ground at a spot. */
-const lay = (g: Game, item: BagItem, at: { i: number; j: number }) => g.lying.push({ item, i: at.i, j: at.j });
-/** A stone on the beach; the sea lays more each morning until there are STONES_OUT again. */
-function layStone(g: Game): void {
-  if (beach.length) lay(g, 'stone', onBeach());
-}
-
-/** A coconut falls from a palm, near its foot, never more than three under one; a burnt palm has none left. */
-function dropCoconuts(g: Game): void {
-  const bearing = palms.filter((p, k) => k !== g.struck && !g.felled.includes(k) && g.lying.filter((c) => c.item === 'coconut' && Math.hypot(c.i - p.i, c.j - p.j) < 1.8).length < 3);
-  if (!bearing.length) return;
-  for (const c of spotsNear(bearing[Math.floor(Math.random() * bearing.length)], 1, 0.7, 0.6, 20)) lay(g, 'coconut', c);
-}
-
-/** A random spot `r` to `r + span` metres from a point, if it is dry and clear of the palms' trunks. */
-function spotNear(p: { i: number; j: number }, r: number, span: number): { i: number; j: number } | null {
-  const a = Math.random() * Math.PI * 2;
-  const d = r + Math.random() * span;
-  const c = { i: p.i + Math.cos(a) * d, j: p.j + Math.sin(a) * d };
-  return dry(c) && !palms.some((q) => Math.hypot(q.i - c.i, q.j - c.j) < 0.6) ? c : null;
-}
-/** Up to `n` such spots (see `spotNear`), in at most `tries` tries. */
-function spotsNear(p: { i: number; j: number }, n: number, r: number, span: number, tries = 40): { i: number; j: number }[] {
-  const out: { i: number; j: number }[] = [];
-  for (let k = 0; k < tries && out.length < n; k++) {
-    const c = spotNear(p, r, span);
-    if (c) out.push(c);
-  }
-  return out;
 }
 
 /** Whether a spot is on land, above the water (off the map is sea). */
@@ -237,33 +193,16 @@ const dry = (p: { i: number; j: number }) => isLand(world.map, Math.floor(p.i), 
 
 const beach: { i: number; j: number }[] = [];
 for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) if (surfaceAt(world.map, i, j) === 'beach') beach.push({ i: i + 0.5, j: j + 0.5 });
-/** Somewhere on the beach, anywhere in its tile. */
-const onBeach = () => {
-  // The shore runs through the beach tiles: only a spot whose ground is above the water, so what lies there is seen.
-  let at = { i: 0, j: 0 };
-  for (let n = 0; n < 50; n++) {
-    const b = beach[Math.floor(Math.random() * beach.length)];
-    at = { i: b.i - 0.3 + Math.random() * 0.6, j: b.j - 0.3 + Math.random() * 0.6 };
-    if (heightAt(world.map, at.i, at.j) > SEA_LEVEL + 0.1) break;
-  }
-  return at;
+/** The island's ground for the rules in shore.ts. */
+const isle: Shore = {
+  beach,
+  palms,
+  dry: (p) => isLand(island.map, Math.floor(p.i), Math.floor(p.j)),
+  aboveWater: (p) => heightAt(island.map, p.i, p.j) > SEA_LEVEL + 0.1,
+  surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
+  random: Math.random,
 };
-/** What the sea brings: the items given. */
-function washUp(g: Game, items: string[]): void {
-  if (!beach.length) return;
-  // A crate stands on the beach; the small things lie there to be picked up.
-  for (const item of items) {
-    if (isLoose(item)) lay(g, item, onBeach());
-    else g.items.push({ item, ...onBeach() });
-  }
-}
-/** Each morning the sea leaves a stick or two and a piece of driftwood, dry by the time they are found. */
-function washWood(g: Game): void {
-  for (let n = 0; n < 2 && lyingCount(g, 'wood') < WOOD_LYING && beach.length; n++) lay(g, 'wood', onBeach());
-  if (beach.length && lyingCount(g, 'drift') < DRIFT_LYING) lay(g, 'drift', onBeach());
-}
-
-const saved = params.has('new') || !saves() ? null : loadGame(scene.w, palms.length);
+const saved = params.has('new') || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
@@ -701,7 +640,7 @@ function reach(goal: Goal): void {
 function startQuest(p: Progress): string {
   game.quest = p;
   game.weather = kindFor(p.quest, game.day);
-  bring(game, p.quest);
+  bring(isle, game, p.quest);
   if (questNow().strike) strikeNow = true;
   showQuest();
   return questNow().thought;
@@ -715,7 +654,6 @@ const kindTomorrow = () => {
 };
 
 function startNew(who: State): void {
-  if (!TRYOUT) clearGame();
   game = newGame(who);
   present = true;
   veilDay = 0;
@@ -734,7 +672,8 @@ function startNew(who: State): void {
   ended = null;
   questShown = '';
   showQuest();
-  if (saves()) saveGame(game);
+  // The new game replaces the old save at once, but with `?new` only from its first sleep.
+  if (!params.has('new')) store();
   hold(null);
 }
 
@@ -1176,7 +1115,7 @@ function catchCrab(crab: Crab): void {
 function openCrate(crate: PlacedItem, smashed: boolean): void {
   actor.emote('use', performance.now());
   game.items.splice(game.items.indexOf(crate), 1);
-  const beside = () => spotNear(crate, 0.4, 0.5) ?? { i: crate.i, j: crate.j };
+  const beside = () => spotNear(isle, crate, 0.4, 0.5) ?? { i: crate.i, j: crate.j };
   lay(game, 'rope', beside());
   // Smashed, its boards are driftwood to build with, and splinters fly.
   if (smashed) for (let n = 0; n < 2; n++) lay(game, 'drift', beside());
@@ -1191,7 +1130,7 @@ function fell(k: number): void {
   actor.emote('use', performance.now());
   game.felled.push(k);
   keepStanding();
-  for (const at of spotsNear(palms[k], 2, 0.3, 0.8)) {
+  for (const at of spotsNear(isle, palms[k], 2, 0.3, 0.8)) {
     lay(game, 'log', at);
     reach('log');
   }
@@ -1201,19 +1140,8 @@ function fell(k: number): void {
 
 /** The hut or raft, as far as it is built. */
 const buildOf = (kind: BuildKind) => game.builds.find((b) => b.kind === kind);
-/** How near the hut's middle the survivor builds it, in metres: inside it or just outside its walls. */
-const HUT_REACH = 2.2;
-/** The hut (at its fixed place) or raft that could be built (or built further) right here with what is in the bag. */
-function buildable(kind: BuildKind): Build | 'new' | null {
-  const b = buildOf(kind);
-  if (finished(b) || lacking(kind, b?.stage ?? 0, game.bag).length) return null;
-  if (kind === 'hut') return Math.hypot(HUT_AT.i - actor.i, HUT_AT.j - actor.j) <= HUT_REACH ? b ?? 'new' : null;
-  if (b) return Math.hypot(b.i - actor.i, b.j - actor.j) <= 1.5 ? b : null;
-  const surface = surfaceAt(world.map, Math.floor(actor.i), Math.floor(actor.j));
-  const fits = BUILDS[kind].on === 'beach' ? surface === 'beach' : dry(actor) && surface !== 'beach';
-  const clear = !palms.some((q, k) => !game.felled.includes(k) && Math.hypot(q.i - actor.i, q.j - actor.j) < 1.2) && !game.builds.some((o) => Math.hypot(o.i - actor.i, o.j - actor.j) < 2);
-  return fits && clear ? 'new' : null;
-}
+/** The hut or raft that could be built (or built further) right here with what is in the bag; none in the cave. */
+const buildable = (kind: BuildKind) => (inCave() ? null : buildSpot(isle, game, kind, actor));
 function build(kind: BuildKind): void {
   const b = buildable(kind);
   if (!b || paused || sleeping || ended) return;
@@ -1318,7 +1246,7 @@ function burnPalm(g: Game, near: { i: number; j: number }): boolean {
   });
   if (best < 0) return false;
   g.struck = best;
-  for (const twig of spotsNear(palms[best], 3, 0.8, 0.9)) lay(g, 'wood', twig);
+  for (const twig of spotsNear(isle, palms[best], 3, 0.8, 0.9)) lay(g, 'wood', twig);
   return true;
 }
 
@@ -1383,17 +1311,16 @@ function morning(fainted: boolean): void {
   Object.assign(actor, BLANKET);
   game.at = { i: actor.i, j: actor.j };
   // A palm only drops a new coconut once the last one has been eaten.
-  if (!lyingCount(game, 'coconut') && !game.bag.includes('coconut')) dropCoconuts(game);
-  washWood(game);
+  morningGifts(isle, game);
   island.fish.push(...spawnFish(island.floor, FISH_COUNT - island.fish.length, fishRandom));
   crabs = [];
   crabsOut = 0;
   // A done quest gives way to the next, which brings what it needs; else the morning's own thought.
   const after = next(game.quest, true);
   const thought = after !== game.quest ? startQuest(after) : morningThought();
-  if (stonesOut(game.quest.quest)) for (let n = stonesAbout(game); n < STONES_OUT; n++) layStone(game);
+  topUpStones(isle, game);
   showQuest();
-  if (saves()) saveGame(game);
+  store();
   tellAfterFade(thought);
 }
 
@@ -1406,6 +1333,10 @@ function morningThought(): string {
 /** The fire quest's lightning, waiting until the survivor is up, its thought read and the hut left behind. */
 let strikeNow = false;
 
+/** Saves the game, if this one is saved; says so when the browser refuses. */
+function store(): void {
+  if (saves() && !saveGame(game, ISLAND_ID)) tellAfterFade('think.notSaved');
+}
 /** Tells a thought once the fade has come back in. */
 const tellAfterFade = (key: string) => setTimeout(() => tell(key), FADE.hold + FADE.in);
 /** How dark the fade is now, and runs the morning at its darkest. */

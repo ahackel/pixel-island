@@ -1,6 +1,7 @@
 // The saved game: written when the survivor falls asleep, read back on load. Storage may hold
 // anything, so everything read is checked and a bad save starts a new game.
 import { readStore, writeStore } from '@pixel/shared/files.ts';
+import { hashOf } from '@pixel/shared/random.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { CARRIED } from '@pixel/engine/world/props.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
@@ -56,10 +57,14 @@ const int = (v: unknown, lo: number, hi: number): v is number => Number.isIntege
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);
 const spots = (v: unknown, size: number) => (Array.isArray(v) ? v.filter((c) => spot(c, size)).map((c) => ({ i: c.i, j: c.j })) : []);
 
-/** Reads the saved game; fields older saves lack start empty. */
-export function loadGame(size: number, palms: number): Game | null {
+/**
+ * Reads the saved game; fields older saves lack start empty. `island` is the fingerprint of the island played now
+ * (`islandId`): a save of another island is no use on this one. Saves from before the fingerprint count as this island's.
+ */
+export function loadGame(size: number, palms: number, island: number): Game | null {
   const g = readStore<any>(KEY, null);
-  if (!g || ![4, 5, VERSION].includes(g.v) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
+  if (!g || (g.island !== undefined && g.island !== island)) return null;
+  if (![4, 5, VERSION].includes(g.v) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.items)) return null;
   const q = g.quest;
   if (!q || !int(q.quest, 0, QUESTS.length - 1) || !int(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
@@ -95,6 +100,9 @@ export function loadGame(size: number, palms: number): Game | null {
   };
 }
 
-export const saveGame = (g: Game): boolean => writeStore(KEY, { v: VERSION, ...g });
+/** Saves the game on island `island` (`islandId`). False when the browser refused it. */
+export const saveGame = (g: Game, island: number): boolean => writeStore(KEY, { v: VERSION, island, ...g });
 
-export const clearGame = () => writeStore(KEY, null);
+/** A fingerprint of an island: its ground and where its palms stand, which is what the save's places and palm numbers depend on. */
+export const islandId = (levels: readonly number[], palms: readonly { plant: string; i: number; j: number }[]) =>
+  hashOf(JSON.stringify([levels, palms.map((p) => [p.plant, p.i, p.j])]));
