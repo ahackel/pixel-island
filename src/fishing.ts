@@ -3,14 +3,10 @@
 import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { crabPixels } from '@pixel/engine/world/crab.ts';
 import { fishPixels, type Pixel } from '@pixel/engine/world/fish.ts';
-import type { Thing } from '@pixel/engine/world/world.ts';
-
-type Rows = { rows: string[]; colors: Record<string, string> };
+import type { Rows } from './rows.ts';
 
 /** A sharp grey stone, lit from above. */
 export const STONE: Rows = { rows: ['..LLs..', '.LLsss.', 'Lssssdd', '.ssddd.'], colors: { L: '#c9c5bd', s: '#8f8b83', d: '#5d5a55' } };
-const STONE_PICTURE = { get: (x: number, y: number) => STONE.colors[STONE.rows[y]?.[x]] ?? null };
-export const stoneThing = (spot: Thing['spot']): Thing => ({ spot, picture: STONE_PICTURE, w: 7, h: 4, foot: { x: 3, y: 3 } });
 
 /** The spear in the bag: the stick, a stone tied to its tip. */
 export const SPEAR_IN_BAG: Rows = {

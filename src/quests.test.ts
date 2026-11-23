@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { advance, checkContent, next, QUESTS, startProgress, stonesOut, type Quest } from './quests.ts';
+import { advance, checkContent, next, QUESTS, startProgress, stonesOut, waiting, type Quest } from './quests.ts';
 import { LOOSE } from './crafts.ts';
 
 test('the shipped quests and texts are valid', () => {
@@ -63,4 +63,14 @@ test('what a task needs only comes with its own quest', () => {
 test('every quest that needs its own weather says so, and no quest asks for rain out of turn', () => {
   // Rain and storms come only with the hut and the storm; the rest of the week is fair or whatever lasts.
   assert.deepEqual(QUESTS.filter((q) => q.weather === 'rain' || q.weather === 'storm').map((q) => q.id), ['hut', 'storm']);
+});
+
+test('a done quest waits for the next one only when that one waits for the morning', () => {
+  const done = (quest: number) => ({ quest, count: 0, done: true });
+  // The next starts at once: nothing to wait for.
+  assert.equal(waiting(done(0), chain), null);
+  assert.equal(waiting(done(1), chain), chain[2]);
+  // The last quest: none comes after it.
+  assert.equal(waiting(done(2), chain), null);
+  assert.equal(waiting({ quest: 1, count: 0, done: false }, chain), null);
 });

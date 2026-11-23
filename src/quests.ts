@@ -62,6 +62,12 @@ export function next(p: Progress, morning: boolean, quests: readonly Quest[] = Q
   return { quest: p.quest + 1, count: 0, done: false };
 }
 
+/** The next quest while this one is done and that one waits for the morning (or the night): then the survivor should rest. */
+export function waiting(p: Progress, quests: readonly Quest[] = QUESTS): Quest | null {
+  const after = quests[p.quest + 1];
+  return p.done && after && !after.now ? after : null;
+}
+
 /** Whether a quest that brings stones has started: then a stone is always to be found. */
 export const stonesOut = (quest: number, quests: readonly Quest[] = QUESTS) => quests.slice(0, quest + 1).some((q) => q.stones);
 

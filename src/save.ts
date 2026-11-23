@@ -4,12 +4,11 @@ import { readStore, writeStore } from '@pixel/shared/files.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { CARRIED } from '@pixel/engine/world/props.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
-import { BAG_ITEMS, BUILDS, BUILD_KINDS, HUT_AT, type BagItem, type Build } from './crafts.ts';
-import { KINDS, QUESTS, type Progress } from './quests.ts';
-import { kindFor, type Kind } from './weather.ts';
+import { BUILDS, BUILD_KINDS, HUT_AT, isBagItem, type BagItem, type Build } from './crafts.ts';
+import { KINDS, QUESTS, type Kind, type Progress } from './quests.ts';
+import { kindFor } from './weather.ts';
 
 export const BAG_SLOTS = 6;
-export { BAG_ITEMS, type BagItem };
 
 export interface Game {
   day: number;
@@ -54,6 +53,7 @@ const VERSION = 5;
 const hutStageFrom4 = (stage: number) => (stage >= 5 ? BUILDS.hut.stages.length : stage);
 
 const num = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+const int = (v: unknown, lo: number, hi: number): v is number => Number.isInteger(v) && num(v, lo, hi);
 const spot = (v: any, size: number) => v && num(v.i, 0, size) && num(v.j, 0, size);
 const spots = (v: unknown, size: number) => (Array.isArray(v) ? v.filter((c) => spot(c, size)).map((c) => ({ i: c.i, j: c.j })) : []);
 
@@ -63,23 +63,23 @@ export function loadGame(size: number, palms: number): Game | null {
   if (!g || (g.v !== VERSION && g.v !== 4) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.coconuts) || !Array.isArray(g.items)) return null;
   const q = g.quest;
-  if (!q || !Number.isInteger(q.quest) || !num(q.quest, 0, QUESTS.length - 1) || !Number.isInteger(q.count) || !num(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
+  if (!q || !int(q.quest, 0, QUESTS.length - 1) || !int(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
   return {
     day: Math.floor(g.day),
     hunger: g.hunger,
     energy: g.energy,
-    bag: g.bag.filter((b: unknown) => BAG_ITEMS.includes(b as BagItem)).slice(0, BAG_SLOTS),
+    bag: g.bag.filter(isBagItem).slice(0, BAG_SLOTS),
     coconuts: spots(g.coconuts, size),
     wood: spots(g.wood, size),
     stones: spots(g.stones, size),
-    struck: Number.isInteger(g.struck) && num(g.struck, 0, palms - 1) ? g.struck : null,
+    struck: int(g.struck, 0, palms - 1) ? g.struck : null,
     fires: spots(g.fires, size),
-    lying: Array.isArray(g.lying) ? g.lying.filter((it: any) => spot(it, size) && BAG_ITEMS.includes(it.item) && it.item !== 'fire').map((it: any) => ({ item: it.item, i: it.i, j: it.j })) : [],
-    felled: Array.isArray(g.felled) ? [...new Set<number>(g.felled.filter((k: unknown) => Number.isInteger(k) && num(k, 0, palms - 1)))] : [],
+    lying: Array.isArray(g.lying) ? g.lying.filter((it: any) => spot(it, size) && isBagItem(it.item) && it.item !== 'fire').map((it: any) => ({ item: it.item, i: it.i, j: it.j })) : [],
+    felled: Array.isArray(g.felled) ? [...new Set<number>(g.felled.filter((k: unknown) => int(k, 0, palms - 1)))] : [],
     builds: Array.isArray(g.builds)
       ? g.builds
         .map((b: any) => (g.v === 4 && b?.kind === 'hut' && Number.isInteger(b.stage) ? { ...b, stage: hutStageFrom4(b.stage) } : b))
-        .filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && Number.isInteger(b.stage) && num(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
+        .filter((b: any) => spot(b, size) && BUILD_KINDS.includes(b.kind) && int(b.stage, 1, BUILDS[b.kind as Build['kind']].stages.length))
         .map((b: any) => (b.kind === 'hut' ? { kind: b.kind, ...HUT_AT, stage: b.stage } : { kind: b.kind, i: b.i, j: b.j, stage: b.stage }))
       : [],
     items: g.items.filter((it: any) => spot(it, size) && CARRIED.includes(it?.item)).map((it: any) => ({ item: it.item, i: it.i, j: it.j })),
@@ -91,7 +91,7 @@ export function loadGame(size: number, palms: number): Game | null {
     weather: KINDS.includes(g.weather) ? g.weather : kindFor(q.quest, g.day),
     chests: Object.fromEntries(Object.entries(g.chests && typeof g.chests === 'object' ? g.chests : {})
       .filter(([k, v]) => /^[\d.]+,[\d.]+$/.test(k) && Array.isArray(v))
-      .map(([k, v]) => [k, (v as unknown[]).filter((b): b is BagItem => BAG_ITEMS.includes(b as BagItem))])),
+      .map(([k, v]) => [k, (v as unknown[]).filter(isBagItem)])),
   };
 }
 

@@ -5,9 +5,7 @@
 // and goes only overnight.
 import { CLEAR, mixWeather, type Weather } from '@pixel/engine/world/weather.ts';
 import { DAY_S, DUSK_S } from './clock.ts';
-import { KINDS, QUESTS, type Kind } from './quests.ts';
-
-export { KINDS, type Kind };
+import { QUESTS, type Kind } from './quests.ts';
 
 const LOOKS: Record<Kind, Weather> = {
   sunny: CLEAR,
@@ -30,9 +28,6 @@ export function fairOf(day: number): Kind {
 
 /** The weather a quest brings when it starts on `day`: its own, else the fair one that day rolls. */
 export const kindFor = (quest: number, day: number): Kind => QUESTS[quest]?.weather ?? fairOf(day);
-
-/** What the cheat can force instead of the day's own weather. */
-export type Forced = Kind;
 
 /** The weather `t` game seconds into a day of `today`'s kind, turning toward `tomorrow`'s through the afternoon. */
 export function weatherAt(today: Kind, tomorrow: Kind, t: number): Weather {

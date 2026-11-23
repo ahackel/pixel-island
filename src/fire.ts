@@ -7,13 +7,9 @@ import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { compileSprite } from '@pixel/engine/character/items.ts';
 import { FLAME_COLORS, FLAMES, flameFrame, shaft, torchRows } from '@pixel/engine/world/flame.ts';
-
-/** Rows of letters as a picture, '.' empty. */
-const picture = (rows: readonly string[], colors: Record<string, string>): Picture => ({ get: (x, y) => colors[rows[y]?.[x]] ?? null });
+import { picture } from './rows.ts';
 
 const FLAME_PICTURES = FLAMES.map((rows) => picture(rows, FLAME_COLORS));
-/** One of a flame's frames at a time, the same pace as the engine's (the torches on cave walls). */
-const flicker = flameFrame;
 
 // A stick lying on the ground: the one held in hand (STICK), laid down along the ground's slope,
 // in the same wood with its darker end.
@@ -41,7 +37,7 @@ export function tool(name: string, rows: string[], more: Record<string, string> 
 export const STICK = tool('Stick', shaft(14));
 /** The torch, one item per frame of the flame on the stump: in the palette's letters (B blaze, Y flare, F flame, f its shade). */
 const TORCHES = FLAMES.map((rows) => tool('Torch', torchRows(rows, 10)));
-export const torchAt = (ms: number) => flicker(TORCHES, ms);
+export const torchAt = (ms: number) => flameFrame(TORCHES, ms);
 // Fire carried in the bag: the same burning stick.
 export const TORCH_ROWS = [...FLAMES[0], ...shaft(4)];
 export const TORCH_COLORS: Record<string, string> = { ...FLAME_COLORS, ...WOOD_COLORS };
@@ -52,7 +48,7 @@ const LOG_COLORS: Record<string, string> = { a: PALETTE.bark.shade, b: PALETTE.b
 // The flame's last row sits in the logs' first.
 const CAMPFIRES = FLAMES.map((rows) => picture([...rows.slice(0, -1).map((r) => `.${r}.`), ...LOGS], LOG_COLORS));
 export function campfireThing(spot: Thing['spot'], ms: number): Thing {
-  return { spot, picture: flicker(CAMPFIRES, ms, spot.i * 7), w: 9, h: 11, foot: { x: 4, y: 9 } };
+  return { spot, picture: flameFrame(CAMPFIRES, ms, spot.i * 7), w: 9, h: 11, foot: { x: 4, y: 9 } };
 }
 
 /** Charcoal by how bright the burnt pixel was. */
@@ -84,7 +80,9 @@ function stumpOf(palm: Thing): { stump: Picture; top: { x: number; y: number } }
       if (!c || c === SHADOW) return c;
       return y < cut + 2 ? (x % 2 === y % 2 ? FLAME_COLORS.r : FLAME_COLORS.o) : char(c);
     });
-    const stump: Picture = { get: (x, y) => (x < 0 || y < 0 || x >= palm.w || y >= palm.h ? null : pixels[y * palm.w + x]) };
+    // Only the size is kept, not the palm: the stump outlives the palm's wind-frame picture.
+    const { w, h } = palm;
+    const stump: Picture = { get: (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? null : pixels[y * w + x]) };
     stumps.set(key, (s = { stump, top }));
   }
   return s;
@@ -99,7 +97,7 @@ export function stumpThings(palm: Thing, ms: number): Thing[] {
   const flame: Thing = {
     // A hair in front, so it is drawn over the stump.
     spot: { ...palm.spot, i: palm.spot.i + 0.001, j: palm.spot.j + 0.001 },
-    picture: flicker(FLAME_PICTURES, ms),
+    picture: flameFrame(FLAME_PICTURES, ms),
     w: 7,
     h: 8,
     foot: { x: 3 - (s.top.x - palm.foot.x), y: 7 + (palm.foot.y - s.top.y) - 1 },

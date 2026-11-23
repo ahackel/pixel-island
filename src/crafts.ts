@@ -6,6 +6,8 @@ export type BagItem = (typeof BAG_ITEMS)[number];
 /** Bag items that can also lie on the ground to be picked up (wash-ups, driftwood, what the crate held, logs). */
 export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift'] as const;
 export type Loose = (typeof LOOSE)[number];
+export const isBagItem = (x: unknown): x is BagItem => BAG_ITEMS.includes(x as BagItem);
+export const isLoose = (x: unknown): x is Loose => LOOSE.includes(x as Loose);
 
 /** A thing tied from what is in the bag: one dragged onto another, the rest anywhere in the bag. */
 export interface Recipe { needs: BagItem[]; makes: BagItem; thought: string }
@@ -14,13 +16,16 @@ export const RECIPES: Recipe[] = [
   { needs: ['wood', 'stone', 'vine'], makes: 'axe', thought: 'think.axe' },
 ];
 
-const has = (bag: readonly BagItem[], needs: readonly BagItem[]) => {
-  const left = [...bag];
-  return needs.every((n) => {
-    const k = left.indexOf(n);
-    return k >= 0 && left.splice(k, 1);
-  });
-};
+/** `from` without one of each of `remove`, in order. */
+export function without<T>(from: readonly T[], remove: readonly T[]): T[] {
+  const out = [...from];
+  for (const r of remove) {
+    const k = out.indexOf(r);
+    if (k >= 0) out.splice(k, 1);
+  }
+  return out;
+}
+const has = (bag: readonly BagItem[], needs: readonly BagItem[]) => !without(needs, bag).length;
 /** Takes the needed items out of the bag, in place. */
 export function takeFrom(bag: BagItem[], needs: readonly BagItem[]): void {
   for (const n of needs) bag.splice(bag.indexOf(n), 1);
@@ -50,13 +55,7 @@ export const finished = (b: Build | undefined) => !!b && b.stage >= BUILDS[b.kin
 
 /** What the bag still lacks for a build's next stage, empty when it can be built: what the stage uses up, then the tools it needs. */
 export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[]): BagItem[] {
-  const left = [...bag];
-  const used = (BUILDS[kind].stages[stage] ?? []).filter((n) => {
-    const k = left.indexOf(n);
-    if (k < 0) return true;
-    left.splice(k, 1);
-    return false;
-  });
+  const used = without(BUILDS[kind].stages[stage] ?? [], bag);
   const tools = (BUILDS[kind] as { tools?: readonly BagItem[] }).tools ?? [];
   return [...used, ...tools.filter((n) => !bag.includes(n))];
 }

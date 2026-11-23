@@ -15,12 +15,11 @@ import { cellKey, edgeKey, emptyBuilding, type Building, type PieceKind } from '
 import { plankWall } from '@pixel/engine/world/building/pieces/plank-wall.ts';
 import { wallKind } from '@pixel/engine/world/building/walls.ts';
 import { thatchRoof } from '@pixel/engine/world/building/pieces/thatch-roof.ts';
+import { picture, type Rows } from './rows.ts';
 
-type Rows = { rows: string[]; colors: Record<string, string> };
-const picture = ({ rows, colors }: Rows): Picture => ({ get: (x, y) => colors[rows[y]?.[x]] ?? null });
 /** A thing standing on the ground from rows, its foot the middle of the bottom row. */
 export const thing = (r: Rows) => {
-  const p = picture(r);
+  const p = picture(r.rows, r.colors);
   const w = Math.max(...r.rows.map((row) => row.length)), h = r.rows.length;
   return (spot: Thing['spot']): Thing => ({ spot, picture: p, w, h, foot: { x: Math.floor(w / 2), y: h - 1 } });
 };
@@ -37,11 +36,12 @@ export const LOG: Rows = { rows: ['.bbbbbbbbbR.', 'bbbbbbbbbbRr', 'aaaaaaaaaarr'
 const DRIFT_COLORS = { L: PALETTE.driftwood.light, D: PALETTE.driftwood.base, d: PALETTE.driftwood.shade };
 /** A piece of driftwood in the bag: a bleached branch, forked at one end. */
 export const DRIFT: Rows = { rows: ['.........LL.', '..LLLLLLDDd.', 'LDDDDDDDd...', '.ddddddd....', '.....dd.....'], colors: DRIFT_COLORS };
+const driftInBag = thing(DRIFT);
 /** Driftwood lying on the ground: the engine's bleached log or forked branch, small, turned by where it lies. */
 export function driftThing(spot: Thing['spot']): Thing {
   const n = Math.floor(spot.i * 7 + spot.j * 13);
   const r = rasterOf({ plant: n % 2 ? 'plant-driftwood-1' : 'plant-driftwood-0', seed: n, size: 0.5, turn: n % TURNS }, 0);
-  if (!r) return thing(DRIFT)(spot);
+  if (!r) return driftInBag(spot);
   return { spot, picture: r, w: r.w, h: r.h, foot: r.foot };
 }
 /** The axe in the bag: a stick, a big stone lashed across its top. */
@@ -103,7 +103,7 @@ export const AXE = tool('Axe', ['...SSS.', '...SSSS', '...WSS.', ...Array.from({
  */
 const STRIPES = 'RRRCCBBBCC'.repeat(4).slice(0, 36);
 const BLANKET_ROWS = [...Array(6).fill(STRIPES), STRIPES.toLowerCase()];
-const blanketPicture = picture({ rows: BLANKET_ROWS, colors: { R: '#c8463a', r: '#8e2f27', C: '#efe2c4', c: '#b9a98a', B: '#3f6fa8', b: '#2b4d78' } });
+const blanketPicture = picture(BLANKET_ROWS, { R: '#c8463a', r: '#8e2f27', C: '#efe2c4', c: '#b9a98a', B: '#3f6fa8', b: '#2b4d78' });
 /**
  * The blanket at `spot`. Its picture is centred on the spot, but the thing is placed half a metre back, so
  * whoever lies on it is drawn over it; it casts no shadow.
@@ -155,8 +155,18 @@ export const PIECE_KINDS: Record<string, PieceKind> = {
 /** Wall height, in levels: about the survivor's height. */
 const HUT_HEIGHT = 4;
 
-/** The hut as laid in its first `stage` stages, on the map; `low`, its walls knee-high and no roof, to see behind it. */
+const huts = new Map<string, Building>();
+/**
+ * The hut as laid in its first `stage` stages, on the map; `low`, its walls knee-high and no roof, to see behind it.
+ * Made once for each, as it is asked for every frame.
+ */
 export function hutBuilding(stage: number, low = false): Building {
+  const key = `${stage}|${low}`;
+  let b = huts.get(key);
+  if (!b) huts.set(key, (b = layHut(stage, low)));
+  return b;
+}
+function layHut(stage: number, low: boolean): Building {
   const b = emptyBuilding(low ? 1 : HUT_HEIGHT);
   const i0 = HUT_AT.i - 1, j0 = HUT_AT.j - 1;
   const plan = HUT_PLAN.slice(0, stage);
@@ -184,7 +194,7 @@ function raftRows(stage: number): Rows {
   const L = 26;
   // Each log seen from above-front: a lit top, a shaded side, its cut end at the right.
   const log = (n: number) => [`.${'b'.repeat(L - 3)}RR.`, `${'b'.repeat(L - 2)}Rr`, `${'a'.repeat(L - 2)}rr`, `.${'a'.repeat(L - 3)}r.`].map((r) => ' '.repeat(n) + r);
-  const deck = (stage >= 2 ? [0, 1, 2, 3] : [2, 3]).flatMap((k) => log(3 - k).slice(k === 3 ? 0 : 0, k === 3 ? 4 : 2));
+  const deck = (stage >= 2 ? [0, 1, 2, 3] : [2, 3]).flatMap((k) => log(3 - k).slice(0, k === 3 ? 4 : 2));
   const lashed = deck.map((r) => (stage >= 2 ? r.replace(/^(.{8})./, '$1y').replace(/^(.{19})./, '$1y') : r));
   const top: string[] = [];
   if (stage >= 3) {
@@ -230,11 +240,10 @@ const ARCH = ['...rrrr...', '..rddddr..', '.rddddddr.', 'rddddddddr', 'rdddddddd
  * A cave mouth in a cliff face that looks down the screen to the left (the side toward +j): the arch is sheared down
  * half a pixel per pixel to the right, the way that face runs, and its foot is the middle of its bottom edge.
  */
+const MOUTH_COLORS: Record<string, string> = { r: '#4e463e', d: '#120e0c' };
+/** One picture for every frame, so the engine's caches keyed by picture (packing, shadow) keep it. */
+const MOUTH: Picture = { get: (x, y) => MOUTH_COLORS[ARCH[y - Math.floor(x / 2)]?.[x] ?? ''] ?? null };
 export function mouthThing(spot: Thing['spot']): Thing {
   const w = ARCH[0].length, h = ARCH.length + Math.floor(w / 2);
-  const colors: Record<string, string> = { r: '#4e463e', d: '#120e0c' };
-  const at = (x: number, y: number) => ARCH[y - Math.floor(x / 2)]?.[x];
-  return { spot, picture: { get: (x, y) => colors[at(x, y) ?? ''] ?? null }, w, h, foot: { x: Math.floor(w / 2), y: h - 1 - Math.floor(w / 4) } };
+  return { spot, picture: MOUTH, w, h, foot: { x: Math.floor(w / 2), y: h - 1 - Math.floor(w / 4) } };
 }
-
-/** Cave crystals and glowing mushrooms. Their colours glow (the dark leaves them as drawn), so the cave has lights of its own. */
