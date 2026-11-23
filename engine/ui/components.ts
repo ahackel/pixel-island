@@ -25,7 +25,7 @@ const COLOR_ROWS = ['.#######.', '#ooooooo#', '#ooooooo#', '#ooooooo#', '#oooooo
 export interface ButtonFace { icon?: string; color?: string; words?: string; dark?: boolean; lit?: boolean; pressed?: boolean; flat?: boolean }
 
 /** A button with an icon, words, or an icon then words. `flat`: no shadow, for a bar of the same paper. `dark`: the night's own button; `lit`: the one chosen of a row; `pressed`: an on/off button that is on (shown lit). */
-export function pixelButton(label: string, face: ButtonFace, on: () => void): HTMLButtonElement {
+export function pixelButton(label: string, face: ButtonFace, on: (e: MouseEvent) => void): HTMLButtonElement {
   const icon = face.icon ? iconRows(face.icon) : face.color ? COLOR_ROWS : null;
   const iconW = icon ? icon[0].length : 0;
   const words = face.words && caps(face.words);
@@ -45,7 +45,7 @@ export function pixelButton(label: string, face: ButtonFace, on: () => void): HT
   b.append(canvas);
   b.addEventListener('click', (e) => {
     e.stopPropagation();
-    on();
+    on(e);
   });
   return b;
 }

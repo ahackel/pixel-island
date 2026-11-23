@@ -439,6 +439,10 @@
   "en": "My bag is full. To make room, I can drag a thing out of it and drop it on the sand.",
   "de": "Mein Beutel ist voll. Um Platz zu machen, kann ich etwas herausziehen und in den Sand fallen lassen."
  },
+ "think.noWay": {
+  "en": "It leads nowhere. Not yet.",
+  "de": "Das führt nirgendwohin. Noch nicht."
+ },
  "think.wallTorch": {
   "en": "A torch, still burning. I'll take it with me.",
   "de": "Eine Fackel, sie brennt noch. Die nehme ich mit."

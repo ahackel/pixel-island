@@ -238,6 +238,16 @@ async function saveScene(): Promise<boolean> {
   return ok;
 }
 
+/** Saves the scene to the project, then opens it as the island of the game (`?scene=`), which reads the saved file. */
+async function openInGame(): Promise<void> {
+  // Opened before the save finishes, or the browser takes it for a pop-up.
+  const tab = window.open('about:blank', '_blank');
+  if (canSaveToProject() && !(await saveScene())) return void tab?.close();
+  const url = new URL(`../../../?scene=${encodeURIComponent(slug(sceneNow().name))}`, location.href).href;
+  if (tab) tab.location.href = url;
+  else window.open(url, '_blank');
+}
+
 function say(text: string): void {
   if (text) toast(text, 5000);
 }
@@ -1708,7 +1718,8 @@ function render(): void {
     undo,
     redo,
     // One button: it shows where it takes you, Play while editing and Edit while playing.
-    extra: pixelButton(t(`mode.${other}`), { icon: other === 'play' ? 'play' : 'pencil', flat: true, lit: true }, () => set({ mode: other })),
+    // Alt-click on Play opens the scene in the game instead.
+    extra: pixelButton(t(`mode.${other}`), { icon: other === 'play' ? 'play' : 'pencil', flat: true, lit: true }, (e) => (e.altKey && other === 'play' ? void openInGame() : set({ mode: other }))),
     relabel: mount,
   });
   barSlot.replaceChildren(bar, ...pops);

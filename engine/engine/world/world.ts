@@ -374,6 +374,8 @@ export class World {
 
   /** In Play, the items where they lie now (picked up and set down again); in Edit, null, and the scene's own. */
   loose: PlacedItem[] | null = null;
+  /** Objects of the scene that stay where they are whatever `loose` holds (a game that keeps its own loose items still shows the scene's holes and ladders). */
+  fixed: PlacedItem[] = [];
   /** The weather now; set it with `setWeather`. */
   weather: Weather = CLEAR;
   /** Changes the weather: the sea, the plants' sway, shadows and the overlays follow it. */
@@ -596,7 +598,7 @@ export class World {
   viewPlants() { return this.seen(this.scene.plants); }
   viewDecor() { return this.seen(this.scene.decor); }
   viewAnimals() { return this.seen(this.scene.animals); }
-  viewItems() { return this.seen(this.loose ?? this.scene.items); }
+  viewItems() { return this.seen(this.loose ? [...this.fixed, ...this.loose] : this.scene.items); }
 
   /** The plant whose picture covers a pixel of the ground image, the front-most one, or null. */
   plantAt(x: number, y: number): PlacedPlant | null {

@@ -97,6 +97,10 @@ const islandScene = rocky?.scene ?? SCENE_TRY ?? firstIsland();
 /** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
 const island = new World(islandScene);
 island.pieceKinds = PIECE_KINDS;
+// The island's own loose items are the game's (see `game.items`); only the ways to other scenes stand in it as the scene has them.
+island.fixed = islandScene.items.filter((o) => o.to);
+// A scene tried on its own that is a cave (`?scene=`) needs its rock walls.
+if (islandScene.cave) setUpCave(island);
 /** A cave in the island, a world of its own with nothing beyond its rock: walked into at the mouth, out at the daylight. */
 const cave = rocky && (() => {
   const c = caveScene();
@@ -107,7 +111,7 @@ const cave = rocky && (() => {
 /** The scene and world the survivor is in: the island, or the cave. */
 let scene = islandScene;
 let world = island;
-const inCave = () => world !== island;
+const inCave = () => !!world.scene.cave;
 const fishRandom = rng(Date.now());
 island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
 /** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
@@ -306,7 +310,7 @@ function setStyle(e: HTMLElement, name: 'opacity' | 'transform', value: string):
 }
 const app = document.getElementById('app')!;
 
-type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem };
+type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem };
 /** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
 let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -851,7 +855,7 @@ let sleeping: { start: number; fainted: boolean; woken: boolean; wakes: boolean;
 /** Whether the press under way began on the survivor: then moving it walks nowhere. */
 let onSelf = false;
 function press(p: { x: number; y: number }, start: boolean): void {
-  if (paused || sleeping || ended) return;
+  if (paused || sleeping || ended || warp) return;
   if (start) {
     // The survivor themself: they sit down, or get up again if they are already sitting.
     const foot = world.screenOf(actor.i, actor.j);
@@ -867,6 +871,9 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // so only the direction counts.
     const look = mapOffset(p.x - foot.x, p.y - foot.y);
     if (look.i || look.j) actor.lookAt(look.i, look.j);
+    // A hole or ladder that leads to another scene: walked up to, and taken.
+    const way = world.scene.items.find((o) => o.to && near(p, o, 10, 6));
+    if (way) return goTo(nearSide(way), false, { way });
     // In the cave nothing of the island's is to pick, only a torch off a wall (its picture stands on the wall, a stick
     // and flame some 4 to 22 pixels over the floor).
     if (inCave()) {
@@ -950,9 +957,44 @@ function goInto(to: World, at: { i: number; j: number }): void {
   target = null;
   centerOn(actor);
 }
-/** Out of the cave, a step in front of its mouth. */
+/** Out of the cave, a step in front of its mouth; from a scene a way led to, back where the survivor left the island. */
 function leaveCave(): void {
   if (rocky) goInto(island, { i: rocky.mouth.i, j: rocky.mouth.j + 0.8 });
+  else goInto(island, outside ?? island.scene.spawn);
+}
+
+/** The scenes the survivor can be led to (by file name), made into worlds when first visited; the island is one of them. */
+const visited = new Map<string, World>([[params.get('scene') ?? 'island', island]]);
+/** Where the survivor last left the island by a way. */
+let outside: { i: number; j: number } | null = null;
+function worldOf(name: string): World | null {
+  let w = visited.get(name);
+  if (!w) {
+    const s = savedScene(name);
+    if (!s) return null;
+    w = new World(s);
+    if (s.cave) setUpCave(w);
+    else w.pieceKinds = PIECE_KINDS;
+    visited.set(name, w);
+  }
+  return w;
+}
+/** A portal being taken: when the fade began, and what happens at its darkest (once). */
+let warp: { start: number; go: () => void; gone: boolean } | null = null;
+const WARP = { out: 350, in: 350 };
+/** Takes a hole or ladder to the way it leads to: fades out, into that scene beside the way there, fades in. */
+function takeWay(it: PlacedItem): void {
+  if (!it.to || Math.hypot(it.i - actor.i, it.j - actor.j) > 1.6) return;
+  const to = worldOf(it.to.scene);
+  const end = to?.scene.items.find((o) => o.id === it.to!.id);
+  if (!to || !end) return think('think.noWay');
+  if (warp) return;
+  target = null;
+  warp = { start: performance.now(), gone: false, go: () => {
+    if (world === island) outside = { i: actor.i, j: actor.j };
+    const beside = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([a, b]) => ({ i: end.i + a, j: end.j + b })).find((q) => to.canWalk(q, q));
+    goInto(to, beside ?? end);
+  } };
 }
 /** Walked onto the cave mouth, the survivor goes in; onto the daylight at the cave's open side, out. */
 function throughCave(): void {
@@ -1024,6 +1066,7 @@ function arrive(pick: Pick): void {
     else showBag();
     return think('think.wallTorch');
   }
+  if ('way' in pick) return takeWay(pick.way);
   if ('chest' in pick) return openChest(pick.chest);
   // Once on the blanket, the sleep button shows, by day too: sleep then lasts till the next morning.
   if ('blanket' in pick) return;
@@ -1341,6 +1384,12 @@ function store(): void {
 const tellAfterFade = (key: string) => setTimeout(() => tell(key), FADE.hold + FADE.in);
 /** How dark the fade is now, and runs the morning at its darkest. */
 function fadeAt(ms: number): number {
+  if (warp) {
+    const e = ms - warp.start;
+    if (e >= WARP.out && !warp.gone) { warp.gone = true; warp.go(); }
+    if (e < WARP.out + WARP.in) return e < WARP.out ? e / WARP.out : 1 - (e - WARP.out) / WARP.in;
+    warp = null;
+  }
   if (!sleeping) return 0;
   const e = ms - sleeping.start;
   if (e < FADE.out) return Math.max(0, e) / FADE.out;
@@ -1385,10 +1434,10 @@ function fadeAt(ms: number): number {
  * mushrooms and torches), and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
  */
 function caveLamps(me: Thing | null, ms: number): TileLamp[] {
-  if (!cave) return [];
+  if (!inCave()) return [];
   // The halo of what is in hand (its particle system's), in tiles.
   const held = me?.fx ? tileHalo(particleSystem(me.fx.system), actor, ms) : null;
-  return [...caveOwnLamps(cave.world, ms), ...(held ? [held] : [])];
+  return [...caveOwnLamps(world, ms), ...(held ? [held] : [])];
 }
 
 /** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
@@ -1571,7 +1620,8 @@ function frame(ms: number): void {
   if (struckAt >= 0) plants.splice(struckAt, 1, ...stumpThings(plants[struckAt], ms));
   const campfires = inCave() ? [] : game.fires.map((f) => campfireThing(groundSpot(f), ms));
   const hutBuild = buildOf('hut');
-  island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
+  // Not in a cave: a scene tried on its own as the island keeps its rock walls there.
+  if (!inCave()) island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const me = present ? actor.thing(world, ms) : null;
   let hutParts = inCave() ? [] : island.buildingThings(actor);
   // Behind the hut, its walls come down to knee height and the roof off, so the survivor is seen.
@@ -1631,7 +1681,7 @@ function frame(ms: number): void {
   setHidden(sailButton, away || !canSail());
   setStyle(veil, 'opacity', String(fade));
   // A new day's title; thunder waking the survivor in the same night gets none.
-  if (fade >= 1 && veilDay !== game.day && !ended && !sleeping?.wakes) {
+  if (fade >= 1 && veilDay !== game.day && !ended && !warp && !sleeping?.wakes) {
     veilDay = game.day;
     veil.replaceChildren(label(caps(t('day', { n: game.day })), C.moon, S * 2));
   }
