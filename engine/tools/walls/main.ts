@@ -212,6 +212,7 @@ const TABS: Option[] = [{ id: 'rule', icon: 'wall', words: L('Wall', 'Wand') }, 
 function renderBar(): void {
   const w = wall();
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'walls',
     title: word('walls'),
     name: name.el,

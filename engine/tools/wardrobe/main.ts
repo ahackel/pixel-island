@@ -231,6 +231,7 @@ function renderBar(): void {
   const saved = current();
   const paintCount = CATALOG.filter((e) => e.format === 'paint').length;
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'wardrobe',
     title: word('wardrobe'),
     name: name.el,

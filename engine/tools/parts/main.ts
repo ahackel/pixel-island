@@ -173,6 +173,7 @@ let dirty = true;
 function renderBar(): void {
   const e = entry();
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'parts',
     title: word('parts'),
     about: [

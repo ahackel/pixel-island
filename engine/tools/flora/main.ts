@@ -388,6 +388,7 @@ function renderBar(): void {
   const total = FLORA.length + FLORA_REJECTED.length;
   const repaired = FLORA.filter((e) => e.repairs.length).length;
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'flora',
     title: word('flora'),
     about: [t('lede'), t('foot.items', {

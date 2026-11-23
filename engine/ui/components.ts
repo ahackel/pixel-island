@@ -632,6 +632,7 @@ export function searchField(label: string, change: (value: string) => void, valu
  */
 export function sidePanel(side: 'left' | 'right', key: string, width = 240): { panel: HTMLElement; body: HTMLElement } {
   const panel = el('aside', `uside uside--${side}`);
+  if (side === 'left') showSidebar(sidebarShown());
   let w = width;
   try { w = Math.max(120, Number(localStorage.getItem(key)) || width); } catch { /* the default */ }
   panel.style.width = `${w}px`;
@@ -647,6 +648,18 @@ export function sidePanel(side: 'left' | 'right', key: string, width = 240): { p
   grip.addEventListener('pointerup', () => { try { localStorage.setItem(key, String(parseInt(panel.style.width))); } catch { /* not kept */ } });
   panel.append(body, grip);
   return { panel, body };
+}
+
+const SIDEBAR_KEY = 'pixel-sidebar';
+const sidebarShown = (): boolean => { try { return localStorage.getItem(SIDEBAR_KEY) !== '0'; } catch { return true; } };
+const showSidebar = (on: boolean): void => { document.body.classList.toggle('uside-off', !on); };
+
+/** The header toggle of the left panel (library, scene list): lit while it is shown; the choice is kept in the browser for every editor. */
+export function sidebarButton(label: string): HTMLElement {
+  return toggle(label, { icon: 'sidebar', flat: true }, sidebarShown(), (on) => {
+    showSidebar(on);
+    try { localStorage.setItem(SIDEBAR_KEY, on ? '1' : '0'); } catch { /* not kept */ }
+  });
 }
 
 /** The panels of a `workspace`, and its middle. */
@@ -744,6 +757,8 @@ export interface HeaderOptions {
   actions?: { icon: string; label: string; on: () => void; disabled?: boolean }[];
   /** The name of the thing being edited (a text field), right after the page's icon. */
   name?: Node;
+  /** The button that shows or hides the left panel (`sidebarButton`), after the tool switcher. */
+  sidebar?: Node;
   /** Short status text next to the menu (saved, an error). */
   status?: Node;
   /** Old-style controls the page still brings itself (a picker of its things). */
@@ -778,7 +793,7 @@ export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonEl
   const redo = o.redo ? pixelButton(t.redo, { icon: 'redo', flat: true }, o.redo) : null;
   const l = o.languages;
   const left = groups(
-    [choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true)],
+    [choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true), o.sidebar],
     [
       o.name,
       o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled }),

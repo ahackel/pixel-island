@@ -5,7 +5,7 @@
 import { saveToProject, canSaveToProject } from '../../shared/project.ts';
 import { history } from '../../shared/history.ts';
 import { drawRows, pixelCanvas } from '../../shared/pixel-ui.ts';
-import { box, choice, iconPicture, library, pixelButton, sidePanel, textField, type Option } from '../../ui/components.ts';
+import { box, choice, sidebarButton, iconPicture, library, pixelButton, sidePanel, textField, type Option } from '../../ui/components.ts';
 import { ICONS } from '../../ui/icons.ts';
 import { uiPage } from '../../ui/page.ts';
 import { C, PAINT, S } from '../../ui/theme.ts';
@@ -24,6 +24,7 @@ mark.className = 'urow';
 /** The saved state next to the bar's save button: a check while what is shown is what is in the project. */
 const setSaved = (v: boolean | null) => { mark.replaceChildren(...(v ? [iconPicture('check')] : [])); };
 const main = uiPage('icons', {
+  sidebar: sidebarButton('Side panel'),
   undo: () => { undo.undo(); setSaved(null); },
   redo: () => { undo.redo(); setSaved(null); },
   save: { label: canSaveToProject() ? 'Save to project' : 'Saving needs the dev server', disabled: !canSaveToProject(), on: async () => setSaved(await saveToProject('icons.json', lib)) },

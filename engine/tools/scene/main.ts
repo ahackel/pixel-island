@@ -1,6 +1,6 @@
 import './style.css';
 import { frameDone, part } from '../../shared/stats.ts';
-import { box, choice, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { box, choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
 import { saveToProject } from '../../shared/project.ts';
@@ -219,7 +219,7 @@ function switchTo(scene: Scene): void {
 
 /** Saves the scene as a file of the project (the game's content/scenes), for committing. */
 async function saveScene(): Promise<void> {
-  const name = sceneNow().name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
+  const name = slug(sceneNow().name);
   say((await saveToProject(`scenes/${name}.json`, JSON.parse(sceneFile(sceneNow())))) ? t('scene.projectDone').replace('{0}', name) : t('scene.projectFail'));
 }
 
@@ -1300,8 +1300,6 @@ function showActions(): void {
 let brightToggle: HTMLElement | null = null;
 const dock = h('nav', { class: 'toolbar' });
 const options = h('div', { class: 'opts' });
-/** Who walks around in Play: picked while editing. */
-const cast = h('div', { class: 'opts opts--cast' });
 /** What a floating panel holds: a pixel box round its rows. */
 const panelOf = (...rows: Node[]) => box(h('div', { class: 'opts__body' }, ...rows));
 /** A button to another editor. */
@@ -1430,21 +1428,6 @@ function poseOptions(): HTMLElement {
   );
 }
 
-function castOptions(): Node[] {
-  roster = loadRoster();
-  if (prefs.character && !roster.some((c) => c.id === prefs.character)) prefs.character = '';
-  const who: Option[] = [{ id: '', words: t('character.default') }, ...roster.map((c) => ({ id: c.id, words: c.name }))];
-  return [
-    h('div', { class: 'opts__head' }, iconPicture('person'), h('b', {}, t('character'))),
-    choice(t('character'), who, () => prefs.character, (id) => {
-      prefs.character = id;
-      savePrefs();
-      actor?.setLook(characterLook());
-    }, 'list'),
-    link('../wardrobe/', t('character.edit')),
-  ];
-}
-
 /** One line of tool buttons, in Edit only: Play's actions float over the scene. */
 function toolbar(): Node[] {
   return toolsHere().map((tool) => pixelButton(t(`tool.${tool}` as Key), { icon: TOOL_ICONS[tool], flat: true, pressed: tool === prefs.tool }, () => set({ tool })));
@@ -1470,13 +1453,13 @@ function render(): void {
   if (!toolsHere().includes(prefs.tool)) prefs.tool = 'move';
   const other = prefs.mode === 'edit' ? 'play' : 'edit';
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'scene',
     title: word('scene'),
     about: [t('hint.edit'), t('hint.play')],
     things: choice(word('scene'), library.scenes.map((s) => ({ id: s.id, words: s.name })), () => library.current, (id) => switchTo(library.scenes.find((s) => s.id === id)!), 'list', 60, true),
     more: [
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
-      { label: t('scene.settings'), icon: 'sliders', run: () => sceneDialog('settings') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
       { label: t('scene.project'), icon: 'download', main: true, run: () => void saveScene() },
       { label: t('scene.import'), icon: 'upload', run: () => void importScene() },
@@ -1490,6 +1473,7 @@ function render(): void {
     relabel: mount,
   });
   barSlot.replaceChildren(bar, ...pops);
+  sceneList.redraw();
   const editing = prefs.mode === 'edit';
   barUndo = u;
   barRedo = r;
@@ -1497,9 +1481,8 @@ function render(): void {
   syncUndo();
   dock.hidden = !editing;
   dock.replaceChildren(...(editing ? toolbar() : []));
-  options.hidden = cast.hidden = !editing;
+  options.hidden = !editing;
   options.replaceChildren(...(editing ? [panelOf(...editOptions())] : []));
-  cast.replaceChildren(...(editing ? [panelOf(...castOptions())] : []));
   showActions();
   if (brightToggle) brightToggle.hidden = !editing || !sceneNow().cave;
   viewport.style.background = sceneNow().cave ? '#000' : ocean.deep;
@@ -1520,6 +1503,10 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   let tint = caveNow?.tint ?? CAVE_DEFAULTS.tint;
   let dark = caveNow?.dark ?? CAVE_DEFAULTS.dark;
   let rubble = caveNow?.rubble ?? CAVE_DEFAULTS.rubble;
+  let character = prefs.character;
+  roster = loadRoster();
+  if (!roster.some((c) => c.id === character)) character = '';
+  const who: Option[] = [{ id: '', words: t('character.default') }, ...roster.map((c) => ({ id: c.id, words: c.name }))];
   const size = { min: MIN_SIZE, max: MAX_SIZE, width: 44 };
   const level = (label: string, icon: string, value: number, set: (n: number) => void) => field({ icon, tip: label }, pixelSlider(label, value, (v) => set(Math.round(v * 20) / 20), 60));
   // Any dark tint, a few good ones offered in the picker.
@@ -1532,12 +1519,18 @@ function sceneDialog(kind: 'new' | 'settings'): void {
         numberField({ words: 'H', tip: t('dialog.height') }, hh, (n) => (hh = n), size))),
       ...(kind === 'new' ? [field({ icon: 'home', tip: t('dialog.kind') }, choice(t('dialog.kind'), kinds.map((k) => ({ id: k.id, icon: k.icon, words: t(`dialog.kind.${k.id}`) })), () => startWith, (id) => (startWith = id as typeof startWith), 'buttons'))] : []),
       ...(caveNow ? [field({ icon: 'palette', tip: t('dialog.tint') }, color), level(t('dialog.dark'), 'moon', dark, (n) => (dark = n)), level(t('dialog.rubble'), 'rock', rubble, (n) => (rubble = n))] : []),
+      ...(kind === 'settings' ? [field({ icon: 'person', tip: t('character') }, choice(t('character'), who, () => character, (id) => (character = id), 'list'))] : []),
     ),
-    ...(kind === 'new' ? [] : [h('p', { class: 'opts__tip' }, t('dialog.shrink'))]),
+    ...(kind === 'new' ? [] : [h('p', { class: 'opts__tip' }, t('dialog.shrink')), link('../wardrobe/', t('character.edit'))]),
   ], () => {
     const label = name.trim().slice(0, 40) || t('scene.first');
     if (kind === 'new') {
       return switchTo(startWith === 'cave' ? createCave(label, w, hh) : createScene(label, w, hh, startWith === 'island'));
+    }
+    if (character !== prefs.character) {
+      prefs.character = character;
+      savePrefs();
+      actor?.setLook(characterLook());
     }
     const next = w !== scene.w || hh !== scene.h ? resized(scene, w, hh) : scene;
     next.name = label;
@@ -1566,6 +1559,28 @@ async function importScene(): Promise<void> {
   say(t('scene.imported', { name: scene.name }));
 }
 
+// ------------------------------------------------------------------ scene list
+
+/** The scenes saved in the project (content/scenes) by file name; the dev server and the build both see them. */
+const projectScenes = Object.entries(import.meta.glob('/src/content/scenes/*.json', { eager: true, import: 'default' }))
+  .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data) }));
+/** The scenes of the editor, then the project's own that the editor has not opened yet (a tap on one opens a copy of it). */
+const sceneTiles = () => [
+  ...library.scenes.map((s) => ({ id: s.id, words: s.name })),
+  ...projectScenes.filter((p) => !library.scenes.some((s) => slug(s.name) === p.name)).map((p) => ({ id: `file:${p.name}`, words: p.name })),
+];
+const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
+const sceneList = tileLibrary({
+  key: 'pixel-scenes', label: t('scene.search'), empty: t('scene.none'), items: sceneTiles, selected: () => library.current,
+  pick: (id) => {
+    const file = projectScenes.find((p) => `file:${p.name}` === id);
+    if (!file) return switchTo(library.scenes.find((s) => s.id === id)!);
+    try { switchTo(readSceneFile(file.text)); } catch { say(t('scene.badFile')); }
+  },
+});
+const side = sidePanel('left', 'pixel-scene-list', 200);
+side.body.append(sceneList);
+
 // ------------------------------------------------------------------ mount
 
 function mount(): void {
@@ -1576,8 +1591,8 @@ function mount(): void {
   viewport.replaceChildren(
     canvas,
     options,
-    cast,
     h('div', { class: 'zoom' },
+      pixelButton(t('scene.settings'), { icon: 'cog' }, () => sceneDialog('settings')),
       pixelButton(t('zoom.in'), { icon: 'zoomin' }, () => stepZoom(1)),
       pixelButton(t('zoom.out'), { icon: 'zoomout' }, () => stepZoom(-1)),
       pixelButton(t('rotate.left'), { icon: 'turnleft' }, () => rotate(-1)),
@@ -1593,7 +1608,7 @@ function mount(): void {
   document.getElementById('scene')!.replaceChildren(
     h('div', { class: 'editor' },
       barSlot,
-      viewport,
+      h('div', { class: 'uworkspace' }, side.panel, viewport),
       dock,
     ),
   );
@@ -1609,8 +1624,7 @@ document.addEventListener('visibilitychange', () => {
     herd?.poses.forEach((pose, k) => { pose.hops = world.scene.animals[k].animal.hops; });
     sceneChanged();
   }
-  if (prefs.mode === 'edit') cast.replaceChildren(panelOf(...castOptions()));
-  else {
+  if (prefs.mode !== 'edit') {
     roster = loadRoster();
     actor?.setLook(characterLook());
   }

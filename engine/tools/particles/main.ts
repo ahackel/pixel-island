@@ -167,6 +167,7 @@ function renderBar(): void {
   const builtIn = isBuiltIn(s.id);
   const kept = (readStore<{ id?: string }[]>(PARTICLE_STORE, []) ?? []).some((o) => o?.id === s.id);
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'particles',
     title: word('particles'),
     name: name.el,

@@ -470,6 +470,7 @@ async function importFile(): Promise<void> {
 function renderBar(): void {
   const k = kind();
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'props',
     title: word('props'),
     name: name.el,

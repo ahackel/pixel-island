@@ -414,6 +414,7 @@ function renderBar(): void {
   const saved = current();
   const fileName = saved?.name ?? L('Animal', 'Tier');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'animals',
     title: word('animals'),
     name: name.el,
