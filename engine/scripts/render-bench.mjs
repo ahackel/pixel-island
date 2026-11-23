@@ -1,7 +1,7 @@
 // Times World.compose outside the browser: the ground and water pass (redrawn every WATER_MS) and a crowded scene
 // (many plants, animals, characters, objects), part by part, and prints a hash of each kind of frame so a change
 // can be checked for pixel identity against the version before it.
-// Usage: [VIEW=960x540] [ONLY=water|crowd|night|pan] node scripts/render-bench.mjs [plants] [animals] [people]   (defaults 300 40 30, view 512x320)
+// Usage: [VIEW=960x540] [ONLY=water|crowd|night|pan] [WARM=5 frames before timing] [TABLE=1 per-cache table] node scripts/render-bench.mjs [plants] [animals] [people]   (defaults 300 40 30, view 512x320)
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -47,7 +47,13 @@ const actors = Array.from({ length: people }, (_, k) => { const [i, j] = land[(k
 const mid = world.screenOf(20, 20);
 const [vw, vh] = (process.env.VIEW ?? "512x320").split("x").map(Number);
 const view = { x: Math.round(mid.x - vw / 2), y: Math.round(mid.y - vh / 2), w: vw, h: vh };
-const thingsAt = (ms) => [...world.plantThings(Math.floor(ms / 166) % 8), ...world.animalThings(ms), ...world.itemThings(), ...actors.map((a) => a.thing(world, ms))];
+// Gathering timed per source.
+const gathered = { plants: 0, animals: 0, items: 0, people: 0 };
+const timed = (k, f) => { const t = performance.now(); const r = f(); gathered[k] += performance.now() - t; return r; };
+const thingsAt = (ms) => [
+  ...timed('plants', () => world.plantThings(Math.floor(ms / 166) % 8)), ...timed('animals', () => world.animalThings(ms)),
+  ...timed('items', () => world.itemThings()), ...timed('people', () => actors.map((a) => a.thing(world, ms))),
+];
 
 const hash = (image) => createHash('sha1').update(image.data).digest('hex').slice(0, 12);
 // At night the picture is lit after it is composed: a tint over it all, lifted round each lamp (fires, a lantern).
@@ -59,13 +65,15 @@ const night = (image) => {
   part('light', t);
 };
 function run(label, frames, things, msOf) {
-  for (let k = 0; k < 5; k++) world.compose(view, things(msOf(k)), undefined, false, msOf(k)); // warm the caches
+  const warm = Number(process.env.WARM ?? 5);
+  for (let k = 0; k < warm; k++) world.compose(view, things(msOf(k)), undefined, false, msOf(k)); // warm the caches
   render.reset();
   let gather = 0;
+  for (const k in gathered) gathered[k] = 0;
   const start = performance.now();
   let last;
   for (let k = 0; k < frames; k++) {
-    const ms = msOf(k + 5);
+    const ms = msOf(k + warm);
     const t = performance.now();
     const list = things(ms);
     gather += performance.now() - t;
@@ -76,7 +84,8 @@ function run(label, frames, things, msOf) {
   const ms = (performance.now() - start) / frames;
   const r = render.report();
   const parts = Object.entries(r.table).filter(([k]) => k.startsWith('frame: ')).map(([k, v]) => `${k.slice(7)} ${v['draw ms/frame']}`).join(', ');
-  console.log(`${label}: ${ms.toFixed(2)} ms/frame (things ${(gather / frames).toFixed(2)}, ${parts}) hash ${hash(last)}`);
+  const split = Object.entries(gathered).map(([k, v]) => `${k} ${(v / frames).toFixed(2)}`).join(' ');
+  console.log(`${label}: ${ms.toFixed(2)} ms/frame (things ${(gather / frames).toFixed(2)}: ${split}; ${parts}) hash ${hash(last)}`);
 }
 // Silence the per-report table.
 console.table = process.env.TABLE ? console.table : () => {};

@@ -260,10 +260,16 @@ export { plantOf };
 
 /** Up to how many wind frames a plant runs behind the shared wind. */
 const WIND_LAG = 3;
-const grownCache = new Map<string, { grown: Grown; still: boolean }>();
+const grownCache = new Map<string, GrownPlant>();
 const sizeStep = (s: number) => Math.round(s * 10) / 10;
 /** One wind frame of a placed plant. Shared by every plant with the same recipe, variant, size and turn. */
 export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { turn?: number }, frame: number, wind = 1): Cropped | null {
+  const grown = grownOf(p);
+  return grown && rasterFrom(grown, frame, wind);
+}
+interface GrownPlant { key: string; grown: Grown; still: boolean }
+/** A placed plant grown from its recipe, variant, size and turn, with the key its pictures are kept by. */
+function grownOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { turn?: number }): GrownPlant | null {
   const entry = plantById(p.plant);
   if (!entry) return null;
   const turn = ((p.turn ?? 0) % TURNS + TURNS) % TURNS;
@@ -271,12 +277,15 @@ export function rasterOf(p: Pick<PlacedPlant, 'plant' | 'seed' | 'size'> & { tur
   let grown = grownCache.get(key);
   if (!grown) {
     const made = grow(plantOf(entry), { seed: p.seed, size: sizeStep(p.size), turn: (turn * 360) / TURNS });
-    grownCache.set(key, (grown = { grown: made, still: isStill(made) }));
+    grownCache.set(key, (grown = { key, grown: made, still: isStill(made) }));
   }
+  return grown;
+}
+function rasterFrom(grown: GrownPlant, frame: number, wind: number): Cropped {
   // What the wind does not move, or no wind moves, is one picture for every frame.
   const calm = grown.still || !wind;
   const at = calm ? 0 : frame;
-  return cached('plant', `${key}|${at}|${calm ? 0 : wind}`, () => drawPlantCropped(grown.grown, { frame: at, wind }));
+  return cached('plant', `${grown.key}|${at}|${calm ? 0 : wind}`, () => drawPlantCropped(grown.grown, { frame: at, wind }));
 }
 
 /** Whether a plant may grow on a tile: each group keeps to its own ground, as on the generated islands. */
@@ -671,20 +680,36 @@ export class World {
     return c < 0 ? null : { i: c % this.map.w, j: Math.floor(c / this.map.w) };
   }
 
+  private plantMemo = new WeakMap<PlacedPlant, {
+    i: number; j: number; rot: number; ground: TerrainImage; plant: string; seed: number; size: number; turn?: number;
+    lag: number; viewTurn: number; spot: Spot; grown: GrownPlant | null;
+  }>();
   plantThings(frame: number): Thing[] {
     const out: Thing[] = [];
-    for (const p of this.viewPlants()) {
-      // Each plant sways a little behind or ahead of its neighbours, and turns with the view.
-      const lag = ((Math.imul(Math.floor(p.i * 97), 73856093) ^ Math.imul(Math.floor(p.j * 89), 19349663)) >>> 0) % WIND_LAG;
-      const turn = (p.turn ?? 0) + this.rot * (TURNS / 4);
-      const spot = { i: p.vi, j: p.vj, level: standingHeight(this.map, p.vi, p.vj) };
+    const wind = this.windLevel();
+    for (const p of this.scene.plants) {
+      // What stays the same from frame to frame is kept per plant, while it stays put and the view and ground stay.
+      let m = this.plantMemo.get(p);
+      if (!m || m.i !== p.i || m.j !== p.j || m.rot !== this.rot || m.ground !== this.ground || m.plant !== p.plant || m.seed !== p.seed || m.size !== p.size || m.turn !== p.turn) {
+        const v = this.toView(p);
+        // Each plant sways a little behind or ahead of its neighbours, and turns with the view.
+        const lag = ((Math.imul(Math.floor(p.i * 97), 73856093) ^ Math.imul(Math.floor(p.j * 89), 19349663)) >>> 0) % WIND_LAG;
+        const turn = (p.turn ?? 0) + this.rot * (TURNS / 4);
+        m = {
+          i: p.i, j: p.j, rot: this.rot, ground: this.ground, plant: p.plant, seed: p.seed, size: p.size, turn: p.turn, lag, viewTurn: turn,
+          spot: { i: v.i, j: v.j, level: standingHeight(this.map, v.i, v.j) }, grown: grownOf({ ...p, turn }),
+        };
+        this.plantMemo.set(p, m);
+      }
+      const { lag, viewTurn: turn } = m;
+      const spot = { ...m.spot };
       // A plant frozen in the props tool is drawn from its painted pixels.
-      const locked = lockedPicture(p.plant, turn, (frame + lag) % FRAMES, this.windLevel());
+      const locked = lockedPicture(p.plant, turn, (frame + lag) % FRAMES, wind);
       if (locked) {
         out.push({ spot, picture: locked, w: locked.w, h: locked.h, foot: locked.foot });
         continue;
       }
-      const raster = rasterOf({ ...p, turn }, (frame + lag) % FRAMES, this.windLevel());
+      const raster = m.grown && rasterFrom(m.grown, (frame + lag) % FRAMES, wind);
       if (raster) out.push({ spot, picture: raster, w: raster.w, h: raster.h, foot: raster.foot });
     }
     return out;
