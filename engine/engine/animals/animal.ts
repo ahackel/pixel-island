@@ -3,11 +3,10 @@
 // masses (ellipsoids, and chains of spheres for legs, necks, tails, trunks and horns), posed for
 // each frame, ray-cast in the 2:1 view and lit like the plants: light from the upper left and a
 // little from the front, in the three tones of the master palette. No outlines.
-import { isShadow, PAINT_KEYS, PALETTE, SHADOW, type PaletteKey, type Tone } from '../core/palette.ts';
+import { PAINT_KEYS, PALETTE, type PaletteKey, type Tone } from '../core/palette.ts';
 import { cellHash } from '../../shared/random.ts';
 import { savedList } from '../../shared/files.ts';
 
-export { isShadow };
 import { FACING_VIEWS, type Facing } from '../core/puppet.ts';
 
 // ------------------------------------------------------------------ the description
@@ -307,7 +306,6 @@ export type AnchorName = (typeof ANCHORS)[number];
 interface Model {
   prims: Prim[];
   points: Record<AnchorName | 'eyeL' | 'cheekR' | 'cheekL' | 'toothA' | 'toothB', V>;
-  shadow: { c: V; rx: number; rz: number };
   hasNose: boolean;
   headR: number;
   noseR: number;
@@ -659,7 +657,6 @@ function build(a: Animal, pose: Pose): Model {
       back: upright ? add(C, FWD, -g * 0.9) : add(mid, UP, g * 0.95),
       foot: nearFoot,
     },
-    shadow: { c: v(mid[0], 0, mid[2]), rx: w + lw * 0.8, rz: Math.abs(C[2] - H[2]) / 2 + g * 0.8 },
     hasNose: tr <= 0 && !beak,
     headR: hr,
     noseR,
@@ -852,6 +849,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
     }
     return norm([s0, s1, s2]);
   };
+  // The box round every hit, for the passes after this one.
+  let X0 = Infinity, X1 = -Infinity, Y0 = Infinity, Y1 = -Infinity;
   model.prims.forEach((p, index) => {
     const { c, axes } = inView[index];
     const R = Math.max(...p.r);
@@ -883,9 +882,16 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
         if (t <= depth[at]) continue;
         depth[at] = t;
         owner[at] = index;
+        if (px < X0) X0 = px;
+        if (px > X1) X1 = px;
+        if (py < Y0) Y0 = py;
+        if (py > Y1) Y1 = py;
       }
     }
   });
+  // Everything below works on what the rays hit and the pixels round it: the box round the hits, with room for what the
+  // clean-up adds next to them (a filled notch, a tuft above, a clump below), not the whole canvas.
+  X0 = Math.max(0, X0 - 3); X1 = Math.min(W - 1, X1 + 3); Y0 = Math.max(0, Y0 - 3); Y1 = Math.min(Hh - 1, Y1 + 3);
   // ---- colour and tone of what is seen
   // Painted the way the people's hair is: a calm base, light only on the big masses, and on fur the
   // tone edges broken into diagonal strands so they read as hair, not as a band hugging the outline.
@@ -906,8 +912,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
     return shag > 0 && p.role === 'fur' && !far(o) && (p.part === 'body' || p.part === 'hump' || p.part === 'neck' || p.part === 'head' || (p.part === 'tail' && !thinPart(o)));
   };
   const onStrand = (px: number, py: number) => (across(px) * dir + py + 3 * W) % 3 === 0;
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       if (owner[at] < 0) continue;
       const p = model.prims[owner[at]];
@@ -946,6 +952,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   const massOf = (x: number, y: number) => (painted(x, y) ? model.prims[owner[y * W + x]].mass : -1);
   const N4 = [[1, 0], [-1, 0], [0, -1], [0, 1]] as const;
   const N8 = [...N4, [1, 1], [-1, 1], [1, -1], [-1, -1]] as const;
+  // The same as plain offsets, for the loops that run for every pixel.
+  const DX = N8.map(([dx]) => dx), DY = N8.map(([, dy]) => dy);
   const copy = (to: number, from: number, tone?: Tone) => {
     owner[to] = owner[from];
     depth[to] = depth[from];
@@ -963,12 +971,15 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   // Silhouette: single pixels poking out of a body are cut, one-pixel notches into it filled.
   const cuts: number[] = [];
   const fills: [number, number][] = [];
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
+      // Counted without making arrays: this runs for every pixel of the canvas.
+      let n4 = 0;
+      for (let k = 0; k < 4; k++) if (painted(px + DX[k], py + DY[k])) n4++;
       if (owner[at] >= 0) {
-        if (!thinPart(owner[at]) && N4.filter(([dx, dy]) => painted(px + dx, py + dy)).length <= 1) cuts.push(at);
-      } else {
+        if (n4 <= 1 && !thinPart(owner[at])) cuts.push(at);
+      } else if (n4 >= 3) {
         const around = N4.filter(([dx, dy]) => painted(px + dx, py + dy));
         const m = massOf(px + around[0]?.[0], py + around[0]?.[1]);
         if (around.length >= 3 && around.every(([dx, dy]) => massOf(px + dx, py + dy) === m && keyAt[(py + dy) * W + px + dx] === keyAt[(py + around[0][1]) * W + px + around[0][0]])) {
@@ -980,21 +991,29 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   cuts.forEach(clear);
   for (const [to, from] of fills) copy(to, from);
   // Doubles: on a one-pixel line (a thin tail, an ostrich leg) the corner pixel of an L is dropped, so the diagonal stays crisp.
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       if (owner[at] < 0 || !thinPart(owner[at])) continue;
       const m = model.prims[owner[at]].mass;
-      const near = N8.filter(([dx, dy]) => massOf(px + dx, py + dy) === m);
-      if (near.length === 2 && near.some(([, dy]) => dy === 0) && near.some(([dx]) => dx === 0)) clear(at);
+      let near = 0, level = false, upright = false;
+      for (let k = 0; k < 8; k++) if (massOf(px + DX[k], py + DY[k]) === m) near++, level ||= DY[k] === 0, upright ||= DX[k] === 0;
+      if (near === 2 && level && upright) clear(at);
     }
   }
   // Specks: a lone pixel of a tone none of its neighbours share takes theirs.
   const retone: [number, Tone][] = [];
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       if (owner[at] < 0 || spiny[at]) continue;
+      // Most pixels share a tone with a neighbour of their colour: told apart before any list is made.
+      let alike = 0, shared = false;
+      for (let k = 0; k < 8; k++) {
+        const o = (py + DY[k]) * W + px + DX[k];
+        if (painted(px + DX[k], py + DY[k]) && keyAt[o] === keyAt[at]) alike++, shared ||= toneAt[o] === toneAt[at];
+      }
+      if (alike < 5 || shared) continue;
       const same = N8.map(([dx, dy]) => (py + dy) * W + px + dx).filter((o, i) => painted(px + N8[i][0], py + N8[i][1]) && keyAt[o] === keyAt[at]);
       if (same.length < 5 || same.some((o) => toneAt[o] === toneAt[at])) continue;
       const count = (t: Tone) => same.filter((o) => toneAt[o] === t).length;
@@ -1007,8 +1026,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   if (shag > 0) {
     const tufts: number[] = [];
     const clumps: number[] = [];
-    for (let py = 1; py < Hh - 1; py++) {
-      for (let px = 0; px < W; px++) {
+    for (let py = Math.max(1, Y0); py <= Math.min(Hh - 2, Y1); py++) {
+      for (let px = X0; px <= X1; px++) {
         const at = py * W + px;
         if (owner[at] < 0 || !furry(owner[at]) || spiny[at]) continue;
         const P = hitAt[at];
@@ -1023,8 +1042,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   // Inner ears: a stroke of the nose colour down the middle of an ear wide enough to have one.
   if (a.ears === 'pointed' || a.ears === 'tall' || a.ears === 'round') {
     const inner: number[] = [];
-    for (let py = 1; py < Hh; py++) {
-      for (let px = 1; px < W - 1; px++) {
+    for (let py = Math.max(1, Y0); py <= Y1; py++) {
+      for (let px = Math.max(1, X0); px <= Math.min(W - 2, X1); px++) {
         const at = py * W + px;
         const o = owner[at];
         if (o < 0 || model.prims[o].part !== 'ear' || far(o)) continue;
@@ -1039,8 +1058,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   }
   // Rim light: the top edge of every big part in the light tone, so the shape reads without an outline.
   const rim: number[] = [];
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       const o = owner[at];
       if (o < 0 || thinPart(o) || spiny[at] || far(o) || model.prims[o].part === 'foot') continue;
@@ -1050,8 +1069,8 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   for (const at of rim) toneAt[at] = 'light';
   // Sel-out: the edge away from the light (right and below) in the shade of its own colour, never black.
   const selOut: number[] = [];
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       if (owner[at] < 0 || thinPart(owner[at]) || spiny[at]) continue;
       if (!painted(px + 1, py) || !painted(px, py + 1)) selOut.push(at);
@@ -1060,28 +1079,17 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
   for (const at of selOut) toneAt[at] = 'shade';
 
   const sprite = new AnimalSprite();
-  // ---- ground shadow, under everything
-  const sh = model.shadow;
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
-      const X = px + 0.5 - OX;
-      const Z = 2 * (py + 0.5 - OY);
-      const g = toAnimal([X, 0, Z]);
-      const dx = (g[0] - sh.c[0]) / (sh.rx + 0.5);
-      const dz = (g[2] - sh.c[2]) / (sh.rz + 0.5);
-      if (dx * dx + dz * dz <= 1) sprite.set(px, py, SHADOW);
-    }
-  }
+  // No ground shadow in the picture: it is cast from the sun where the animal stands.
   // ---- colour, with a shade line on a part where a nearer, different part covers its neighbour
-  for (let py = 0; py < Hh; py++) {
-    for (let px = 0; px < W; px++) {
+  for (let py = Y0; py <= Y1; py++) {
+    for (let px = X0; px <= X1; px++) {
       const at = py * W + px;
       const key = keyAt[at];
       if (!key) continue;
       let tone = toneAt[at];
       const me = model.prims[owner[at]];
-      for (const [dx, dy] of N4) {
-        const nx = px + dx, ny = py + dy;
+      for (let k = 0; k < 4; k++) {
+        const nx = px + DX[k], ny = py + DY[k];
         if (!onCanvas(nx, ny)) continue;
         const other = owner[ny * W + nx];
         if (other < 0 || keyAt[ny * W + nx] !== key) continue;
@@ -1203,7 +1211,7 @@ export function drawAnimal(a: Animal, clip: ClipId, frame: number, facing: Facin
 export function heightOf(a: Animal): number {
   const { sprite } = drawAnimal(a, 'idle', 0, 0);
   for (let y = 0; y < ANIMAL_H; y++) {
-    for (let x = 0; x < ANIMAL_W; x++) if (sprite.get(x, y) && sprite.get(x, y) !== SHADOW) return OY - y;
+    for (let x = 0; x < ANIMAL_W; x++) if (sprite.get(x, y)) return OY - y;
   }
   return 0;
 }

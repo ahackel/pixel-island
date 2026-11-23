@@ -77,7 +77,6 @@ export type PaletteKey = keyof typeof BASES | keyof typeof FIXED | keyof typeof 
 
 /** The ground shadow colour of everything drawn, laid over the ground once wherever any shadow falls. */
 export const SHADOW = '#2a1c3a38';
-export const isShadow = (hex: string | null): boolean => hex === SHADOW;
 export type Tone = 'base' | 'shade' | 'light';
 
 const rgbOf = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

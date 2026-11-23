@@ -11,7 +11,8 @@ import { baseLook, DEFAULT_FACE, facesFor, wear } from '../../engine/character/b
 import { copyItem, dropEdits, importPart, isEdited, layersOf, partFile, saveEdits, type Layer } from '../../engine/character/parts.ts';
 import { WEAR_MAX, weathered } from '../../engine/character/wear.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
-import { drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, SLOTS, type Facing, type Item, type Slot } from '../../engine/core/puppet.ts';
+import { CHARACTER_ORIGIN, drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, SLOTS, type Facing, type Item, type Slot } from '../../engine/core/puppet.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
 import { SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
@@ -75,7 +76,8 @@ const big = h('canvas', { class: 'stage__sprite parts__big' });
 function drawFigures(): void {
   const look = lookWith(shown);
   const pose = AUTHORED.idle.frames[0];
-  const s = drawCharacter(look, pose, prefs.facing);
+  // With its shadow cast from the sun on flat ground, as far as the picture reaches.
+  const s = withSunShadow(drawCharacter(look, pose, prefs.facing), SPRITE_W, SPRITE_H, CHARACTER_ORIGIN);
   big.width = SPRITE_W;
   big.height = SPRITE_H;
   const bctx = big.getContext('2d')!;

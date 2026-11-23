@@ -2,16 +2,18 @@
 // Usage: node scripts/flora-sheet.mjs <out.png> <scale> <plants.json|test> [variants|wind|dry|size] [character]
 import fs from 'node:fs';
 import { writeSheet } from './sheet.mjs';
-import { tryPlant, grow, drawPlant, canvasFor, FLORA_ORIGIN, FRAMES, Raster, SHADOW } from '../engine/flora/flora.ts';
+import { tryPlant, grow, drawPlant, canvasFor, FLORA_ORIGIN, FRAMES, Raster } from '../engine/flora/flora.ts';
+import { withSunShadow } from '../engine/world/island.ts';
 import { drawCharacter, BUILDS } from '../engine/core/puppet.ts';
 import { STAND } from '../engine/core/poses.ts';
 import { baseLook } from '../engine/character/base.ts';
 
-/** Rows of plants as one PNG, each in a cell the size of the largest, with their ground shadows. */
+/** Rows of plants as one PNG, each in a cell the size of the largest, with their ground shadows cast from the sun. */
 export function writeRasters(file, rows, scale = 3, background = [233, 217, 160]) {
   const cells = rows.flat().filter(Boolean);
   const cell = { w: Math.max(...cells.map((r) => r.w)), h: Math.max(...cells.map((r) => r.h)) };
-  writeSheet(file, rows, scale, background, cell, (raster, x, y) => raster.get(x, y) ?? (raster.shaded?.(x, y) ? SHADOW : null));
+  const cast = new Map(cells.map((r) => [r, withSunShadow(r, r.w, r.h, r.origin)]));
+  writeSheet(file, rows, scale, background, cell, (raster, x, y) => cast.get(raster).get(x, y));
 }
 
 /** Draws the default character beside the plant, for scale. */
@@ -22,8 +24,7 @@ function withPerson(raster, origin = FLORA_ORIGIN) {
   for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
     const hex = sprite.get(x, y);
     if (!hex || raster.get(x + dx, y + dy)) continue;
-    if (hex === SHADOW) raster.shade(x + dx, y + dy);
-    else raster.set(x + dx, y + dy, hex);
+    raster.set(x + dx, y + dy, hex);
   }
   return raster;
 }

@@ -6,7 +6,7 @@ import {
   type Category, type Grown, type Plant,
 } from '../../engine/flora/flora.ts';
 import { generateIsland, renderTerrain, type HeightMap, type TerrainImage } from '../../engine/world/terrain.ts';
-import { castShadow, layShadow, middleOf, paintIsland, scatter, stamp, type Scattered, type Spot, type Thing } from '../../engine/world/island.ts';
+import { castShadow, layShadow, middleOf, paintIsland, scatter, stamp, withSunShadow, type Scattered, type Spot, type Thing } from '../../engine/world/island.ts';
 import { cleanSwap, FLORA, FLORA_CALLS, FLORA_REJECTED, FLORA_STORE, plantById, type PlantEntry } from '../../engine/flora/flora-catalog.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
@@ -199,18 +199,15 @@ function survivorAt(ms: number): Sprite {
 
 /** A picture of one plant, cropped to what it paints and fitted to a box. */
 function thumb(raster: Raster, box: number): HTMLCanvasElement {
-  let x0 = raster.w, y0 = raster.h, x1 = 0, y1 = 0;
-  for (let y = 0; y < raster.h; y++) for (let x = 0; x < raster.w; x++) {
-    if (!raster.get(x, y) && !raster.shaded(x, y)) continue;
-    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-  }
+  // Cropped to the plant and its shadow, cast from the sun on flat ground.
+  const { x0, y0, x1, y1 } = withSunShadow(raster, raster.w, raster.h, raster.origin).bounds;
   const w = Math.max(1, x1 - x0 + 1);
   const hgt = Math.max(1, y1 - y0 + 1);
   const canvas = h('canvas', { class: 'thumb', width: String(w), height: String(hgt) });
   const ctx = canvas.getContext('2d')!;
   const image = ctx.createImageData(w, hgt);
   const mask = new Uint8Array(w * hgt);
-  castShadow(mask, w, hgt, raster, raster.w, raster.h, -x0, -y0);
+  castShadow(mask, w, hgt, raster, raster.w, raster.h, -x0, -y0, raster.origin);
   layShadow(image, mask);
   stamp(image, raster, raster.w, raster.h, -x0, -y0);
   ctx.putImageData(image, 0, 0);
@@ -610,8 +607,8 @@ function drawPreview(ms: number, frame: number): void {
   // The survivor stands a little in front and to the left, and is never hidden by the plant.
   const person = { x: view.origin.x - 30 - FEET.x, y: view.origin.y + 4 - FEET.y };
   const mask = new Uint8Array(view.w * view.h);
-  castShadow(mask, view.w, view.h, raster, raster.w, raster.h, dx, dy);
-  if (state.person) castShadow(mask, view.w, view.h, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y);
+  castShadow(mask, view.w, view.h, raster, raster.w, raster.h, dx, dy, origin);
+  if (state.person) castShadow(mask, view.w, view.h, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y, FEET);
   layShadow(image, mask);
   stamp(image, raster, raster.w, raster.h, dx, dy);
   if (state.person) stamp(image, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y);

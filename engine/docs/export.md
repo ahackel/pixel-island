@@ -18,7 +18,7 @@ What it bakes today:
 | What | Frames | Notes |
 | --- | --- | --- |
 | Each plant, rock, driftwood | 4 variants × 8 wind frames | Hard plants (cacti, rocks, wood) are identical in every wind frame and stored once. |
-| Their ground shadows | 1 per variant | A separate mask frame, see *Shadows* below. |
+| Their ground shadows | 1 per variant | A separate mask frame cast from the sun, see *Shadows* below. |
 | A character | every clip × 4 facings | Facings 1 and 2 are mirrors of 0 and 3; a game can bake two and flip the quad. |
 | Each animal preset | 6 clips × 4 facings | `anchors` in `atlas.json` gives each frame's symptom points (eye, nose, mouth, top, head, body, back, foot) as `[x, y, visible]` from the pivot. A game can also skip baking and call `drawAnimal()` from `engine/animals/animal.ts` at load time. |
 
@@ -76,8 +76,12 @@ Ground shadows are partly transparent. Drawn one by one, two overlapping shadows
 twice and show their outlines. The fix is to draw all shadows into one **shadow layer** first,
 as plain coverage (on or off), and lay that layer over the ground once:
 
-- Plants and rocks keep their shadow apart from their pixels (`Raster.shadow` here, a separate
-  `/shadow` frame in the atlas). Characters carry theirs in the shadow colour.
+- No picture carries a shadow of its own: a ground shadow is always cast from the sun, never a
+  painted blob or ellipse. `sunShadow` in `engine/world/island.ts` casts one on flat ground (each
+  painted pixel stands upright over the foot and is sent away from the light, as the world casts
+  over the terrain), and the atlas has it as a `/shadow` mask frame per plant variant, for the
+  character, per animal and per object turn, from the first frame. It is cast for the facing baked,
+  so a quad flipped for a mirrored facing needs its shadow cast again, not flipped.
 - In an engine: render shadow sprites into a render target (or the stencil buffer) with any
   opaque colour, then draw one full-screen quad over the ground that darkens where the target is
   set. Sprites are drawn after, so shadows never fall on the plants themselves.

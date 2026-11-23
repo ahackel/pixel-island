@@ -25,6 +25,8 @@ import { choice, pixelButton, searchField, tileGrid, toggle, turnView, viewTools
 import { checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
+import { castShadow } from '../../engine/world/island.ts';
+import { SHADOW } from '../../engine/core/palette.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
 
@@ -150,9 +152,16 @@ function drawStage(frame: number): void {
     }
   };
   const back = [3, 4, 5].includes(prefs.dir);
-  const person = () => { const s = survivor(frame); draw({ get: (x, y) => s.get(x, y), w: SPRITE_W, h: SPRITE_H, foot: FEET }, cx - 40, cy - 4); };
-  if (prefs.person && !back) person();
+  const s = survivor(frame);
+  const man = { get: (x: number, y: number) => s.get(x, y), w: SPRITE_W, h: SPRITE_H, foot: FEET };
+  const person = () => draw(man, cx - 40, cy - 4);
   const p = propPicture(k, prefs.dir, frame, prefs.playing ? 1 : 0);
+  // Their shadows, cast from the sun, laid on the ground once where they overlap.
+  const mask = new Uint8Array(STAGE_W * STAGE_H);
+  if (p) castShadow(mask, STAGE_W, STAGE_H, p, p.w, p.h, cx - p.foot.x, cy - p.foot.y, p.foot);
+  if (prefs.person) castShadow(mask, STAGE_W, STAGE_H, s, SPRITE_W, SPRITE_H, cx - 40 - FEET.x, cy - 4 - FEET.y, FEET);
+  for (let q = 0; q < mask.length; q++) if (mask[q]) put(q % STAGE_W, Math.floor(q / STAGE_W), SHADOW);
+  if (prefs.person && !back) person();
   if (p) draw(p, cx, cy);
   if (prefs.person && back) person();
   // The collider: the ground circle walkers keep out of (red), over everything so it shows through the prop.

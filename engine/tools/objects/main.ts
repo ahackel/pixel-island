@@ -4,7 +4,7 @@
 import { choice, tileGrid, confirmDialog, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
-  COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, isShadow, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
+  COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_ORIGIN, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
 } from '../../engine/objects/object.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
 import { buildPanel, type BuildContext } from './build-panel.ts';
@@ -15,6 +15,7 @@ import {
   type IconName } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
 
 const L = (en: string, german: string) => (currentLang() === 'de' ? german : en);
 
@@ -52,12 +53,10 @@ let message = '';
 function cropFor(p: Build): Rect {
   let x0 = OBJECT_W, y0 = OBJECT_H, x1 = 0, y1 = 0;
   for (const at of [0, 1, 2, 3] as const) {
-    const { sprite } = drawObject(p, at);
-    for (let y = 0; y < OBJECT_H; y++) for (let x = 0; x < OBJECT_W; x++) {
-      if (!sprite.get(x, y)) continue;
-      x0 = Math.min(x0, x, OBJECT_W - 1 - x); x1 = Math.max(x1, x, OBJECT_W - 1 - x);
-      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-    }
+    // The object and its shadow, cast from the sun; the crop stays centred, so as wide on each side.
+    const b = withSunShadow(drawObject(p, at).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN).bounds;
+    x0 = Math.min(x0, b.x0, OBJECT_W - 1 - b.x1); x1 = Math.max(x1, b.x1, OBJECT_W - 1 - b.x0);
+    y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1);
   }
   const side = Math.max(24, x1 - x0 + 5, y1 - y0 + 5);
   return { x: Math.round(OBJECT_W / 2 - side / 2), y: Math.round((y0 + y1) / 2 - side / 2), w: side, h: side };
@@ -65,7 +64,7 @@ function cropFor(p: Build): Rect {
 
 /** A small picture of an object, trimmed to what it paints. */
 function thumbnail(p: Build, box = 60): HTMLCanvasElement {
-  return thumbs.of(`${box}|${JSON.stringify(p)}`, () => trimmed(drawObject(p, 0).sprite, OBJECT_W, OBJECT_H, box, isShadow));
+  return thumbs.of(`${box}|${JSON.stringify(p)}`, () => trimmed(withSunShadow(drawObject(p, 0).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN), OBJECT_W, OBJECT_H, box));
 }
 /** The panel is rebuilt on every change and shows the same presets and saved objects again: their pictures are drawn once. */
 const thumbs = pictureCache('thumb');
@@ -381,7 +380,8 @@ const tick = (ms: number) => {
       }
     }
     if (tab === 'points') for (const p of Object.values(points)) marked.set(p.x, p.y, p.visible ? '#ff00ff' : '#ff00ff66');
-    paintSprite(hero, marked, crop);
+    // Its shadow cast from the sun, from the frame itself, not the marks on the copy.
+    paintSprite(hero, withSunShadow(sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN, false, marked), crop);
     fitWhole(hero, Math.min(stage.clientWidth, stage.clientHeight) - 40);
   }
   requestAnimationFrame(tick);

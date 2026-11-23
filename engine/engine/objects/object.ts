@@ -1,11 +1,10 @@
 // Objects: furniture, devices, the fountain and the cars, built from boxes, cylinders and balls on a
 // tile footprint and drawn by rule in the engine's look (docs/object-spec.md). Ray-cast per pixel in the
 // 2:1 view, lit with the flora light as the animals are, in all four camera turns.
-import { isShadow, PAINT_KEYS, PALETTE, SHADOW, type PaletteKey, type Tone } from '../core/palette.ts';
+import { PAINT_KEYS, PALETTE, type PaletteKey, type Tone } from '../core/palette.ts';
 import { cellHash } from '../../shared/random.ts';
 import { savedList } from '../../shared/files.ts';
 
-export { isShadow };
 
 export const SHAPES = ['box', 'cylinder', 'ball'] as const;
 /** The axis a cylinder lies along: standing (y), or lying along the footprint's width (x) or depth (z). */
@@ -281,16 +280,7 @@ export function drawObject(prop: Build, turn: Turn | number, frame = 0): ObjectF
   for (const at of selOut) toneAt[at] = 'shade';
 
   const sprite = new ObjectSprite();
-  // ---- ground shadow: under every part near the floor, a unit wider all round
-  const low = prop.parts.filter((p) => p.y < 24);
-  for (let py = 0; py < H; py++) {
-    for (let px = 0; px < W; px++) {
-      const { o, dir } = ray(px, py);
-      const s = -o[1] / dir[1];
-      const gx = o[0] + dir[0] * s, gz = o[2] + dir[2] * s;
-      if (low.some((p) => gx >= p.x - 1 && gx <= p.x + p.w + 1 && gz >= p.z - 1 && gz <= p.z + p.d + 1)) sprite.set(px, py, SHADOW);
-    }
-  }
+  // No ground shadow in the picture: it is cast from the sun where the object stands.
   // ---- colour, with a shade line on a part where a nearer part of the same colour covers it
   const N4 = [[1, 0], [-1, 0], [0, -1], [0, 1]] as const;
   for (let py = 0; py < H; py++) {
@@ -319,7 +309,7 @@ export function drawObject(prop: Build, turn: Turn | number, frame = 0): ObjectF
 /** Rows from the top of the drawn object to the floor at its middle, turn 0. */
 export function heightOf(prop: Build): number {
   const { sprite } = drawObject(prop, 0);
-  for (let y = 0; y < OBJECT_H; y++) for (let x = 0; x < OBJECT_W; x++) if (sprite.get(x, y) && !isShadow(sprite.get(x, y))) return OY - y;
+  for (let y = 0; y < OBJECT_H; y++) for (let x = 0; x < OBJECT_W; x++) if (sprite.get(x, y)) return OY - y;
   return 0;
 }
 

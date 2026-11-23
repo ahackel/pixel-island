@@ -7,7 +7,7 @@ import { saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
-import { castShadow, footOf, layShadow, ROOM, stamp, type Picture } from '../../engine/world/island.ts';
+import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
 import { heightAt, inside, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
@@ -25,7 +25,7 @@ import { carve, caveLamps, caveThings, caveTint, CAVE_DAY, flicker } from '../..
 import { lightByTile } from '../../engine/world/daylight.ts';
 import { isHidden, propKind, propKinds, propPicture, variantsOf } from '../../engine/world/prop.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
-import { CLIPS, drawAnimal, isShadow, savedAnimals, type Animal } from '../../engine/animals/animal.ts';
+import { CLIPS, drawAnimal, savedAnimals, type Animal } from '../../engine/animals/animal.ts';
 import { drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, turnFacing, type Facing } from '../../engine/core/puppet.ts';
 import { AUTHORED, STAND } from '../../engine/core/poses.ts';
 import { PRESETS } from '../../engine/animals/animal-presets.ts';
@@ -301,7 +301,6 @@ const tileUnder = (e: { clientX: number; clientY: number }) => {
 /** The start point, shown while editing: a small flag. */
 const FLAG: Picture = {
   get: (x, y) => (x === 0 && y < 12 ? '#3a2a2a' : x >= 1 && x <= 5 && y < 4 ? '#e0533d' : null),
-  shaded: (x, y) => y === 12 && x < 3,
 };
 
 // ------------------------------------------------------------------ editing
@@ -753,13 +752,13 @@ function whereIs(p: Pickable): { i: number; j: number } {
 
 /** Whether a thing's picture covers a ground-image pixel, with a pixel of slack all round since the small animals are only a few pixels across. */
 const OUTLINE = [255, 216, 74];
-/** Draws a one-pixel line round a thing's picture (its shadow left out) into an image of the view. */
+/** Draws a one-pixel line round a thing's picture into an image of the view. */
 function outline(image: { data: Uint8ClampedArray; width: number; height: number }, view: Rect, thing: Thing, [r, g, b]: number[]): void {
   const at = footOf(world.ground, thing.spot);
   const x0 = at.x - thing.foot.x - view.x, y0 = at.y - thing.foot.y - view.y;
   const solid = (x: number, y: number) => {
     const c = x >= 0 && y >= 0 && x < thing.w && y < thing.h ? thing.picture.get(x, y) : null;
-    return !!c && !isShadow(c);
+    return !!c;
   };
   for (let y = -1; y <= thing.h; y++) for (let x = -1; x <= thing.w; x++) {
     if (solid(x, y) || !(solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) continue;
@@ -776,7 +775,7 @@ function covers(thing: Thing, x: number, y: number): boolean {
     const px = Math.floor(x) + dx - (at.x - thing.foot.x);
     const py = Math.floor(y) + dy - (at.y - thing.foot.y);
     const c = px >= 0 && py >= 0 && px < thing.w && py < thing.h ? thing.picture.get(px, py) : null;
-    return !!c && !isShadow(c);
+    return !!c;
   }));
 }
 
@@ -1178,18 +1177,15 @@ function thumb(id: string): HTMLCanvasElement {
   const known = thumbs.get(id);
   if (known) return known;
   const raster = rasterOf({ plant: id, seed: 0, size: 1 }, 0)!;
-  let x0 = raster.w, y0 = raster.h, x1 = 0, y1 = 0;
-  for (let y = 0; y < raster.h; y++) for (let x = 0; x < raster.w; x++) {
-    if (!raster.get(x, y) && !raster.shaded(x, y)) continue;
-    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-  }
+  // Cropped to the plant and its shadow, cast from the sun on flat ground.
+  const { x0, y0, x1, y1 } = withSunShadow(raster, raster.w, raster.h, raster.foot).bounds;
   const w = Math.max(1, x1 - x0 + 1);
   const hh = Math.max(1, y1 - y0 + 1);
   const c = h('canvas', { width: String(w), height: String(hh) });
   const g = c.getContext('2d')!;
   const image = g.createImageData(w, hh);
   const mask = new Uint8Array(w * hh);
-  castShadow(mask, w, hh, raster, raster.w, raster.h, -x0, -y0);
+  castShadow(mask, w, hh, raster, raster.w, raster.h, -x0, -y0, raster.foot);
   layShadow(image, mask);
   stamp(image, raster, raster.w, raster.h, -x0, -y0);
   g.putImageData(image, 0, 0);
@@ -1224,12 +1220,12 @@ function personThumb(state: Saved['state']): HTMLCanvasElement {
   return c;
 }
 
-/** A picture cropped to what it paints, without its shadow, at most 44 pixels across on screen. */
+/** A picture cropped to what it paints, at most 44 pixels across on screen. */
 function cropped(sprite: { w: number; h: number; get(x: number, y: number): string | null }): HTMLCanvasElement {
   let x0 = sprite.w, y0 = sprite.h, x1 = 0, y1 = 0;
   for (let y = 0; y < sprite.h; y++) for (let x = 0; x < sprite.w; x++) {
     const c = sprite.get(x, y);
-    if (!c || isShadow(c)) continue;
+    if (!c) continue;
     x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
   }
   const w = Math.max(1, x1 - x0 + 1);
@@ -1238,7 +1234,7 @@ function cropped(sprite: { w: number; h: number; get(x: number, y: number): stri
   const g = c.getContext('2d')!;
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const color = sprite.get(x, y);
-    if (!color || isShadow(color)) continue;
+    if (!color) continue;
     g.fillStyle = color;
     g.fillRect(x - x0, y - y0, 1, 1);
   }

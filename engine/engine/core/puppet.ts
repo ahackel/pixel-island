@@ -322,7 +322,7 @@ function lying(look: Look, pose: Pose, facing: Facing, options: DrawOptions): Sp
 /**
  * A standing figure laid on the floor: turned a quarter so the head points left and the front
  * faces up (or, `down`, the other way round, the front to the floor), centred on the character's
- * spot, with a long shadow under it.
+ * spot. Its shadow is cast from the sun where it lies, as for everything else.
  */
 function laidDown(standing: Sprite, down: boolean): Sprite {
   const out = new Sprite();
@@ -336,13 +336,6 @@ function laidDown(standing: Sprite, down: boolean): Sprite {
       const c = standing.get(x, y);
       if (c && c !== SHADOW) placed.push([cx + (y - middle), ORIGIN_Y - 3 - (down ? cx - x : x - cx), c]);
     }
-  }
-  const xs = placed.map((p) => p[0]);
-  const low = Math.max(...placed.map((p) => p[1]));
-  const left = Math.min(...xs) + 2;
-  const right = Math.max(...xs) - 2;
-  for (const [row, inset] of [[low - 1, 1], [low, 0], [low + 1, 0], [low + 2, 2]] as const) {
-    for (let x = left + inset; x <= right - inset; x++) out.set(x, row, SHADOW);
   }
   for (const [x, y, c] of placed) out.set(x, y, c);
   return out;
@@ -873,16 +866,7 @@ function drawFigure(look: Look, pose: Pose, facing: Facing, options: DrawOptions
   const chest = P(pose.chest);
   const hips = P(pose.hips);
 
-  // ---- ground shadow: anchors an outline-free sprite to the floor
-  layers.push({
-    depth: -1000,
-    draw: () => {
-      const cx = P([0, 0, 0]).x;
-      for (const [row, half] of [[ORIGIN_Y - 1, 5], [ORIGIN_Y, 7], [ORIGIN_Y + 1, 7], [ORIGIN_Y + 2, 5]] as const) {
-        for (let x = Math.round(cx - half); x < Math.round(cx + half); x++) sprite.set(x, row, SHADOW);
-      }
-    },
-  });
+  // No ground shadow in the picture: it is cast from the sun where the character stands.
 
   // How far the knees have swung out to either side of where the legs hang, for skirts.
   const legPoints = (['L', 'R'] as const).map((s) => ({

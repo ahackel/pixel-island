@@ -8,7 +8,8 @@ import { HAIR_COLORS, lookOf, type State, type WornSlot } from './character.ts';
 import TEXT from './editor-text.json' with { type: 'json' };
 import { PALETTE, SHADOW, SKIN_KEYS, type PaletteKey } from '../core/palette.ts';
 import { AUTHORED, STAND } from '../core/poses.ts';
-import { BUILDS, drawCharacter, SPRITE_W, turnFacing, type Facing, type Sprite } from '../core/puppet.ts';
+import { BUILDS, CHARACTER_ORIGIN, drawCharacter, SPRITE_H, SPRITE_W, turnFacing, type Facing, type Sprite } from '../core/puppet.ts';
+import { withSunShadow } from '../world/island.ts';
 import { C, caps, pixelButton, S, turnView, type Icon } from '../../shared/game-ui.ts';
 import { choice } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
@@ -218,8 +219,10 @@ export function characterEditor(start: State, options: EditorOptions = {}): Edit
     ctx.clearRect(0, 0, SIZE, SIZE);
     panel(ctx, 0, 0, SIZE, SIZE - 1, C.paper, C.shadow);
     const dx = (SPRITE_W - SIZE) / 2, dy = 2;
+    // Its shadow cast from the sun on flat ground, as far as the frame reaches.
+    const cast = withSunShadow(sprite, SPRITE_W, SPRITE_H, CHARACTER_ORIGIN);
     for (let y = 0; y < SIZE - 3; y++) for (let x = 0; x < SIZE; x++) {
-      const c = sprite.get(x + dx, y + dy);
+      const c = cast.get(x + dx, y + dy);
       if (!c) continue;
       ctx.fillStyle = c === SHADOW ? C.shadow : c;
       ctx.fillRect(x, y, 1, 1);

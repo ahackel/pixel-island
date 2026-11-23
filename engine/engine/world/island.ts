@@ -6,7 +6,7 @@ import { SHADOW } from '../core/palette.ts';
 import { GLOW_ALPHA, GLOWING } from './daylight.ts';
 import { rng } from '../../shared/random.ts';
 import { drew } from '../../shared/stats.ts';
-import { hiddenByGround, standingHeight, surfaceAt, toScreen, type HeightMap, type Surface, type TerrainImage } from './terrain.ts';
+import { hiddenByGround, LEVEL_M, LEVEL_PX, SHADOW_RUN, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen, type HeightMap, type Surface, type TerrainImage } from './terrain.ts';
 
 /** Where each group grows. Rocks may stand in the shallows; driftwood only lies on the beach. */
 export const HOMES: Record<Category, Surface[]> = {
@@ -73,8 +73,8 @@ export function scatter<T extends { category: Category }>(map: HeightMap, pool: 
 // ------------------------------------------------------------------ painting
 
 export interface Pixels { data: Uint8ClampedArray; width: number; height: number }
-/** Anything with pixels: a plant picture keeps its ground shadow apart, a character sprite in the shadow colour. */
-export type Picture = { get(x: number, y: number): string | null; shaded?(x: number, y: number): boolean };
+/** Anything with pixels. Its ground shadow is not in it: shadows are cast from the sun where it stands (`sunShadow`, `World`). */
+export type Picture = { get(x: number, y: number): string | null };
 
 const rgbaOf = (hex: string): [number, number, number, number] => [
   parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16),
@@ -156,17 +156,70 @@ function wordsOf(image: Pixels): Uint32Array {
 }
 
 /**
- * Ground shadows are collected in one mask first and laid on the ground once, so where two
- * shadows overlap the ground is not darkened twice.
+ * Where a picture's shadow falls on flat ground, cast from the sun as `World` casts it over the terrain: each painted pixel stands
+ * upright over its foot (lying `flat`, each column over its lowest pixel), as high as it is drawn above it, and is sent away from
+ * the light to the ground. As x, y pairs in the picture's own frame; some may lie outside it. Glowing pixels cast none.
  */
-export function castShadow(mask: Uint8Array, mw: number, mh: number, picture: Picture, w: number, h: number, dx: number, dy: number): void {
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!(picture.shaded?.(x, y) || picture.get(x, y) === SHADOW)) continue;
-      const tx = x + dx;
-      const ty = y + dy;
-      if (tx >= 0 && ty >= 0 && tx < mw && ty < mh) mask[ty * mw + tx] = 1;
-    }
+export function sunShadow(picture: Picture, w: number, h: number, foot: { x: number; y: number }, flat = false): Int16Array {
+  const key = `${w},${h},${foot.x},${foot.y},${flat}`;
+  const known = sunShadows.get(picture);
+  if (known?.key === key) return known.xy;
+  const { n, xy, rgba } = packedOf(picture, w, h);
+  const rests = new Array<number>(w).fill(-1);
+  for (let k = 0; k < n; k++) rests[xy[2 * k]] = Math.max(rests[xy[2 * k]], xy[2 * k + 1]);
+  for (let x = 0; x < w; x++) if (!flat || rests[x] < 0) rests[x] = foot.y;
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) {
+    if (rgba[4 * k + 3] === GLOW_ALPHA) continue;
+    const x = xy[2 * k], y = xy[2 * k + 1];
+    const up = (Math.max(0, rests[x] - y) / LEVEL_PX) * LEVEL_M;
+    const side = (x - foot.x) / TILE_W;
+    const back = (rests[x] - foot.y) / TILE_H;
+    const i = side + back + up * SHADOW_RUN[0];
+    const j = -side + back + up * SHADOW_RUN[1];
+    const sx = Math.round(foot.x + ((i - j) * TILE_W) / 2), sy = Math.round(foot.y + ((i + j) * TILE_H) / 2);
+    const at = (sy + 0x8000) * 0x10000 + sx + 0x8000;
+    if (seen.has(at)) continue;
+    seen.add(at);
+    out.push(sx, sy);
+  }
+  const cast = Int16Array.from(out);
+  sunShadows.set(picture, { key, xy: cast });
+  return cast;
+}
+const sunShadows = new WeakMap<Picture, { key: string; xy: Int16Array }>();
+
+/**
+ * A picture with its sun shadow on flat ground (`sunShadow`) in the shadow colour where nothing is painted, for showing a thing
+ * off the map, as the editors do. It answers outside the picture's own size too, where the shadow reaches. `shown` is painted in
+ * place of the picture (with marks on it, say) while the shadow is the picture's.
+ */
+export function withSunShadow(picture: Picture, w: number, h: number, foot: { x: number; y: number }, flat = false, shown: Picture = picture): Picture & { bounds: { x0: number; y0: number; x1: number; y1: number } } {
+  const xy = sunShadow(picture, w, h, foot, flat);
+  const cast = new Set<number>();
+  // The box round what is painted and its shadow.
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const grow = (x: number, y: number) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
+  for (let k = 0; k < xy.length; k += 2) cast.add(xy[k + 1] * 0x10000 + xy[k]), grow(xy[k], xy[k + 1]);
+  const { n, xy: painted } = packedOf(picture, w, h);
+  for (let k = 0; k < n; k++) grow(painted[2 * k], painted[2 * k + 1]);
+  return {
+    bounds: { x0, y0, x1, y1 },
+    get: (x, y) => (x >= 0 && y >= 0 && x < w && y < h ? shown.get(x, y) : null) ?? (cast.has(y * 0x10000 + x) ? SHADOW : null),
+  };
+}
+
+/**
+ * Ground shadows are collected in one mask first and laid on the ground once, so where two
+ * shadows overlap the ground is not darkened twice. Each picture casts from the sun on flat ground (`sunShadow`).
+ */
+export function castShadow(mask: Uint8Array, mw: number, mh: number, picture: Picture, w: number, h: number, dx: number, dy: number, foot: { x: number; y: number }, flat = false): void {
+  const xy = sunShadow(picture, w, h, foot, flat);
+  for (let k = 0; k < xy.length; k += 2) {
+    const tx = xy[k] + dx;
+    const ty = xy[k + 1] + dy;
+    if (tx >= 0 && ty >= 0 && tx < mw && ty < mh) mask[ty * mw + tx] = 1;
   }
 }
 export function layShadow(image: Pixels, mask: Uint8Array): void {
@@ -207,7 +260,7 @@ export function paintIsland(map: HeightMap, ground: TerrainImage, things: Thing[
     return { ...t, dx, dy };
   });
   const mask = new Uint8Array(image.width * image.height);
-  for (const t of placed) castShadow(mask, image.width, image.height, t.picture, t.w, t.h, t.dx, t.dy);
+  for (const t of placed) castShadow(mask, image.width, image.height, t.picture, t.w, t.h, t.dx, t.dy, t.foot, t.flat);
   layShadow(image, mask);
   placed.sort((a, b) => a.spot.i + a.spot.j - (b.spot.i + b.spot.j));
   for (const t of placed) stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => hiddenByGround(map, ground, x, y, t.spot.i, t.spot.j, t.spot.level));

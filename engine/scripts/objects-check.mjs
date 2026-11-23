@@ -3,7 +3,7 @@
 // to check the light: top light, front (lower left) base, side (lower right) shade (docs/object-spec.md).
 //
 // Usage: node scripts/objects-check.mjs
-import { cleanBuild, drawObject, framesOf, isShadow, newPart, OBJECT_H, OBJECT_ORIGIN, OBJECT_W } from '../engine/objects/object.ts';
+import { cleanBuild, drawObject, framesOf, newPart, OBJECT_H, OBJECT_ORIGIN, OBJECT_W } from '../engine/objects/object.ts';
 import { OBJECT_PRESETS } from '../engine/objects/object-presets.ts';
 import { PALETTE } from '../engine/core/palette.ts';
 
@@ -32,7 +32,7 @@ for (const { id, prop } of OBJECT_PRESETS) {
       for (let y = 0; y < OBJECT_H; y++) for (let x = 0; x < OBJECT_W; x++) {
         const hex = sprite.get(x, y);
         if (!hex) continue;
-        if (!isShadow(hex)) painted++;
+        painted++;
         if (x === 0 || y === 0 || x === OBJECT_W - 1 || y === OBJECT_H - 1) edge++;
       }
       const where = `${id} frame ${f} turn ${turn}`;

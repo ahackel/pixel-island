@@ -5,7 +5,7 @@
 // Usage: node scripts/animals-check.mjs [sheet.png]   (the optional sheet shows every preset, clip and facing)
 import fs from 'node:fs';
 import { PNG } from 'pngjs';
-import { ANCHORS, ANIMAL_H, ANIMAL_W, CLIPS, CLIP_IDS, drawAnimal, heightOf, isShadow, sizeClassOf } from '../engine/animals/animal.ts';
+import { ANCHORS, ANIMAL_H, ANIMAL_W, CLIPS, CLIP_IDS, drawAnimal, heightOf, sizeClassOf } from '../engine/animals/animal.ts';
 import { PRESETS } from '../engine/animals/animal-presets.ts';
 
 const CLASS = {
@@ -31,7 +31,7 @@ for (const { id, animal } of PRESETS) {
         let edge = 0;
         for (let y = 0; y < ANIMAL_H; y++) for (let x = 0; x < ANIMAL_W; x++) {
           const hex = sprite.get(x, y);
-          if (!hex || isShadow(hex)) continue;
+          if (!hex) continue;
           painted++;
           if (x === 0 || y === 0 || x === ANIMAL_W - 1 || y === ANIMAL_H - 1) edge++;
         }

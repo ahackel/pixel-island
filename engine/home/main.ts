@@ -8,7 +8,6 @@ import { objectPresetById } from '../engine/objects/object-presets.ts';
 import { drawPlant, FRAMES, grow, type Raster } from '../engine/flora/flora.ts';
 import { FLORA } from '../engine/flora/flora-catalog.ts';
 import { middleOf, paintIsland, scatter, stamp, type Pixels, type Thing } from '../engine/world/island.ts';
-import { isShadow } from '../engine/core/palette.ts';
 import { AUTHORED, type Clip } from '../engine/core/poses.ts';
 import { CHARACTER_ORIGIN, drawCharacter, SPRITE_H, SPRITE_W, type Facing, type Look, type Sprite } from '../engine/core/puppet.ts';
 import { generateIsland, renderTerrain } from '../engine/world/terrain.ts';
@@ -260,11 +259,11 @@ function madeThings(): Made[] {
   });
   const animals: Made[] = savedAnimals().slice(-SHOWN).map((s) => {
     const { sprite } = drawAnimal(s.animal, 'idle', 0, 0);
-    return { name: s.name, tool: 'animals', href: './tools/animals/', pick: () => writeStore(ANIMAL_STORE.current, s.id), picture: trimmed(sprite, ANIMAL_W, ANIMAL_H, THING_BOX, isShadow, true) };
+    return { name: s.name, tool: 'animals', href: './tools/animals/', pick: () => writeStore(ANIMAL_STORE.current, s.id), picture: trimmed(sprite, ANIMAL_W, ANIMAL_H, THING_BOX) };
   });
   const objects: Made[] = savedProps().slice(-SHOWN).map((s) => {
     const { sprite } = drawObject(s.prop, 0);
-    return { name: s.name, tool: 'objects', href: './tools/objects/', pick: () => writeStore(OBJECT_STORE.current, s.id), picture: trimmed(sprite, OBJECT_W, OBJECT_H, THING_BOX, isShadow, true) };
+    return { name: s.name, tool: 'objects', href: './tools/objects/', pick: () => writeStore(OBJECT_STORE.current, s.id), picture: trimmed(sprite, OBJECT_W, OBJECT_H, THING_BOX) };
   });
   const out: Made[] = [];
   for (let i = 1; out.length < SHOWN && i <= Math.max(people.length, animals.length, objects.length); i++) {

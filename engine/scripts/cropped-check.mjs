@@ -22,7 +22,7 @@ function same(name, big, w, h, foot, small) {
   kept += small.bytes;
   const dx = foot.x - small.foot.x, dy = foot.y - small.foot.y;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (big.get(x, y) !== small.get(x - dx, y - dy) || !!big.shaded?.(x, y) !== small.shaded(x - dx, y - dy)) {
+    if (big.get(x, y) !== small.get(x - dx, y - dy)) {
       problems.push(`${name}: differs at ${x},${y}`);
       return;
     }

@@ -4,8 +4,8 @@
 import { box, tileGrid, confirmDialog, section as pixelSection, choice, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
-  ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
-  isShadow, MARKS, NUMBERS, PLANS, readAnimalFile, ROLES, savedAnimals, sizeClassOf, TAILS,
+  ANCHORS, ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
+  MARKS, NUMBERS, PLANS, readAnimalFile, ROLES, savedAnimals, sizeClassOf, TAILS,
   type Animal, type AnimalFrame, type ClipId, type Feature, type Mark, type NumberKey,
 } from '../../engine/animals/animal.ts';
 import { PRESETS } from '../../engine/animals/animal-presets.ts';
@@ -17,6 +17,7 @@ import {
   type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
 import { drawSymptom, SYMPTOMS } from './symptoms.ts';
 
 // ------------------------------------------------------------------ words
@@ -99,13 +100,12 @@ function cropFor(a: Animal): Rect {
   let x0 = ANIMAL_W, y0 = ANIMAL_H, x1 = 0, y1 = 0;
   for (const id of CLIP_IDS) {
     for (const f of [0, Math.floor(CLIPS[id].frames / 2)]) {
-      for (const at of [0, 3] as const) {
-        const { sprite } = drawAnimal(a, id, f, at);
-        for (let y = 0; y < ANIMAL_H; y++) for (let x = 0; x < ANIMAL_W; x++) {
-          if (!sprite.get(x, y)) continue;
-          x0 = Math.min(x0, x, ANIMAL_W - 1 - x); x1 = Math.max(x1, x, ANIMAL_W - 1 - x);
-          y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-        }
+      // The mirrored facings too: the sun casts their shadows another way.
+      for (const at of [0, 1, 2, 3] as const) {
+        // The animal and its shadow, cast from the sun; the crop stays centred, so as wide on each side.
+        const b = withSunShadow(drawAnimal(a, id, f, at).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN).bounds;
+        x0 = Math.min(x0, b.x0, ANIMAL_W - 1 - b.x1); x1 = Math.max(x1, b.x1, ANIMAL_W - 1 - b.x0);
+        y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1);
       }
     }
   }
@@ -115,7 +115,7 @@ function cropFor(a: Animal): Rect {
 
 /** A small standing picture of an animal, trimmed to what it paints. */
 function thumbnail(a: Animal, box = 60): HTMLCanvasElement {
-  return thumbs.of(`${box}|${JSON.stringify(a)}`, () => trimmed(drawAnimal(a, 'idle', 0, 0).sprite, ANIMAL_W, ANIMAL_H, box, isShadow));
+  return thumbs.of(`${box}|${JSON.stringify(a)}`, () => trimmed(withSunShadow(drawAnimal(a, 'idle', 0, 0).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN), ANIMAL_W, ANIMAL_H, box));
 }
 /** The panel is rebuilt on every change and shows the same presets and saved animals again: their pictures are drawn once. */
 const thumbs = pictureCache('thumb');
@@ -555,7 +555,8 @@ const tick = (ms: number) => {
     }
     if (symptom) drawSymptom(sprite, symptom, anchors, facing, ms / 1000);
     if (showPoints) for (const n of ANCHORS) sprite.set(anchors[n].x, anchors[n].y, anchors[n].visible ? '#ff00ff' : '#ff00ff66');
-    paintSprite(hero, sprite, crop);
+    // Its shadow cast from the sun, from the frame itself, not the marks on the copy.
+    paintSprite(hero, withSunShadow(cached.sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN, false, sprite), crop);
     // As large as the stage allows, in whole-number steps.
     fitWhole(hero, Math.min(stage.clientWidth, stage.clientHeight) - 40);
   }

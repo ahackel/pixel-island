@@ -18,7 +18,7 @@ const { FACING_VIEWS } = await load('engine/core/puppet.ts');
 
 const picture = (c) => {
   const rows = [];
-  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) rows.push(`${c.get(x, y) ?? '-'}${c.shaded(x, y) ? 's' : ''}`);
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) rows.push(c.get(x, y) ?? '-');
   return `${c.w}x${c.h}@${c.foot.x},${c.foot.y}:${rows.join(' ')}`;
 };
 const t0 = performance.now();
