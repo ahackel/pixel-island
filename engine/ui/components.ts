@@ -33,10 +33,12 @@ export function pixelButton(label: string, face: ButtonFace, on: () => void): HT
   const w = words ? 4 + iconW + (icon ? 3 : 0) + wordsW + 4 : 13;
   const h = 13;
   const { canvas, ctx } = pixelCanvas(w, face.flat ? h : h + 1, S); // no shadow row when flat, so it centres
-  panel(ctx, 0, 0, w, h, face.dark ? C.night : face.lit || face.pressed ? C.lit : C.paper, face.flat ? undefined : C.shadow);
+  // A toggled-on button is orange and sits down (CSS moves it a pixel) with no shadow; a flat one has no ground until lit or on.
+  const fill = face.dark ? C.night : face.lit || face.pressed ? C.lit : face.flat ? null : C.paper;
+  if (fill) panel(ctx, 0, 0, w, h, fill, face.flat || face.pressed ? undefined : C.shadow);
   if (icon) drawRows(ctx, icon, words ? 4 : Math.floor((w - iconW) / 2), 2, face.color ? { '#': C.ink, o: face.color } : PAINT);
   if (words) text(ctx, words, w - 4 - wordsW, 4, face.dark ? C.white : C.ink);
-  const b = el('button', 'pbtn');
+  const b = el('button', `pbtn${face.flat ? ' pbtn--flat' : ''}${face.pressed ? ' pbtn--on' : ''}`);
   b.setAttribute('aria-label', label);
   b.title = label;
   if (face.pressed !== undefined) b.setAttribute('aria-pressed', String(face.pressed));
@@ -815,6 +817,13 @@ export function toggle(label: string, face: Omit<ButtonFace, 'pressed'>, on: boo
   const draw = () => wrap.replaceChildren(pixelButton(label, { ...face, pressed: on }, () => { on = !on; draw(); change(on); }));
   draw();
   return wrap;
+}
+
+/** Filters as a row of toggle buttons, at most one on: a tap turns one on, a tap on the one that is on turns it off again (`none`, everything shown). */
+export function filterToggles(options: Option[], get: () => string, pick: (id: string) => void, none = 'all'): HTMLElement {
+  const row = el('span', 'urow');
+  row.append(...options.map((o) => toggle(o.words ?? o.icon ?? o.id, faceOf(o), get() === o.id, () => pick(get() === o.id ? none : o.id))));
+  return row;
 }
 
 /** What a tile shows: a picture or an icon, and optionally a few words and a small mark (an icon) in the corner. */

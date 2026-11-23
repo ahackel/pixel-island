@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, filterToggles, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -35,6 +35,8 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
     () => pixelButton('Lit', { icon: 'sun', lit: true }, noop),
     () => pixelButton('Dark', { icon: 'moon', dark: true }, noop),
     () => pixelButton('On', { icon: 'lock', pressed: true }, noop),
+    () => pixelButton('Flat', { icon: 'sun', flat: true }, noop),
+    () => pixelButton('Flat on', { icon: 'lock', flat: true, pressed: true }, noop),
     () => Object.assign(pixelButton('Off', { icon: 'sun' }, noop), { disabled: true }),
   ]],
   ['choice', [
@@ -46,6 +48,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
     () => choice('List', icons, ...pickOf('list'), 'list'),
   ]],
   ['toggle', [() => toggle('Toggle', { icon: 'lock' }, true, noop), () => toggle('Words', { words: 'Wind' }, false, noop)]],
+  ['filter toggles', [() => { let on = 'sun'; const row = (): HTMLElement => filterToggles([{ id: 'sun', icon: 'sun' }, { id: 'moon', icon: 'moon' }, { id: 'storm', icon: 'storm' }], () => on, (id) => { on = id; row0.replaceWith(row0 = row()); }); let row0 = row(); return row0; }]],
   ['tile grid', [() => tileGrid([{ id: 'a', icon: 'sun' }, { id: 'b', icon: 'moon', mark: 'lock' }, { id: 'c', picture: iconPicture('storm') }], 'b', noop)]],
   ['turn view', [() => { const view = div('position:relative;width:260px;height:110px;background:#e9d9a0'); view.append(...turnView(view, noop)); return view; }]],
   ['view tools', [() => { const view = div('position:relative;width:260px;height:150px;background:#e9d9a0'); view.append(viewTools(pixelButton('Picture', { icon: 'camera' }, noop), toggle('Wind', { icon: 'storm' }, true, noop), choice('Ground', colors, ...pickOf('colors'), 'list'))); return view; }]],

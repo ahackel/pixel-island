@@ -17,7 +17,7 @@ import { PALETTE, SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.t
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { box, choice, confirmDialog, library, pixelButton, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { box, choice, confirmDialog, filterToggles, library, pixelButton, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { h, history, row, savePicture, section, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -226,10 +226,10 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Parts', 'Teile');
   stage.replaceChildren(big, stageTag, ...arrows, viewTools(snapButton(() => savePicture(big, entry().label))));
-  const slots = () => [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SLOTS.map((id) => ({ id, icon: SLOT_ICON[id], words: L(...SLOT_WORDS[id]) }))];
+  const slots = () => SLOTS.map((id) => ({ id, icon: SLOT_ICON[id], words: L(...SLOT_WORDS[id]) }));
   shelf = library({
     key: 'pixel-parts', label: word('search'), empty: word('nothing'), items: libraryItems, selected: () => prefs.id, pick,
-    filters: () => [choice(L('Kind', 'Art'), slots(), () => prefs.slot, (id) => { prefs.slot = id as typeof prefs.slot; savePrefs(); render(); }, 'list')],
+    filters: () => [filterToggles(slots(), () => prefs.slot, (id) => { prefs.slot = id as typeof prefs.slot; savePrefs(); render(); })],
   });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
     key: 'pixel-parts', left: [shelf], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,

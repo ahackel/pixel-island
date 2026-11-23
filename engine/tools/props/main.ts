@@ -21,7 +21,7 @@ import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { choice, library, pixelButton, toggle, turnView, viewTools, type Library, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
+import { choice, filterToggles, library, pixelButton, toggle, turnView, viewTools, type Library, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
 import { checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -203,9 +203,9 @@ let shelf: Library | undefined;
 const renderLibrary = () => shelf?.redraw();
 function chips(): HTMLElement {
   const flip = (change: () => void) => { change(); savePrefs(); render(); };
-  const sources: Pick[] = [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }))];
+  const sources: Pick[] = SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }));
   return h('div', { class: 'urow' },
-    choice(L('Source', 'Herkunft'), sources, () => prefs.source, (id) => flip(() => (prefs.source = id as typeof prefs.source)), 'buttons'),
+    filterToggles(sources, () => prefs.source, (id) => flip(() => (prefs.source = id as typeof prefs.source))),
     ...FEATURES.map((f) => toggle(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), { icon: FEATURE_ICON[f] }, prefs.feature === f, () => flip(() => (prefs.feature = prefs.feature === f ? 'all' : f)))),
     toggle(L('Hidden too', 'Auch verborgene'), { icon: 'eye' }, prefs.hidden, () => flip(() => (prefs.hidden = !prefs.hidden))));
 }

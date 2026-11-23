@@ -1,5 +1,5 @@
 import './style.css';
-import { box, tileGrid, library, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { box, filterToggles, tileGrid, library, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
@@ -497,7 +497,7 @@ function mount(): void {
   const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
   shelf = library({
     key: 'pixel-flora', label: word('search'), empty: word('nothing'), items: cards, selected: () => state.selected, pick: (id) => { state.selected = id; state.seed = 0; changed(); },
-    filters: () => [choice(t('sections'), TABS.map((id) => ({ id, icon: TAB_ICONS[id], words: t(`cat.${id}` as Key) })), () => state.tab, (id) => pickGroup(id as Tab), 'list')],
+    filters: () => [filterToggles(CATEGORIES.map((id) => ({ id, icon: TAB_ICONS[id], words: t(`cat.${id}` as Key) })), () => state.tab, (id) => pickGroup(id as Tab))],
   });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', left: [shelf], centre: [stage, box(previewSec)], right: [tabSlot, panel], leftWidth: 260, rightWidth: 460 })));
 }
