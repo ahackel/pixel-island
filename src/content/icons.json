@@ -99,15 +99,15 @@
   "........."
  ],
  "dice": [
-  ".xxxxxxx.",
-  "x.......x",
-  "x.x...x.x",
-  "x.......x",
-  "x...x...x",
-  "x.......x",
-  "x.x...x.x",
-  "x.......x",
-  ".xxxxxxx."
+  ".nnnnnnn.",
+  "nrrrrrrrn",
+  "nrtrrrtrn",
+  "nrrrrrrrn",
+  "nrrrtrrrn",
+  "nrrrrrrrn",
+  "nrtrrrtrn",
+  "nrrrrrrrn",
+  ".nnnnnnn."
  ],
  "body": [
   "...xxx...",
@@ -249,7 +249,7 @@
   ".xx....x.",
   "..x....x.",
   ".......x.",
-  "..x...xx.",
+  ".......x.",
   "...xxxx.."
  ],
  "redo": [
@@ -260,7 +260,7 @@
   ".x....xx.",
   ".x....x..",
   ".x.......",
-  ".xx...x..",
+  ".x.......",
   "..xxxx..."
  ],
  "plus": [
@@ -396,15 +396,15 @@
   "........."
  ],
  "info": [
-  "..xxxxx..",
-  ".xxxxxxx.",
-  "xxxx.xxxx",
-  "xxxxxxxxx",
-  "xxxx.xxxx",
-  "xxxx.xxxx",
-  "xxxx.xxxx",
-  ".xxxxxxx.",
-  "..xxxxx.."
+  "..bbbbb..",
+  ".bwwwwwb.",
+  "bwwwtwwwb",
+  "bwwwwwwwb",
+  "bwwwtwwwb",
+  "bwwwtwwwb",
+  "bwwwtwwwb",
+  ".bwwwwwb.",
+  "..bbbbb.."
  ],
  "more": [
   ".........",
@@ -442,13 +442,13 @@
  "home": [
   "....x....",
   "...xxx...",
-  "..xxxxx..",
-  ".xxxxxxx.",
-  "xxxxxxxxx",
-  ".xxxxxxx.",
-  ".xxxxxxx.",
-  ".xxx.xxx.",
-  ".xxx.xxx."
+  "..xxhxx..",
+  ".xxhhhxx.",
+  "xxhhhhhxx",
+  ".xhhxxhx.",
+  ".xhhxxhx.",
+  ".xhhxxhx.",
+  ".xxxxxxx."
  ],
  "up": [
   ".........",
@@ -550,14 +550,14 @@
   "........."
  ],
  "reset": [
-  "..xxxx...",
-  ".x....x..",
-  "x......x.",
-  "x....xxxx",
-  "x.....xx.",
-  ".x...x.x.",
-  "..xxx....",
   ".........",
+  ".x.xxx...",
+  ".xx...x..",
+  ".xxx...x.",
+  ".........",
+  ".x...xxx.",
+  "..x...xx.",
+  "...xxx.x.",
   "........."
  ],
  "sliders": [
@@ -606,13 +606,13 @@
  ],
  "mountain": [
   ".........",
-  "....x....",
-  "...xxx...",
-  "..xxxxx..",
-  "..xxxxxx.",
-  ".xxxxxxxx",
-  "xxxxxxxxx",
-  ".........",
+  "....d....",
+  "...dtd...",
+  "..btttd..",
+  ".bwwtttd.",
+  ".bwwwwwb.",
+  "bwwwwwwwb",
+  "bbbbbbbbb",
   "........."
  ],
  "scissors": [
