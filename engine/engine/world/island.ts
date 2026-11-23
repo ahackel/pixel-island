@@ -14,7 +14,7 @@ export const HOMES: Record<Category, Surface[]> = {
   grass: ['sand', 'grass'],
   cactus: ['sand', 'rock'],
   jungle: ['grass'],
-  rock: ['shallow', 'beach', 'sand', 'grass', 'rock', 'cave'],
+  rock: ['shallow', 'beach', 'sand', 'grass', 'rock', 'cave', 'dirt'],
   driftwood: ['beach'],
 };
 /** Room each needs round it, in metres. */

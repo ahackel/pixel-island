@@ -568,7 +568,7 @@ export class World {
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
       const at = j * this.map.w + i;
-      if (this.scene.cave) this.scene.paint[c] = this.map.levels[at] >= SEA_LEVEL ? CAVE_OPEN : 0;
+      if (this.scene.cave) this.scene.paint[c] = this.map.levels[at] >= SEA_LEVEL ? this.map.paint[at] || CAVE_OPEN : 0;
       else {
         this.scene.levels[c] = this.map.levels[at];
         this.scene.paint[c] = this.map.paint[at];

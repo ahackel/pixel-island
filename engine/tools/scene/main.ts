@@ -48,7 +48,7 @@ const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'p
 type Tool = (typeof TOOLS)[number];
 /** An island's ground is shaped by height and paint; a cave's is carved out of the rock and has ways out. */
 const CAVE_ONLY: Tool[] = ['carve', 'exit'];
-const ISLAND_ONLY: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint'];
+const ISLAND_ONLY: Tool[] = ['raise', 'lower', 'smooth', 'level'];
 const toolsHere = () => TOOLS.filter((tool) => !(sceneNow().cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
 const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'erase'];
 const ZOOM = { min: 1, max: 8 };
@@ -1578,7 +1578,10 @@ function editOptions(): Node[] {
     h('p', { class: 'opts__tip' }, t(`tip.${tool}` as Key)),
   ];
   if (tool === 'paint') {
-    out.push(choice(t('paint'), [0, 1, 2, 3].map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'buttons'));
+    // Ground follows the height by default; in a cave, where the height is flat, the default is the cave's own stone.
+    const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5] : [0, 1, 2, 3, 5];
+    if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
+    out.push(choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list'));
   }
   if (BRUSHED.includes(tool)) {
     const picture = h('span', {}, brushPicture(prefs.brush));
@@ -1773,7 +1776,7 @@ function sceneThumb(s: Scene): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const im = g.createImageData(s.w, s.h);
   const put = (i: number, rgb: number[]) => { im.data.set([...rgb, 255], i * 4); };
-  s.levels.forEach((l, i) => put(i, s.cave ? (s.paint[i] === CAVE_OPEN ? [226, 204, 140] : [0, 0, 0]) : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
+  s.levels.forEach((l, i) => put(i, s.cave ? (s.paint[i] ? [226, 204, 140] : [0, 0, 0]) : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
   for (const p of s.plants) { const i = Math.floor(p.j) * s.w + Math.floor(p.i); if (i >= 0 && i < s.w * s.h) put(i, [40, 90, 50]); }
   g.putImageData(im, 0, 0);
   const k = 52 / Math.max(s.w, s.h);

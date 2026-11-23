@@ -123,8 +123,9 @@ export function createScene(name: string, w: number, h: number, island: boolean,
 }
 
 /**
- * A cave's ground is flat: every tile at the water line, and the paint says what is open. A tile painted `CAVE_OPEN`
- * is floor, any other is rock (so a carved floor is not a different height from the rock around it).
+ * A cave's ground is flat: every tile at the water line, and the paint says what is open. A painted tile (by default
+ * `CAVE_OPEN`, the cave's own stone, or sand, dirt and so on) is floor, an unpainted one is rock (so a carved floor is
+ * not a different height from the rock around it).
  */
 export const CAVE_OPEN = PAINTS.indexOf('cave') + 1;
 
@@ -140,8 +141,8 @@ export function createCave(name: string, w: number, h: number): Scene {
 export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
   w: scene.w, h: scene.h,
   // In a cave the world works with rock as ground below the water line, all of it painted as cave, though the scene keeps it all flat (see `CAVE_OPEN`).
-  paint: scene.cave ? new Uint8Array(scene.w * scene.h).fill(CAVE_OPEN) : Uint8Array.from(scene.paint),
-  levels: scene.cave ? Int8Array.from(scene.paint, (p) => (p === CAVE_OPEN ? SEA_LEVEL : MIN_LEVEL)) : Int8Array.from(scene.levels),
+  paint: scene.cave ? Uint8Array.from(scene.paint, (p) => p || CAVE_OPEN) : Uint8Array.from(scene.paint),
+  levels: scene.cave ? Int8Array.from(scene.paint, (p) => (p ? SEA_LEVEL : MIN_LEVEL)) : Int8Array.from(scene.levels),
 });
 
 /**

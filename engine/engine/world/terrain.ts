@@ -55,10 +55,10 @@ export function steepness(map: HeightMap, i: number, j: number): number {
   return Math.max(...NEIGHBOURS.map(([di, dj]) => Math.abs(here - surfaceLevel(map, i + di, j + dj))));
 }
 
-export const SURFACES = ['deep', 'shallow', 'beach', 'sand', 'grass', 'rock', 'cave'] as const;
+export const SURFACES = ['deep', 'shallow', 'beach', 'sand', 'grass', 'rock', 'cave', 'dirt'] as const;
 export type Surface = (typeof SURFACES)[number];
 /** What can be painted on land. */
-export const PAINTS = ['sand', 'grass', 'rock', 'cave'] as const;
+export const PAINTS = ['sand', 'grass', 'rock', 'cave', 'dirt'] as const;
 
 const paintAt = (map: HeightMap, i: number, j: number) => (map.paint && inside(map, i, j) ? map.paint[j * map.w + i] : 0);
 
@@ -200,6 +200,7 @@ const COLORS = {
   rock: '#aeaba3',
   /** A cave's floor: dark stone, painted for the dark it lies in. */
   cave: '#3f4359',
+  dirt: '#8b6a47',
 } as const;
 /** Side faces: the left one in light, the right one in shade, as everything else is lit. */
 const SIDES = {
@@ -208,6 +209,7 @@ const SIDES = {
   grass: ['#b98f63', '#9c7650'],
   rock: ['#8f8b83', '#78746d'],
   cave: ['#2c2f42', '#222433'],
+  dirt: ['#6d5239', '#59432f'],
 } as const;
 const GRASS_LIP = '#6c9f55';
 /** Water by depth in levels: pale turquoise at the beach to deep blue offshore. */
@@ -272,6 +274,7 @@ const CLUTTER: Record<Ground, { chance: number; tries: number; stamps: string[][
   grass: { chance: 0.45, tries: 3, stamps: [['  l', 'l d', 'dmd'], ['l  l', 'd ld', ' dd '], ['l', 'd'], [' l ', 'dmd']] },
   rock: { chance: 0.35, tries: 2, stamps: [['lm', 'mds'], ['lmm', 'mdds'], ['d']] },
   cave: { chance: 0.4, tries: 2, stamps: [['lm', 'mds'], ['lmm', 'mdds'], ['l'], ['d']] },
+  dirt: { chance: 0.3, tries: 2, stamps: [['md'], ['lm', 'mds'], ['d']] },
 };
 /** How deep under water, in levels, pebbles still show on the sea floor, fading with depth. */
 const PEBBLE_DEPTH = 1.4;
@@ -282,13 +285,15 @@ const PEBBLE = { l: '#d2cabb', m: '#a39886', d: '#7d7364' } as const;
 function clutterColor(kind: Ground, role: string, ground: string): string {
   if (role === 's') return mixHex(ground, SHADE, 0.3);
   if (kind === 'grass') return role === 'l' ? mixHex(ground, '#d8f5a8', 0.35) : mixHex(ground, GRASS_LIP, role === 'd' ? 0.85 : 0.5);
-  if (kind === 'rock' || kind === 'cave') return role === 'l' ? mixHex(ground, LIT, 0.4) : mixHex(ground, '#000000', role === 'd' ? 0.3 : 0.14);
+  if (kind === 'rock' || kind === 'cave' || kind === 'dirt') return role === 'l' ? mixHex(ground, LIT, 0.4) : mixHex(ground, '#000000', role === 'd' ? 0.3 : 0.14);
   return mixHex(PEBBLE[role as keyof typeof PEBBLE], ground, 0.25);
 }
 /** What the ground is at a height, inside a cell of some surface: low ground is sand whatever the cell. */
-function groundAt(surface: Surface, h: number, painted = false): Ground {
-  // A cave's floor is stone to its edge, never wet sand.
-  if (surface === 'cave') return 'cave';
+function groundAt(surface: Surface, h: number, painted = false, dry = false): Ground {
+  // A cave's floor is stone to its edge, never wet sand; dirt is dirt wherever it is painted.
+  if (surface === 'cave' || surface === 'dirt') return surface;
+  // Ground painted in a cave is what it is painted, however low the flat floor lies.
+  if (dry && painted && (surface === 'sand' || surface === 'grass' || surface === 'rock')) return surface;
   if (h < 0.15) return 'wet';
   if (surface === 'rock') return 'rock';
   if (painted) return surface === 'grass' ? 'grass' : 'sand';
@@ -422,6 +427,8 @@ export function seaFloor(map: HeightMap): HeightMap {
 /** Paints the whole map, back to front, over open sea, then lays the water over what lies below it. */
 export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; origin: { x: number; y: number } }): TerrainImage {
   const map = seaFloor(shape);
+  // A cave's flat ground (see `outside`), where painted ground shows as painted.
+  const dry = shape.outside !== undefined;
   const w = size?.w ?? (map.w + map.h) * (TILE_W / 2) + 16;
   const h = size?.h ?? (map.w + map.h) * (TILE_H / 2) + MAX_LEVEL * LEVEL_PX + 16;
   const origin = size?.origin ?? { x: map.h * (TILE_W / 2) + 8, y: MAX_LEVEL * LEVEL_PX + 8 };
@@ -521,9 +528,9 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
         const level = w0 * p[0][2] + w1 * p[1][2] + w2 * p[2][2];
         const from = groundCell(i, j, w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0], w0 * p[0][1] + w1 * p[1][1] + w2 * p[2][1]);
-        let kind = groundAt(surfaces[from], level, paintAt(map, from % map.w, Math.floor(from / map.w)) > 0);
+        let kind = groundAt(surfaces[from], level, paintAt(map, from % map.w, Math.floor(from / map.w)) > 0, dry);
         // Rock is the bottom layer: other ground spreads over it, it never spreads over them.
-        if (kind === 'rock' && from !== index) kind = groundAt(surface, level, painted);
+        if (kind === 'rock' && from !== index) kind = groundAt(surface, level, painted, dry);
         const sandy = kind === 'sand' || kind === 'wet';
         // The light between the corners, in steps of a fiftieth, dithered so the steps do not band.
         const lit = w0 * l[0] + w1 * l[1] + w2 * l[2];
@@ -564,7 +571,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         const yBottom = ground - bottom * LEVEL_PX;
         for (let y = Math.ceil(yTop - 0.5); y < yBottom; y++) {
           const level = (ground - (y + 0.5)) / LEVEL_PX;
-          const kind = groundAt(surface, level, painted);
+          const kind = groundAt(surface, level, painted, dry);
           let color: string = SIDES[kind][face.side];
           if (surface === 'grass' && kind === 'grass' && y - yTop < 2) color = GRASS_LIP;
           else if (hash(x, y) < 0.06) color = mixHex(color, '#000000', 0.08);
