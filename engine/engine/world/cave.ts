@@ -15,7 +15,7 @@ import { inside, LEVEL_PX, MIN_LEVEL, PAINTS, SEA_LEVEL, standingHeight, TILE_H,
 import { rasterOf, type TileLamp, type World } from './world.ts';
 
 /** The level of a cave's floor, and how tall its walls stand in levels. */
-export const CAVE_FLOOR = SEA_LEVEL + 1;
+export const CAVE_FLOOR = SEA_LEVEL;
 export const CAVE_WALL = 5;
 /** The daylight coming in at a way out: cool, and how far it reaches into the dark, in tiles. */
 export const CAVE_DAY = '#c8d4e8';

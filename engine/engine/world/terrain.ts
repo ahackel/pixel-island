@@ -23,6 +23,8 @@ export interface HeightMap {
   readonly levels: Int8Array | Float32Array;
   /** Optional painted ground per cell: 0 follows the height rule, otherwise `PAINTS[n - 1]`. Under water it is ignored. */
   readonly paint?: Uint8Array;
+  /** The level beyond the map's edge, which the border cells slope toward: open sea (`MIN_LEVEL`) unless set. */
+  readonly outside?: number;
 }
 
 export function createHeightMap(w: number, h: number, fill = MIN_LEVEL): HeightMap {
@@ -35,7 +37,7 @@ export const inside = (map: HeightMap, i: number, j: number) => i >= 0 && j >= 0
 
 /** The level of a cell. Outside the map is open sea. */
 export function levelAt(map: HeightMap, i: number, j: number): number {
-  return inside(map, i, j) ? map.levels[j * map.w + i] : MIN_LEVEL;
+  return inside(map, i, j) ? map.levels[j * map.w + i] : (map.outside ?? MIN_LEVEL);
 }
 
 export function setLevel(map: HeightMap, i: number, j: number, level: number): void {
@@ -526,15 +528,13 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         // The light between the corners, in steps of a fiftieth, dithered so the steps do not band.
         const lit = w0 * l[0] + w1 * l[1] + w2 * l[2];
         const step = Math.floor(Math.min(0.22, Math.abs(lit) * 0.9) * 50 + BAYER[(y & 3) * 4 + (x & 3)]) * Math.sign(lit);
-        // A cave's floor has no grid to read: it varies in soft patches by where it lies instead.
-        const patch = kind === 'cave' ? Math.round(2 * wobble((w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0]) / 6, (w0 * p[0][1] + w1 * p[1][1] + w2 * p[2][1]) / 6, 7)) : 0;
+        const patch = 0;
         let tone = tones[kind + step + '|' + patch];
         if (!tone) {
           let color: string = COLORS[kind];
           if (step) color = mixHex(color, step > 0 ? LIT : DIM, Math.abs(step) / 50);
-          // Tiles alternate faintly so the one-metre grid reads; a cave's floor varies by patch instead.
-          if (kind === 'cave') color = mixHex(color, patch > 0 ? LIT : DIM, Math.abs(patch) * 0.07);
-          else if ((i + j) % 2 === 0) color = mixHex(color, '#ffffff', 0.05);
+          // Tiles alternate faintly so the one-metre grid reads; a cave's floor stays one even colour.
+          if (kind !== 'cave' && (i + j) % 2 === 0) color = mixHex(color, '#ffffff', 0.05);
           // Grains: darker green on grass, the side colour elsewhere; sand gets fewer, fainter ones.
           const grain = kind === 'grass' ? GRASS_LIP : SIDES[kind][1];
           tone = tones[kind + step + '|' + patch] = [color, mixHex(color, grain, sandy ? 0.3 : 0.5)];

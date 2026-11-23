@@ -17,7 +17,7 @@ import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
 import { findPath } from '../../engine/world/path.ts';
 import {
-  CAVE_DEFAULTS, createCave, createScene, loadLibrary, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, sceneFile, SEEDS, TURNS, type PlacedPerson, type PlacedPlant, type Scene,
+  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, sceneFile, SEEDS, TURNS, type PlacedPerson, type PlacedPlant, type Scene,
 } from '../../engine/world/scene.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
@@ -44,18 +44,18 @@ import { t, type Key } from './i18n.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'fill', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
+const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
 /** An island's ground is shaped by height and paint; a cave's is carved out of the rock and has ways out. */
-const CAVE_ONLY: Tool[] = ['carve', 'fill', 'exit'];
+const CAVE_ONLY: Tool[] = ['carve', 'exit'];
 const ISLAND_ONLY: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint'];
 const toolsHere = () => TOOLS.filter((tool) => !(sceneNow().cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
-const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'fill', 'erase'];
+const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'erase'];
 const ZOOM = { min: 1, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Tool, string> = {
-  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', paint: 'brush', carve: 'pickaxe', fill: 'rock', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', paint: 'brush', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -562,7 +562,7 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
  * painting a tile twice; smoothing works again on every tile the drag enters, and levelling
  * keeps to the height of the tile the drag started on.
  */
-function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant> }): void {
+function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true }): void {
   const map = world.map;
   const fresh = brushCells(at).filter((c) => !stroke.touched.has(c));
   fresh.forEach((c) => stroke.touched.add(c));
@@ -587,8 +587,8 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
       groundDirty ||= fresh.length > 0;
       break;
     case 'carve':
-    case 'fill':
-      groundDirty = carve(map, fresh, prefs.tool === 'carve') || groundDirty;
+      // Alt carves back to rock.
+      groundDirty = carve(map, fresh, !stroke.alt) || groundDirty;
       break;
     case 'exit':
       if (fresh.length) toggleExit(at);
@@ -721,6 +721,56 @@ function pointAt(x: number, y: number): { i: number; j: number } | null {
   const dy = (y - mid.y) / TILE_H;
   const clamp = (v: number) => Math.max(-0.49, Math.min(0.49, v));
   return { i: tile.i + 0.5 + clamp(dx + dy), j: tile.j + 0.5 + clamp(dy - dx) };
+}
+
+// ------------------------------------------------------------------ resizing by the level's edges
+
+/** The side of the red level edge under a pointer, if it is within a few pixels of one: its view corners are (0, 0) to (w, h). */
+function edgeAt(e: { clientX: number; clientY: number }): 'n' | 'e' | 's' | 'w' | null {
+  const p = groundPixel(e);
+  const { w, h } = world.map;
+  const at = (i: number, j: number) => world.edgeScreen(i, j);
+  const sides = { n: [at(0, 0), at(w, 0)], e: [at(w, 0), at(w, h)], s: [at(0, h), at(w, h)], w: [at(0, 0), at(0, h)] } as const;
+  const reach = Math.max(2, 6 / zoom);
+  let best: 'n' | 'e' | 's' | 'w' | null = null;
+  let far = reach;
+  for (const side of ['n', 'e', 's', 'w'] as const) {
+    const [a, b] = sides[side];
+    const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / len2));
+    const d = Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y)));
+    if (d < far) { far = d; best = side; }
+  }
+  return best;
+}
+
+/** Drags one edge to the tile line under the pointer: the scene becomes that much bigger or smaller at that border. */
+function dragEdge(g: Extract<Gesture, { kind: 'edge' }>, side: 'n' | 'e' | 's' | 'w', e: { clientX: number; clientY: number }): void {
+  const p = groundPixel(e);
+  const o = world.edgeScreen(0, 0);
+  const u = ((p.x - o.x) * 2) / TILE_W, v = ((p.y - o.y) * 2) / TILE_H;
+  // The pointer on the ground, in the view frame the drag started in.
+  const i = Math.round((u + v) / 2) + g.a0, j = Math.round((v - u) / 2) + g.b0;
+  const lim = (n: number, from: number, dir: 1 | -1) => Math.max(Math.min(from + dir * MIN_SIZE, from + dir * MAX_SIZE), Math.min(Math.max(from + dir * MIN_SIZE, from + dir * MAX_SIZE), n));
+  let { a0, a1, b0, b1 } = g;
+  if (side === 'e') a1 = lim(i, a0, 1);
+  else if (side === 'w') a0 = lim(i, a1, -1);
+  else if (side === 's') b1 = lim(j, b0, 1);
+  else b0 = lim(j, b1, -1);
+  if (a0 === g.a0 && a1 === g.a1 && b0 === g.b0 && b1 === g.b1) return;
+  // The new rectangle as the scene's own tiles: its corners through the turn of the view.
+  const p0 = g.base.toData({ i: a0, j: b0 }), p1 = g.base.toData({ i: a1, j: b1 });
+  const i0 = Math.min(p0.i, p1.i), j0 = Math.min(p0.j, p1.j);
+  const next = resized(g.orig, Math.abs(p1.i - p0.i), Math.abs(p1.j - p0.j), -i0, -j0);
+  // The middle of the old ground stays where it is on the screen.
+  const mid = { i: Math.floor(g.base.map.w / 2), j: Math.floor(g.base.map.h / 2) };
+  const here = (ox: number, oy: number) => world.screenOf(mid.i - ox, mid.j - oy);
+  const before = here(g.a0, g.b0);
+  Object.assign(g, { a0, a1, b0, b1, changed: true });
+  show(next);
+  const after = here(a0, b0);
+  cam.x += after.x - before.x;
+  cam.y += after.y - before.y;
 }
 
 // ------------------------------------------------------------------ playing
@@ -956,8 +1006,9 @@ function keyDirection(): [number, number] {
 }
 
 type Gesture =
-  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; tile?: { i: number; j: number }; at: number }
+  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number }
   | { kind: 'walk' }
+  | { kind: 'edge'; base: World; orig: Scene; a0: number; a1: number; b0: number; b1: number; changed: boolean }
   | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true }
   | { kind: 'pan'; x: number; y: number; cam: { x: number; y: number } }
   | { kind: 'pinch'; dist: number; zoom: number; mid: { x: number; y: number }; cam: { x: number; y: number } };
@@ -1022,6 +1073,7 @@ canvas.addEventListener('pointerdown', (e) => {
     gesture = { kind: 'pinch', dist, zoom, mid, cam: { ...cam } };
   } else if (pointers.size === 1) {
     if (e.button === 1 || e.button === 2 || keys.has('Space')) gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
+    else if (prefs.mode === 'edit' && (gesture = edgeGesture(e))) { /* dragging an edge of the level */ }
     else if (prefs.mode === 'edit' && prefs.tool === 'move') {
       const p = groundPixel(e);
       selected = objectAt(p.x, p.y);
@@ -1038,7 +1090,7 @@ canvas.addEventListener('pointerdown', (e) => {
       } else gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
     } else if (prefs.mode === 'edit') {
       remember();
-      gesture = { kind: 'stroke', touched: new Set(), last: '', at: 0 };
+      gesture = { kind: 'stroke', touched: new Set(), last: '', at: 0, ...(e.altKey && { alt: true as const }) };
       strokeAt(e);
     } else {
       gesture = { kind: 'walk' };
@@ -1047,6 +1099,16 @@ canvas.addEventListener('pointerdown', (e) => {
     }
   }
 });
+/** The start of dragging a red level edge, if the pointer is on one. */
+let edgeSide: 'n' | 'e' | 's' | 'w' | null = null;
+/** The red edge to light up: the one under the pointer, or the one being dragged. */
+let hotEdge: 'n' | 'e' | 's' | 'w' | null = null;
+function edgeGesture(e: { clientX: number; clientY: number }): Gesture | null {
+  edgeSide = edgeAt(e);
+  if (!edgeSide) return null;
+  remember();
+  return { kind: 'edge', base: world, orig: structuredClone(world.scene), a0: 0, a1: world.map.w, b0: 0, b1: world.map.h, changed: false };
+}
 canvas.addEventListener('pointermove', (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (gesture?.kind === 'pinch' && pointers.size === 2) {
@@ -1064,9 +1126,11 @@ canvas.addEventListener('pointermove', (e) => {
       Object.assign(gesture.sel.obj, world.toData(at));
       sceneChanged();
     }
-  } else if (gesture?.kind === 'stroke') strokeAt(e);
+  } else if (gesture?.kind === 'edge' && edgeSide) dragEdge(gesture, edgeSide, e);
+  else if (gesture?.kind === 'stroke') strokeAt(e);
   else if (gesture?.kind === 'walk') walkTo(e);
   if (prefs.mode === 'edit' && e.pointerType === 'mouse') hover = tileUnder(e);
+  hotEdge = prefs.mode === 'edit' && e.pointerType === 'mouse' ? (gesture?.kind === 'edge' ? edgeSide : gesture ? null : edgeAt(e)) : null;
 });
 const release = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
@@ -1080,12 +1144,14 @@ const release = (e: PointerEvent) => {
     sceneChanged();
   }
   if (gesture?.kind === 'move') showOptions();
+  // An edge dragged nowhere leaves nothing to undo.
+  if (gesture?.kind === 'edge' && !gesture.changed) { undoStack.pop(); syncUndo(); }
   // Lifting one finger of a pinch does not start painting with the other.
   if (!pointers.size || gesture?.kind === 'pinch') gesture = pointers.size ? { kind: 'pan', x: [...pointers.values()][0].x, y: [...pointers.values()][0].y, cam: { ...cam } } : null;
 };
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
-canvas.addEventListener('pointerleave', () => (hover = null));
+canvas.addEventListener('pointerleave', () => { hover = null; if (gesture?.kind !== 'edge') hotEdge = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // A trackpad sends a two-finger move as scrolling, which pans, and a pinch as scrolling with Ctrl
 // held, which zooms, smoothly and around the pointer.
@@ -1166,7 +1232,7 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}`;
   if (prefs.mode === 'play' || key !== shown) {
     const begun = performance.now();
     const cave = world.scene.cave;
@@ -1197,7 +1263,8 @@ function frame(ms: number): void {
       const v = selected && world.toView(selected.obj);
       highlight = v && !canStand(selected!, v) ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: '#e0332e99' } : undefined;
     }
-    canvas.style.cursor = prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
+    world.hotEdge = prefs.mode === 'edit' ? hotEdge : null;
+    canvas.style.cursor = hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
     let t0 = part('things', begun);
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
     t0 = performance.now();
@@ -1706,7 +1773,7 @@ function sceneThumb(s: Scene): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const im = g.createImageData(s.w, s.h);
   const put = (i: number, rgb: number[]) => { im.data.set([...rgb, 255], i * 4); };
-  s.levels.forEach((l, i) => put(i, l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
+  s.levels.forEach((l, i) => put(i, s.cave ? (s.paint[i] === CAVE_OPEN ? [226, 204, 140] : [0, 0, 0]) : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
   for (const p of s.plants) { const i = Math.floor(p.j) * s.w + Math.floor(p.i); if (i >= 0 && i < s.w * s.h) put(i, [40, 90, 50]); }
   g.putImageData(im, 0, 0);
   const k = 52 / Math.max(s.w, s.h);

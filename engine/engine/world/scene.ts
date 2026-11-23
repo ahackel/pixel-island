@@ -14,7 +14,7 @@ import { decorById, type PlacedDecor } from './decor.ts';
 import { OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
-import { createHeightMap, generateIsland, MAX_LEVEL, MIN_LEVEL, PAINTS, type HeightMap } from './terrain.ts';
+import { createHeightMap, generateIsland, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
   /** A flora catalogue id. */
@@ -122,38 +122,58 @@ export function createScene(name: string, w: number, h: number, island: boolean,
   return { id: newId(), name, w, h, levels: Array.from(map.levels), paint: new Array(w * h).fill(0), plants: [], decor: [], animals: [], people: [], items: [], props: [], spawn: { i: w / 2, j: h / 2 } };
 }
 
+/**
+ * A cave's ground is flat: every tile at the water line, and the paint says what is open. A tile painted `CAVE_OPEN`
+ * is floor, any other is rock (so a carved floor is not a different height from the rock around it).
+ */
+export const CAVE_OPEN = PAINTS.indexOf('cave') + 1;
+
 /** A new cave: solid rock all through, to be carved open (cave.ts `carve`). */
 export function createCave(name: string, w: number, h: number): Scene {
   const scene = createScene(name, w, h, false);
-  scene.levels.fill(MIN_LEVEL);
-  scene.paint.fill(PAINTS.indexOf('cave') + 1);
+  scene.levels.fill(SEA_LEVEL);
+  scene.paint.fill(0);
   return { ...scene, cave: { ...CAVE_DEFAULTS, exits: [] } };
 }
 
 /** The scene's ground as the terrain code reads it. */
-export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } =>
-  ({ w: scene.w, h: scene.h, levels: Int8Array.from(scene.levels), paint: Uint8Array.from(scene.paint) });
+export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
+  w: scene.w, h: scene.h,
+  // In a cave the world works with rock as ground below the water line, all of it painted as cave, though the scene keeps it all flat (see `CAVE_OPEN`).
+  paint: scene.cave ? new Uint8Array(scene.w * scene.h).fill(CAVE_OPEN) : Uint8Array.from(scene.paint),
+  levels: scene.cave ? Int8Array.from(scene.paint, (p) => (p === CAVE_OPEN ? SEA_LEVEL : MIN_LEVEL)) : Int8Array.from(scene.levels),
+});
 
-/** A scene with a new size, keeping what fits; new ground is sea. */
-export function resized(scene: Scene, w: number, h: number): Scene {
+/**
+ * A scene with a new size, keeping what fits; new ground is sea, or in a cave rock. With `dx` and `dy` the old ground
+ * moves that many tiles toward the far corner first (so a border at the north corner can be dragged), and so does
+ * everything standing on it.
+ */
+export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Scene {
   w = clamp(Math.round(w), MIN_SIZE, MAX_SIZE);
   h = clamp(Math.round(h), MIN_SIZE, MAX_SIZE);
-  const levels = new Array(w * h).fill(MIN_LEVEL);
-  // New ground is sea, or in a cave solid rock.
-  const paint = new Array(w * h).fill(scene.cave ? PAINTS.indexOf('cave') + 1 : 0);
-  for (let j = 0; j < Math.min(h, scene.h); j++) for (let i = 0; i < Math.min(w, scene.w); i++) {
-    levels[j * w + i] = scene.levels[j * scene.w + i];
-    paint[j * w + i] = scene.paint[j * scene.w + i];
+  const levels = new Array(w * h).fill(scene.cave ? SEA_LEVEL : MIN_LEVEL);
+  const paint = new Array(w * h).fill(0);
+  for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) {
+    const ni = i + dx, nj = j + dy;
+    if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
+    levels[nj * w + ni] = scene.levels[j * scene.w + i];
+    paint[nj * w + ni] = scene.paint[j * scene.w + i];
   }
+  const moved = <T extends { i: number; j: number }>(o: T): T => ({ ...o, i: o.i + dx, j: o.j + dy });
+  const inMap = (o: { i: number; j: number }) => o.i >= 0 && o.j >= 0 && o.i < w && o.j < h;
+  const kept = <T extends { i: number; j: number }>(list: T[]) => list.map(moved).filter(inMap);
+  const spot = (o: { i: number; j: number }) => ({ i: Math.max(0, Math.min(w - 0.5, o.i + dx)), j: Math.max(0, Math.min(h - 0.5, o.j + dy)) });
   return {
     ...scene, w, h, levels, paint,
-    plants: scene.plants.filter((p) => p.i < w && p.j < h),
-    decor: scene.decor.filter((d) => d.i < w && d.j < h),
-    animals: scene.animals.filter((a) => a.i < w && a.j < h),
-    items: scene.items.filter((it) => it.i < w && it.j < h),
-    props: (scene.props ?? []).filter((p) => p.i < w && p.j < h),
-    spawn: { i: Math.min(scene.spawn.i, w - 0.5), j: Math.min(scene.spawn.j, h - 0.5) },
-    ...(scene.cave && { cave: { ...scene.cave, exits: scene.cave.exits.filter((e) => e.i < w && e.j < h) } }),
+    plants: kept(scene.plants),
+    decor: kept(scene.decor),
+    animals: kept(scene.animals),
+    people: scene.people.map((p) => ({ ...p, ...spot(p) })),
+    items: kept(scene.items),
+    props: kept(scene.props ?? []),
+    spawn: spot(scene.spawn),
+    ...(scene.cave && { cave: { ...scene.cave, exits: kept(scene.cave.exits) } }),
   };
 }
 
@@ -248,6 +268,9 @@ export function cleanScene(input: unknown): Scene {
       rubble: num(c.rubble, 0, 1, CAVE_DEFAULTS.rubble),
       exits: (Array.isArray(c.exits) ? c.exits : []).filter((e) => !!e && typeof e === 'object').map((e) => ({ i: num(e.i, 0, w, w / 2), j: num(e.j, 0, h, h / 2) })),
     };
+    // A cave saved before its ground was flat has rock below the water line: it becomes unpainted ground, the floor painted open.
+    if (levels.some((l) => l < SEA_LEVEL)) scene.paint = levels.map((l) => (l >= SEA_LEVEL ? CAVE_OPEN : 0));
+    scene.levels.fill(SEA_LEVEL);
   }
   refreshLinks(scene, sources);
   return scene;

@@ -23,7 +23,7 @@ import { CLEAR, drawWeather, flashAt, plantWind, shadowLight, weatherSea, type W
 import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
-import { mapOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
+import { CAVE_OPEN, mapOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
 import { blocked, BuildingView, crosses, type Building, type Part, type PieceKind } from './building/building.ts';
 
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -70,7 +70,9 @@ export function paintOrder<T extends Thing & { dx: number; dy: number }>(things:
 }
 
 const EDGE = '#e0332e';
+const EDGE_HOT = '#ffe066';
 const COLLIDER = '#e0332ee0';
+const ROCK_GRID = 48; // grey of the grid lines on a cave's black rock
 const GRID_SHADE = 0.2; // how much darker grid lines are than the ground
 const SHADE_RGB = rgb(SHADE);
 /** How deep, in levels, a shadow still shows on the water; it fades out toward there. */
@@ -514,13 +516,14 @@ export class World {
   private viewMap(): HeightMap & { paint: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
-    if (!this.rot) return mapOf(this.scene);
+    const map = mapOf(this.scene);
+    if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const c = this.dataCell(i, j);
-      levels[j * w + i] = this.scene.levels[c];
-      paint[j * w + i] = this.scene.paint[c];
+      levels[j * w + i] = map.levels[c];
+      paint[j * w + i] = map.paint[c];
     }
     return { w, h, levels, paint };
   }
@@ -551,15 +554,25 @@ export class World {
     this.floor = seaFloor(this.map);
     setWater(WATER_COLORS.map((k) => ocean[k]));
     this.shown = this.void ? withLoneRockFloored(this.map) : this.map;
-    return renderTerrain(this.shown);
+    if (!this.void) return renderTerrain(this.shown);
+    // A cave's rock is drawn on the floor's own plane, so nothing slopes off at the edge of the hollow and the editor's grid lies flat across it.
+    let flat = 127;
+    for (const l of this.shown.levels) if (l >= SEA_LEVEL && l < flat) flat = l;
+    if (flat === 127) flat = SEA_LEVEL;
+    this.flatLevel = flat;
+    return renderTerrain({ ...this.shown, levels: this.shown.levels.map((l) => (l < SEA_LEVEL ? flat : l)), outside: flat });
   }
 
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
   commit(): void {
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
-      this.scene.levels[c] = this.map.levels[j * this.map.w + i];
-      this.scene.paint[c] = this.map.paint[j * this.map.w + i];
+      const at = j * this.map.w + i;
+      if (this.scene.cave) this.scene.paint[c] = this.map.levels[at] >= SEA_LEVEL ? CAVE_OPEN : 0;
+      else {
+        this.scene.levels[c] = this.map.levels[at];
+        this.scene.paint[c] = this.map.paint[at];
+      }
     }
   }
 
@@ -844,6 +857,16 @@ export class World {
     const g = this.ground;
     const shore = this.shoreOf(g);
     const d = image.data;
+    // Where one tile's pixels meet the next one's, to the right or below: one pixel wide.
+    const onGrid = (gx: number, gy: number) => {
+      const p = gy * g.w + gx, c = g.cell[p];
+      const right = gx + 1 < g.w ? g.cell[p + 1] : c;
+      const below = gy + 1 < g.h ? g.cell[p + g.w] : c;
+      if (c >= 0 && ((right >= 0 && right !== c) || (below >= 0 && below !== c))) return true;
+      // A cave's level edges: the line round the whole flat plane, where the next pixel is off the map.
+      if (!this.void || c < 0) return false;
+      return right < 0 || below < 0 || (gx > 0 && g.cell[p - 1] < 0) || (gy > 0 && g.cell[p - g.w] < 0);
+    };
     d.fill(0);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const gx = x + view.x, gy = y + view.y;
@@ -863,6 +886,9 @@ export class World {
         // In a void world, nothing but the open cells: not their slopes down to the cells below the water line either.
         if (this.void && (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w || g.cell[gy * g.w + gx] < 0 || g.depth[gy * g.w + gx] > 0 || this.shown.levels[g.cell[gy * g.w + gx]] < SEA_LEVEL)) {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
+          // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
+          if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
+          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx])) blend(image, x, y, highlight.color);
           continue;
         }
         if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) {
@@ -889,11 +915,7 @@ export class World {
         if (depth > 0 && far) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * shade;
         else if (depth > 0) d[o + 3] = WATER_ALPHA;
         if (grid) {
-          // A faint line where one tile's pixels meet the next one's, to the right or below.
-          const c = g.cell[p];
-          const right = gx + 1 < g.w ? g.cell[p + 1] : c;
-          const below = gy + 1 < g.h ? g.cell[p + g.w] : c;
-          if (c >= 0 && ((right >= 0 && right !== c) || (below >= 0 && below !== c))) for (let k = 0; k < 3; k++) d[o + k] *= 1 - GRID_SHADE;
+          if (onGrid(gx, gy)) for (let k = 0; k < 3; k++) d[o + k] *= 1 - GRID_SHADE;
         }
         if (highlight?.cells.has(g.cell[p])) blend(image, x, y, highlight.color);
       }
@@ -1264,8 +1286,19 @@ export class World {
     return pixels;
   }
 
-  private edge: { x: number; y: number; spot: Spot }[] = [];
+  private edge: { x: number; y: number; spot: Spot; side: 'n' | 'e' | 's' | 'w' }[] = [];
+  /** The side of the red edge to draw lit (the editor's resize handle under the pointer), or none. */
+  hotEdge: 'n' | 'e' | 's' | 'w' | null = null;
+  /** In a cave, the level of the plane its rock is drawn on: where its grid and its red edge lie. */
+  private flatLevel = SEA_LEVEL;
   private edgeOf: TerrainImage | null = null;
+  /** Where a point of the map's border is drawn: on the red edge. */
+  edgeScreen(i: number, j: number): { x: number; y: number } {
+    return footOf(this.ground, { i, j, level: this.edgeLevel(i, j) });
+  }
+  private edgeLevel(i: number, j: number): number {
+    return this.void ? this.flatLevel : standingHeight(this.map, i, j);
+  }
 
   /**
    * A red line round the map, on the ground (or the water) along its four edges, hidden where
@@ -1285,8 +1318,8 @@ export class World {
         for (let s = 0; s <= steps; s++) {
           const i = i0 + ((i1 - i0) * s) / steps;
           const j = j0 + ((j1 - j0) * s) / steps;
-          const spot = { i, j, level: standingHeight(this.map, i, j) };
-          this.edge.push({ ...footOf(this.ground, spot), spot });
+          const spot = { i, j, level: this.edgeLevel(i, j) };
+          this.edge.push({ ...footOf(this.ground, spot), spot, side: (['n', 'e', 's', 'w'] as const)[k] });
         }
       }
     }
@@ -1299,7 +1332,9 @@ export class World {
         const x = Math.round(a.x + ((b.x - a.x) * s) / n);
         const y = Math.round(a.y + ((b.y - a.y) * s) / n);
         if (hiddenByGround(this.map, this.ground, x, y, a.spot.i, a.spot.j, a.spot.level)) continue;
-        blend(image, x - view.x, y - view.y, EDGE);
+        const hot = b.side === this.hotEdge;
+        blend(image, x - view.x, y - view.y, hot ? EDGE_HOT : EDGE);
+        if (hot) blend(image, x - view.x, y + 1 - view.y, EDGE_HOT);
       }
     }
   }
