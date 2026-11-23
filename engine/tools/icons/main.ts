@@ -23,11 +23,19 @@ const mark = document.createElement('span');
 mark.className = 'urow';
 /** The saved state next to the bar's save button: a check while what is shown is what is in the project. */
 const setSaved = (v: boolean | null) => { mark.replaceChildren(...(v ? [iconPicture('check')] : [])); };
+/** The library as last saved to the project (or as loaded): the save button is grey while the library is still this. */
+let savedText = JSON.stringify(lib);
+const saveNow = async () => {
+  const text = JSON.stringify(lib);
+  const ok = await saveToProject('icons.json', lib);
+  if (ok) savedText = text;
+  return ok;
+};
 const main = uiPage('icons', {
   sidebar: sidebarButton('Side panel'),
   undo: () => { undo.undo(); setSaved(null); },
   redo: () => { undo.redo(); setSaved(null); },
-  save: { label: canSaveToProject() ? 'Save to project' : 'Saving needs the dev server', disabled: !canSaveToProject(), on: async () => setSaved(await saveToProject('icons.json', lib)) },
+  save: { label: canSaveToProject() ? 'Save to project' : 'Saving needs the dev server', disabled: !canSaveToProject(), on: async () => setSaved(await saveNow()), unsaved: () => JSON.stringify(lib) !== savedText, saveNow },
   status: mark,
   actions: [
     { icon: 'plus', label: 'New', on: () => {

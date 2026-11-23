@@ -63,7 +63,7 @@ canvas { image-rendering: pixelated; }
 .upage--fill { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
 .uworkspace { flex: 1; min-height: 0; display: flex; overflow: hidden; background: #8cc3c9; }
 /* The header's side panel button hides every left panel. */
-.uside-off .uside--left { display: none; }
+.uside-off-left .uside--left, .uside-off-right .uside--right { display: none; }
 /* A side panel: full height, content in its body, a grip on the inner edge. */
 .uside { position: relative; flex: none; display: flex; flex-direction: column; padding: 12px; background: var(--ui-panel); min-width: 0; z-index: 2; }
 .uside--left { box-shadow: 4px 0 0 #00000040; }

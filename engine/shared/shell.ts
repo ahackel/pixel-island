@@ -149,13 +149,13 @@ export function icon(name: IconName): SVGSVGElement {
 
 const WORDS = {
   en: {
-    tools: 'Tools', sidebar: 'Side panel', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', particles: 'Particles', parts: 'Parts',
+    tools: 'Tools', saveAsk: 'Save your changes to the project before leaving?', save: 'Save', dontSave: "Don't save", cancel: 'Cancel', sidebar: 'Side panel', inspector: 'Inspector', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', particles: 'Particles', parts: 'Parts',
     icons: 'Icons', ui: 'Interface', animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
     name: 'Name', rollName: 'Roll a name', picture: 'Save a picture', rollTab: 'Shuffle this tab', lock: 'Keep this tab when shuffling all',
     pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones', search: 'Search', nothing: 'Nothing matches',
   },
   de: {
-    tools: 'Werkzeuge', sidebar: 'Seitenleiste', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', particles: 'Partikel', parts: 'Teile',
+    tools: 'Werkzeuge', saveAsk: 'Änderungen vor dem Verlassen im Projekt speichern?', save: 'Speichern', dontSave: 'Nicht speichern', cancel: 'Abbrechen', sidebar: 'Seitenleiste', inspector: 'Inspektor', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', particles: 'Partikel', parts: 'Teile',
     icons: 'Symbole', ui: 'Oberfläche', animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
     name: 'Name', rollName: 'Namen würfeln', picture: 'Bild speichern', rollTab: 'Diesen Reiter würfeln', lock: 'Beim Würfeln behalten',
     pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln', search: 'Suchen', nothing: 'Nichts passt',
@@ -175,6 +175,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** A main action (save): a button in the bar instead of an item in the menu. */
   main?: boolean;
+  /** For a main action: whether there is anything to save (greys the button) and a way to save, asked about on leaving. */
+  track?: { unsaved: () => boolean; saveNow: () => Promise<boolean> };
 }
 
 // ------------------------------------------------------------------ top bar
@@ -187,6 +189,8 @@ export interface TopBar {
   name?: Node;
   /** Whether the tool has a left panel: adds the button that shows or hides it. */
   sidebar?: boolean;
+  /** Whether the tool has a right panel (the inspector): adds the button that shows or hides it. */
+  inspector?: boolean;
   /** The "My things" picker, if the tool keeps a list. */
   things?: Node;
   more: MenuItem[];
@@ -206,12 +210,12 @@ export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement |
   if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/'));
   const tools = TOOLS.map((x) => ({ ...x, name: word(x.id as keyof typeof WORDS.en), href: toolHref(x.id) }));
   const { bar, undo, redo } = header({
-    tools, tool: o.tool, about: o.about, name: o.name, sidebar: o.sidebar ? sidebarButton(word('sidebar')) : undefined, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
+    tools, tool: o.tool, about: o.about, name: o.name, sidebar: o.sidebar ? sidebarButton(word('sidebar')) : undefined, inspector: o.inspector ? sidebarButton(word('inspector'), 'right') : undefined, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
     more: o.more.filter((m) => !m.main).map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
     actions: o.actions?.map((m) => ({ icon: m.icon, label: m.label, on: m.run, disabled: m.disabled })),
-    save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled }))[0],
+    save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled, ...m.track }))[0],
     languages: { current: currentLang(), ids: LANGS.map((l) => l.id), pick: (id) => { setLang(id as Lang); o.relabel(); } },
-    labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools') },
+    labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools'), saveAsk: word('saveAsk'), save: word('save'), dontSave: word('dontSave'), cancel: word('cancel') },
   });
   return { bar, undo, redo, pops: [] };
 }

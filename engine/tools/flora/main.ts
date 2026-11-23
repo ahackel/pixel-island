@@ -13,7 +13,7 @@ import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
 import { cheer, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
 
 // ------------------------------------------------------------------ state
@@ -396,7 +396,7 @@ function renderBar(): void {
       repaired: repaired ? t('foot.repaired', { n: repaired }) : '',
     }), t('foot.rules')],
     more: [
-      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([FLORA_STORE]).then((ok) => {
+      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([FLORA_STORE]), run: () => void saveStores([FLORA_STORE]).then((ok) => {
         status.textContent = ok ? (currentLang() === 'de' ? 'Im Projekt gespeichert (src/content/store).' : 'Saved to the project (src/content/store).') : (currentLang() === 'de' ? 'Nichts gespeichert: ändere erst etwas.' : 'Nothing saved: change something first.');
       }) },
       { label: currentLang() === 'de' ? 'Neu beginnen' : 'Start over', icon: 'reset', run: () => {

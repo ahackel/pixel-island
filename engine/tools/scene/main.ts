@@ -3,7 +3,7 @@ import { frameDone, part } from '../../shared/stats.ts';
 import { box, choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
-import { saveToProject } from '../../shared/project.ts';
+import { canSaveToProject, saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
@@ -142,12 +142,22 @@ let world = new World(sceneNow(), prefs.rot);
 let groundDirty = false;
 let version = 0;
 
+/** A scene as text to compare, without its id (a new one on every import). */
+const canon = (scene: Scene): string => {
+  const file = JSON.parse(sceneFile(scene));
+  delete file.scene.id;
+  return JSON.stringify(file);
+};
+/** The scene shown as it was last stored, and each project scene file (by name) as it reads back: they differ when there is something to save. */
+let current = '';
+const projectCanon = new Map<string, string>();
 let saveTimer = 0;
 function store(): void {
   clearTimeout(saveTimer);
   saveTimer = 0;
   // The ground is copied to the scene when it is redrawn, which may not have happened yet.
   world.commit();
+  current = canon(sceneNow());
   if (!saveLibrary(library)) say(t('scene.saveFailed'));
 }
 /** After any change to the scene: saved shortly after, so a drag is one write. */
@@ -184,6 +194,7 @@ function show(scene: Scene): void {
   world = new World(scene, prefs.rot);
   selected = null;
   sceneChanged();
+  showOptions();
 }
 function undo(): void {
   const before = undoStack.pop();
@@ -218,9 +229,13 @@ function switchTo(scene: Scene): void {
 // ------------------------------------------------------------------ page helpers
 
 /** Saves the scene as a file of the project (the game's content/scenes), for committing. */
-async function saveScene(): Promise<void> {
+async function saveScene(): Promise<boolean> {
+  store();
   const name = slug(sceneNow().name);
-  say((await saveToProject(`scenes/${name}.json`, JSON.parse(sceneFile(sceneNow())))) ? t('scene.projectDone').replace('{0}', name) : t('scene.projectFail'));
+  const ok = await saveToProject(`scenes/${name}.json`, JSON.parse(sceneFile(sceneNow())));
+  if (ok) projectCanon.set(name, current);
+  say(ok ? t('scene.projectDone').replace('{0}', name) : t('scene.projectFail'));
+  return ok;
 }
 
 function say(text: string): void {
@@ -769,6 +784,20 @@ function outline(image: { data: Uint8ClampedArray; width: number; height: number
   }
 }
 
+/** The picture a selected thing is drawn with (none for a decoration that lies flat, or the flag: the tile is lit instead). */
+function thingOf(sel: Selected | null, wind: number): Thing | null {
+  if (!sel) return null;
+  const o = sel.obj;
+  const at = <T>(list: readonly T[] | undefined, things: Thing[]) => (list && things.length === list.length ? things[list.indexOf(o as T)] : undefined) ?? null;
+  if (sel.kind === 'item') return at(world.scene.items, world.itemThings());
+  if (sel.kind === 'prop') return at(world.scene.props, world.propThings(wind));
+  if (sel.kind === 'plant') return at(world.scene.plants, world.plantThings(wind));
+  if (sel.kind === 'animal') return world.animalSprite(o as PlacedAnimal, world.scene.animals.indexOf(o as PlacedAnimal), 0);
+  if (sel.kind === 'person') return personThing(o as PlacedPerson, 0);
+  if (sel.kind === 'decor') return world.decorThings().find((t) => t.spot.i === world.toView(o).i && t.spot.j === world.toView(o).j) ?? null;
+  return null;
+}
+
 function covers(thing: Thing, x: number, y: number): boolean {
   const at = footOf(world.ground, thing.spot);
   return [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => {
@@ -890,10 +919,7 @@ window.addEventListener('keydown', (e) => {
   }
   // T turns the selected prop or plant an eighth; the next one set down is turned the same way.
   if (prefs.mode === 'edit' && selected && (selected.kind === 'prop' || selected.kind === 'plant') && e.code === 'KeyT') {
-    const obj = selected.obj as unknown as { turn: number };
-    obj.turn = (obj.turn + (e.shiftKey ? 7 : 1)) % 8;
-    if (selected.kind === 'prop') propTurn = (obj.turn + world.rot * 2) % 8;
-    sceneChanged();
+    turnObject(selected.obj as unknown as { turn: number }, e.shiftKey ? -1 : 1);
   }
   // With an object selected, Q and R turn it; otherwise the view.
   const turning = prefs.mode === 'edit' && selected?.kind === 'item' ? (step: number) => turnItem(selected!.obj as PlacedItem, step) : rotate;
@@ -1030,6 +1056,7 @@ const release = (e: PointerEvent) => {
     Object.assign(gesture.sel.obj, gesture.from);
     sceneChanged();
   }
+  if (gesture?.kind === 'move') showOptions();
   // Lifting one finger of a pinch does not start painting with the other.
   if (!pointers.size || gesture?.kind === 'pinch') gesture = pointers.size ? { kind: 'pan', x: [...pointers.values()][0].x, y: [...pointers.values()][0].y, cam: { ...cam } } : null;
 };
@@ -1157,8 +1184,8 @@ function frame(ms: number): void {
       lightByTile(image, caveTint(world.scene), 0, world.spots!, world.lightField([...caveLamps(world, ms), ...lantern]));
     }
     // The selected object, outlined over everything (lights included), so it shows even behind rock or in the dark.
-    const sel = prefs.mode === 'edit' && selected?.kind === 'item' ? world.scene.items.indexOf(selected.obj as PlacedItem) : -1;
-    if (sel >= 0) outline(image, view, world.itemThings()[sel], OUTLINE);
+    const chosen = prefs.mode === 'edit' ? thingOf(selected, wind) : null;
+    if (chosen) outline(image, view, chosen, OUTLINE);
     if (prefs.colliders) world.drawColliders(image, view);
     t0 = part('light', t0);
     ctx.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), 0, 0);
@@ -1298,10 +1325,12 @@ function showActions(): void {
 }
 /** Switches the cave's even light, built in `mount` (hidden outside a cave). */
 let brightToggle: HTMLElement | null = null;
-const dock = h('nav', { class: 'toolbar' });
-const options = h('div', { class: 'opts' });
-/** What a floating panel holds: a pixel box round its rows. */
-const panelOf = (...rows: Node[]) => box(h('div', { class: 'opts__body' }, ...rows));
+const dock = h('nav', { class: 'ubox__in toolbar' });
+/** The tools float over the scene in a pixel box (rounded corners, like every floating panel). */
+const dockBox = h('div', { class: 'ubox toolwrap' }, dock);
+/** The inspector: the tool's options while editing, and what the selected object lets you change. */
+const inspector = sidePanel('right', 'pixel-scene-inspector', 280);
+const inspect = () => inspector.body.replaceChildren(...(prefs.mode === 'edit' ? [h('div', { class: 'opts__body' }, ...editOptions())] : []));
 /** A button to another editor. */
 const link = (href: string, label: string) => pixelButton(label, { icon: 'pencil' }, () => { location.href = href; });
 
@@ -1345,7 +1374,15 @@ function brushPicture(size: number): HTMLCanvasElement {
 
 /** The options panel again, as the selection changed. */
 function showOptions(): void {
-  if (prefs.mode === 'edit') options.replaceChildren(panelOf(...editOptions()));
+  inspect();
+}
+
+/** Turns a selected plant or prop an eighth; the next prop set down is turned the same way. */
+function turnObject(obj: { turn: number }, step: number): void {
+  remember();
+  obj.turn = (obj.turn + step + 8) % 8;
+  if (selected?.kind === 'prop') propTurn = (obj.turn + world.rot * 2) % 8;
+  sceneChanged();
 }
 
 /** Turns a placed object a quarter; new ones then face the same way. */
@@ -1379,6 +1416,69 @@ function itemOptions(it: PlacedItem): Node[] {
   return out;
 }
 
+const KIND_ICON = { plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', prop: 'tool', spawn: 'flag' } as const;
+
+/** Edits made in a quick run (dragging a number) are one undo step: a new step is remembered after a pause. */
+let lastEdit = 0;
+function edit(change: () => void): void {
+  const now = performance.now();
+  if (now - lastEdit > 700) remember();
+  lastEdit = now;
+  change();
+  sceneChanged();
+}
+
+/** Puts the selected thing at a typed place, unless it may not stand there. */
+function moveTo(sel: Selected, i: number, j: number): void {
+  if (!canStand(sel, world.toView({ i, j }))) return showOptions();
+  edit(() => Object.assign(sel.obj, { i, j }));
+}
+
+/** What the Move tool shows of the selected thing: what it is, then every property it has. */
+function selectionOptions(sel: Selected): Node[] {
+  const o = sel.obj as any;
+  const title = {
+    plant: () => plantName(o.plant, FLORA.find((e) => e.id === o.plant)?.label),
+    decor: () => t(`decor.${o.decor}` as Key),
+    animal: () => o.name as string,
+    person: () => o.name as string,
+    item: () => objectChoices().find((c) => c.id === o.item)?.name ?? o.item,
+    prop: () => propKind(o.kind)?.name ?? o.kind,
+    spawn: () => t('tool.spawn'),
+  }[sel.kind]();
+  const num = (face: { icon?: string; words?: string }, tip: string, value: number, change: (n: number) => void, min: number, max: number, step = 1) =>
+    numberField({ ...face, tip }, value, change, { min, max, step, width: 46 });
+  const half = (v: number) => Math.round(v * 2) / 2;
+  const out: Node[] = [
+    h('div', { class: 'opts__head' }, iconPicture(KIND_ICON[sel.kind]), h('b', {}, title)),
+    h('span', { class: 'opts__label' }, t(`tool.${sel.kind === 'spawn' ? 'spawn' : sel.kind}` as Key)),
+    h('div', { class: 'urow' },
+      num({ words: 'X' }, t('sel.x'), half(o.i), (n) => moveTo(sel, n, o.j), 0, world.map.w, 0.5),
+      num({ words: 'Y' }, t('sel.y'), half(o.j), (n) => moveTo(sel, o.i, n), 0, world.map.h, 0.5)),
+  ];
+  const rows: Node[] = [];
+  if (sel.kind === 'plant' || sel.kind === 'prop') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.turn, (n) => edit(() => (o.turn = n)), 0, 7));
+  if (sel.kind === 'person') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.turn, (n) => edit(() => (o.turn = n)), 0, 3));
+  if (sel.kind === 'animal') rows.push(num({ icon: 'turnright' }, t('sel.turn'), o.facing, (n) => edit(() => (o.facing = n)), 0, 7));
+  if (sel.kind === 'plant') rows.push(num({ icon: 'shapes' }, t('sel.variant'), o.seed, (n) => edit(() => (o.seed = n)), 0, SEEDS - 1));
+  if (sel.kind === 'prop') {
+    const kind = propKind(o.kind);
+    if (kind && variantsOf(kind) > 1) rows.push(num({ icon: 'shapes' }, t('sel.variant'), o.seed, (n) => edit(() => (o.seed = n)), 0, variantsOf(kind) - 1));
+  }
+  if (sel.kind === 'plant' || sel.kind === 'prop') rows.push(num({ icon: 'zoomin' }, t('sel.size'), Math.round(o.size * 100), (n) => edit(() => (o.size = n / 100)), 50, 200, 5));
+  if (rows.length) out.push(h('div', { class: 'urow' }, ...rows));
+  if (sel.kind === 'item') out.push(...itemOptions(o as PlacedItem));
+  if (sel.kind === 'person') {
+    const poses: Option[] = [{ id: '', words: t('pose.alive') }, ...Object.entries(AUTHORED).map(([id, clip]) => ({ id, words: clip.name }))];
+    const frames = AUTHORED[o.pose?.clip]?.frames.length ?? 0;
+    out.push(fields(
+      field({ words: t('pose') }, choice(t('pose'), poses, () => o.pose?.clip ?? '', (clip) => { edit(() => (clip ? (o.pose = { clip, frame: 0 }) : delete o.pose)); showOptions(); }, 'list')),
+      ...(frames < 2 ? [] : [field({ words: t('pose.frame') }, num({ words: '#' }, t('pose.frame'), o.pose.frame, (n) => edit(() => (o.pose.frame = n)), 0, frames - 1))]),
+    ));
+  }
+  return out;
+}
+
 function editOptions(): Node[] {
   const tool = prefs.tool;
   const out: Node[] = [
@@ -1401,7 +1501,7 @@ function editOptions(): Node[] {
     out.push(picks(t('items'), objectChoices().map((c) => ({ id: c.id, name: c.name, picture: itemThumb(c.id, c.prop) })), prefs.item, (item) => set({ item })));
     out.push(link('../objects/', t('object.edit')));
   }
-  if (tool === 'move' && selected?.kind === 'item') out.push(...itemOptions(selected.obj as PlacedItem));
+  if (tool === 'move' && selected) out.push(...selectionOptions(selected));
   if (tool === 'animal') {
     const choices = animalChoices();
     const current = choices.some((c) => c.id === prefs.animal) ? prefs.animal : choices[0].id;
@@ -1454,6 +1554,7 @@ function render(): void {
   const other = prefs.mode === 'edit' ? 'play' : 'edit';
   const { bar, undo: u, redo: r, pops } = topBar({
     sidebar: true,
+    inspector: true,
     tool: 'scene',
     title: word('scene'),
     about: [t('hint.edit'), t('hint.play')],
@@ -1461,7 +1562,7 @@ function render(): void {
     more: [
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
-      { label: t('scene.project'), icon: 'download', main: true, run: () => void saveScene() },
+      { label: t('scene.project'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveScene(), track: { unsaved: () => current !== projectCanon.get(slug(sceneNow().name)), saveNow: saveScene } },
       { label: t('scene.import'), icon: 'upload', run: () => void importScene() },
       { label: t('scene.delete'), icon: 'trash', run: deleteScene, danger: true },
     ],
@@ -1479,10 +1580,10 @@ function render(): void {
   barRedo = r;
   u!.hidden = r!.hidden = !editing;
   syncUndo();
-  dock.hidden = !editing;
+  dockBox.hidden = !editing;
   dock.replaceChildren(...(editing ? toolbar() : []));
-  options.hidden = !editing;
-  options.replaceChildren(...(editing ? [panelOf(...editOptions())] : []));
+  inspector.panel.style.display = editing ? '' : 'none';
+  inspect();
   showActions();
   if (brightToggle) brightToggle.hidden = !editing || !sceneNow().cave;
   viewport.style.background = sceneNow().cave ? '#000' : ocean.deep;
@@ -1570,6 +1671,10 @@ const sceneTiles = () => [
   ...projectScenes.filter((p) => !library.scenes.some((s) => slug(s.name) === p.name)).map((p) => ({ id: `file:${p.name}`, words: p.name })),
 ];
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
+for (const p of projectScenes) {
+  try { projectCanon.set(p.name, canon(readSceneFile(p.text))); } catch { /* a broken file counts as not saved */ }
+}
+current = canon(sceneNow());
 const sceneList = tileLibrary({
   key: 'pixel-scenes', label: t('scene.search'), empty: t('scene.none'), items: sceneTiles, selected: () => library.current,
   pick: (id) => {
@@ -1590,7 +1695,7 @@ function mount(): void {
   brightToggle = toggle(t('bright'), { icon: 'sun' }, prefs.bright, (bright) => set({ bright }));
   viewport.replaceChildren(
     canvas,
-    options,
+    dockBox,
     h('div', { class: 'zoom' },
       pixelButton(t('scene.settings'), { icon: 'cog' }, () => sceneDialog('settings')),
       pixelButton(t('zoom.in'), { icon: 'zoomin' }, () => stepZoom(1)),
@@ -1608,8 +1713,7 @@ function mount(): void {
   document.getElementById('scene')!.replaceChildren(
     h('div', { class: 'editor' },
       barSlot,
-      h('div', { class: 'uworkspace' }, side.panel, viewport),
-      dock,
+      h('div', { class: 'uworkspace' }, side.panel, viewport, inspector.panel),
     ),
   );
   render();

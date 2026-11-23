@@ -632,7 +632,7 @@ export function searchField(label: string, change: (value: string) => void, valu
  */
 export function sidePanel(side: 'left' | 'right', key: string, width = 240): { panel: HTMLElement; body: HTMLElement } {
   const panel = el('aside', `uside uside--${side}`);
-  if (side === 'left') showSidebar(sidebarShown());
+  showSide(side, sideShown(side));
   let w = width;
   try { w = Math.max(120, Number(localStorage.getItem(key)) || width); } catch { /* the default */ }
   panel.style.width = `${w}px`;
@@ -650,15 +650,15 @@ export function sidePanel(side: 'left' | 'right', key: string, width = 240): { p
   return { panel, body };
 }
 
-const SIDEBAR_KEY = 'pixel-sidebar';
-const sidebarShown = (): boolean => { try { return localStorage.getItem(SIDEBAR_KEY) !== '0'; } catch { return true; } };
-const showSidebar = (on: boolean): void => { document.body.classList.toggle('uside-off', !on); };
+const SIDE_KEY = { left: 'pixel-sidebar', right: 'pixel-inspector' };
+const sideShown = (side: 'left' | 'right'): boolean => { try { return localStorage.getItem(SIDE_KEY[side]) !== '0'; } catch { return true; } };
+const showSide = (side: 'left' | 'right', on: boolean): void => { document.body.classList.toggle(`uside-off-${side}`, !on); };
 
-/** The header toggle of the left panel (library, scene list): lit while it is shown; the choice is kept in the browser for every editor. */
-export function sidebarButton(label: string): HTMLElement {
-  return toggle(label, { icon: 'sidebar', flat: true }, sidebarShown(), (on) => {
-    showSidebar(on);
-    try { localStorage.setItem(SIDEBAR_KEY, on ? '1' : '0'); } catch { /* not kept */ }
+/** The header toggle of a side panel (the library or scene list at the left, the inspector at the right): lit while it is shown; the choice is kept in the browser for every editor. */
+export function sidebarButton(label: string, side: 'left' | 'right' = 'left'): HTMLElement {
+  return toggle(label, { icon: side === 'left' ? 'sidebar' : 'inspector', flat: true }, sideShown(side), (on) => {
+    showSide(side, on);
+    try { localStorage.setItem(SIDE_KEY[side], on ? '1' : '0'); } catch { /* not kept */ }
   });
 }
 
@@ -759,6 +759,8 @@ export interface HeaderOptions {
   name?: Node;
   /** The button that shows or hides the left panel (`sidebarButton`), after the tool switcher. */
   sidebar?: Node;
+  /** The button that shows or hides the right panel (`sidebarButton(label, 'right')`), after the About button. */
+  inspector?: Node;
   /** Short status text next to the menu (saved, an error). */
   status?: Node;
   /** Old-style controls the page still brings itself (a picker of its things). */
@@ -766,11 +768,12 @@ export interface HeaderOptions {
   undo?: () => void;
   redo?: () => void;
   /** The main action: save. */
-  save?: { label: string; on: () => void; disabled?: boolean };
+  /** `unsaved` greys the button out while nothing changed and, with `saveNow`, asks to save before leaving for another tool. */
+  save?: { label: string; on: () => void; disabled?: boolean; unsaved?: () => boolean; saveNow?: () => Promise<boolean> };
   shuffle?: () => void;
   extra?: Node;
   languages?: { current: string; ids: string[]; pick: (id: string) => void };
-  labels?: { about: string; more: string; undo: string; redo: string; shuffle: string; language: string; tools: string };
+  labels?: { about: string; more: string; undo: string; redo: string; shuffle: string; language: string; tools: string; saveAsk: string; save: string; dontSave: string; cancel: string };
 }
 
 /** Joins groups of controls into one row with a divider between each two non-empty groups. */
@@ -785,18 +788,38 @@ function groups(...list: (Node | null | undefined | false)[][]): HTMLElement {
 
 /** The header of every tool page, groups divided by lines: page icon | name, save, actions, menu, status | undo, redo | extras, about; a space; language. */
 export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null } {
-  const t = { about: 'About', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle', language: 'Language', tools: 'Tools', ...o.labels };
+  const t = { about: 'About', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle', language: 'Language', tools: 'Tools', saveAsk: 'Save your changes to the project before leaving?', save: 'Save', dontSave: "Don't save", cancel: 'Cancel', ...o.labels };
   const bar = el('header', 'uheader');
   const pages: Option[] = o.tools.map((x) => ({ id: x.id, icon: x.icon, words: x.name }));
   const paras = o.about;
   const undo = o.undo ? pixelButton(t.undo, { icon: 'undo', flat: true }, o.undo) : null;
   const redo = o.redo ? pixelButton(t.redo, { icon: 'redo', flat: true }, o.redo) : null;
   const l = o.languages;
+  const saveButton = o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled });
+  const tracked = o.save?.unsaved && !o.save.disabled ? o.save.unsaved : null;
+  // The save button is grey while there is nothing to save; a page that changes things in many places is polled rather than wired.
+  if (saveButton && tracked) {
+    saveButton.disabled = !tracked();
+    let seen = false;
+    const timer = window.setInterval(() => {
+      if (bar.isConnected) seen = true;
+      else if (seen) return window.clearInterval(timer);
+      saveButton.disabled = !tracked();
+    }, 400);
+  }
+  /** Goes to another page; with unsaved changes it first asks whether to save them. */
+  const leave = (href: string) => {
+    const go = () => { location.href = href; };
+    if (!tracked || !tracked()) return go();
+    void leaveDialog(t.saveAsk, { save: t.save, dont: t.dontSave, cancel: t.cancel }).then(async (answer) => {
+      if (answer === 'leave' || (answer === 'save' && (await o.save!.saveNow?.()))) go();
+    });
+  };
   const left = groups(
-    [choice(t.tools, pages, () => o.tool, (id) => { location.href = o.tools.find((x) => x.id === id)!.href; }, 'list', 60, true), o.sidebar],
+    [choice(t.tools, pages, () => o.tool, (id) => leave(o.tools.find((x) => x.id === id)!.href), 'list', 60, true), o.sidebar],
     [
       o.name,
-      o.save && Object.assign(pixelButton(o.save.label, { icon: 'save', flat: true }, o.save.on), { disabled: !!o.save.disabled }),
+      saveButton,
       ...(o.actions ?? []).map((a) => Object.assign(pixelButton(a.label, { icon: a.icon, flat: true }, a.on), { disabled: !!a.disabled })),
       o.more && menu(t.more, o.more, 'more', true),
       o.things,
@@ -813,6 +836,7 @@ export function header(o: HeaderOptions): { bar: HTMLElement; undo: HTMLButtonEl
         text.append(...paras.map((p) => Object.assign(el('p', ''), { textContent: p })));
         return text;
       }),
+      o.inspector,
     ],
   );
   if (l) {
@@ -957,6 +981,27 @@ export function confirmDialog(question: string): Promise<boolean> {
     buttons.append(pixelButton('No', { icon: 'close' }, () => done(false)), pixelButton('Yes', { icon: 'check', lit: true }, () => done(true)));
     veil.append(box(text, buttons));
     veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done(false); });
+    addEventListener('keydown', key, true);
+    document.body.append(veil);
+  });
+}
+
+/** Asks what to do with unsaved changes on leaving: save them, leave without, or stay (Escape, a tap outside). */
+export function leaveDialog(question: string, words: { save: string; dont: string; cancel: string }): Promise<'save' | 'leave' | 'stay'> {
+  return new Promise((resolve) => {
+    const veil = el('div', 'umodal');
+    const text = el('p', 'umodal__text');
+    text.textContent = question;
+    const buttons = el('div', 'urow');
+    const done = (answer: 'save' | 'leave' | 'stay') => { veil.remove(); removeEventListener('keydown', key, true); resolve(answer); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done('stay'); else if (e.key === 'Enter') done('save'); };
+    buttons.append(
+      pixelButton(words.cancel, { words: words.cancel }, () => done('stay')),
+      pixelButton(words.dont, { words: words.dont }, () => done('leave')),
+      pixelButton(words.save, { icon: 'check', words: words.save, lit: true }, () => done('save')),
+    );
+    veil.append(box(text, buttons));
+    veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done('stay'); });
     addEventListener('keydown', key, true);
     document.body.append(veil);
   });

@@ -3,7 +3,7 @@
 // halo), kept on this device and saved into the game's project (src/content/store/pixel-particles.json) for the game.
 import '../props/style.css';
 import './style.css';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import { readStore, writeStore } from '../../shared/files.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
@@ -181,7 +181,7 @@ function renderBar(): void {
     more: [
       { label: L('New system', 'Neues System'), icon: 'plus', run: () => add(BUILT_IN[0], L('Particles', 'Partikel')) },
       { label: L('Duplicate', 'Duplizieren'), icon: 'copy', run: () => add(s, `${s.name} 2`) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([PARTICLE_STORE]).then((ok) => {
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([PARTICLE_STORE]), run: () => void saveStores([PARTICLE_STORE]).then((ok) => {
         message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.');
         render();
       }) },

@@ -72,7 +72,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ['text field', [() => textField('Name', 'Mara', noop, { dice: () => 'Kai' })]],
   ['search field', [() => Object.assign(searchField('Search', noop), { style: 'width: 200px; display: block' })]],
   ['library', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-library', 220); panel.style.height = '240px'; const shelf = library({ key: 'pixel-ui-library', items: () => icons.map((o) => ({ id: o.id, icon: o.icon, words: o.id })), selected: () => picked.shelf, pick: (id) => { picked.shelf = id; shelf.redraw(); } }); body.append(shelf); return panel; }]],
-  ['sidebar button', [() => sidebarButton('Side panel')]],
+  ['side panel button', [() => sidebarButton('Side panel'), () => sidebarButton('Inspector', 'right')]],
   ['side panel', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-demo', 150); panel.style.height = '120px'; body.append(searchField('Search', noop)); return panel; }]],
   ['workspace', [() => Object.assign(workspace({ key: 'pixel-ui-workspace', left: [searchField('Search', noop)], centre: [panelPicture(30, 20)], right: [pixelButton('Button', { icon: 'sun' }, noop)], leftWidth: 120, rightWidth: 90 }), { style: 'height: 140px; width: 420px' })]],
   ['menu', [() => menu('Menu', [{ icon: 'download', label: 'Save', on: noop }, { icon: 'upload', label: 'Open', on: noop }, { icon: 'trash', label: 'Delete', on: noop }])]],

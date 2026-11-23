@@ -2,7 +2,7 @@
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
 import { choice, tileGrid, confirmDialog, library, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import {
   COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_ORIGIN, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
 } from '../../engine/objects/object.ts';
@@ -279,7 +279,7 @@ function renderBar(): void {
         changed();
       } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${fileName}.json`, propFile(fileName, prop)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveStores([OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([OBJECT_STORE.roster]), run: () => void saveStores([OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       { label: expert ? L('Expert tools: on', 'Expertenwerkzeuge: an') : L('Expert tools: off', 'Expertenwerkzeuge: aus'), icon: 'sliders', run: () => {
         expert = !expert;
