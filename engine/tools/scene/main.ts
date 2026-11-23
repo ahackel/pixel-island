@@ -1577,18 +1577,28 @@ function editOptions(): Node[] {
     h('div', { class: 'opts__head' }, iconPicture(TOOL_ICONS[tool]), h('b', {}, t(`tool.${tool}` as Key))),
     h('p', { class: 'opts__tip' }, t(`tip.${tool}` as Key)),
   ];
+  // One block of fields, so their labels are as wide as each other's.
+  const rows: Node[] = [];
   if (tool === 'paint') {
     // Ground follows the height by default; in a cave, where the height is flat, the default is the cave's own stone.
     const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5] : [0, 1, 2, 3, 5];
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
-    out.push(choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list'));
+    rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }
   if (BRUSHED.includes(tool)) {
     const picture = h('span', {}, brushPicture(prefs.brush));
     // Dragging only changes the number and the picture: a redraw of the panel would drop the drag.
-    const size = numberField({ icon: 'brush', tip: t('brush') }, prefs.brush, (n) => { prefs.brush = n; savePrefs(); picture.replaceChildren(brushPicture(n)); }, { min: 1, max: BRUSH_MAX, width: 36 });
-    out.push(h('div', { class: 'urow' }, size, picture));
+    const sized = (v: number) => 1 + Math.round(v * (BRUSH_MAX - 1));
+    const size = pixelSlider(t('brush'), (prefs.brush - 1) / (BRUSH_MAX - 1), (v) => {
+      const n = sized(v);
+      if (n === prefs.brush) return;
+      prefs.brush = n;
+      savePrefs();
+      picture.replaceChildren(brushPicture(n));
+    }, 60, (v) => String(sized(v)));
+    rows.push(field({ words: t('brush') }, h('div', { class: 'urow' }, size, picture)));
   }
+  if (rows.length) out.push(fields(...rows));
   if (tool === 'prop') out.push(...propLibrary());
   if (tool === 'plant') out.push(picks(t('plants'), FLORA.map((e) => ({ id: e.id, name: plantName(e.id, e.label), picture: thumb(e.id) })), prefs.plant, (plant) => set({ plant })));
   if (tool === 'decor') out.push(picks(t('decor'), DECOR.map((d) => ({ id: d.id, name: t(`decor.${d.id}` as Key), picture: decorThumb(d.id) })), prefs.decor, (decor) => set({ decor })));

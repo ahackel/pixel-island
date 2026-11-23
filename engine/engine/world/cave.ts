@@ -173,7 +173,8 @@ const PILLAR = 'plant-rocks-6';
 /** A lone cell of rock as a stalagmite, a little bigger than the loose ones, each turned its own way. */
 function pillarThing(world: World, c: number): Thing[] {
   const i = c % world.map.w, j = Math.floor(c / world.map.w);
-  const r = (k: number) => h01(i, j, k);
+  const sd = world.map.seed ?? { i: 0, j: 0 };
+  const r = (k: number) => h01(i - sd.i, j - sd.j, k);
   const raster = rasterOf({ plant: PILLAR, seed: Math.floor(r(1) * 4), size: 1.2, turn: Math.floor(r(2) * 8) }, 0);
   return raster ? [{ spot: { i: i + 0.5, j: j + 0.5, level: CAVE_FLOOR }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
 }
@@ -188,11 +189,11 @@ function h01(a: number, b: number, c: number): number {
 
 /** The rubble along the walls' feet, in view coordinates: on about `amount` of the wall edges, a cluster. */
 // shortcut: seeded by view position, so it lies differently when the editor turns the view; seed by scene position if that bothers.
-export function caveRubble(walls: Building, amount: number): { plant: string; i: number; j: number; seed: number; size: number; turn: number }[] {
+export function caveRubble(walls: Building, amount: number, seed = { i: 0, j: 0 }): { plant: string; i: number; j: number; seed: number; size: number; turn: number }[] {
   const out: ReturnType<typeof caveRubble> = [];
   for (const { edge } of walls.edges.values()) {
     const ax = edge.axis === 'H' ? 0 : 1;
-    const r = (k: number) => h01(edge.i * 2 + ax, edge.j, k);
+    const r = (k: number) => h01((edge.i - seed.i) * 2 + ax, edge.j - seed.j, k);
     if (r(0) >= amount) continue;
     const along = 0.15 + r(1) * 0.7;
     CLUSTER.forEach(([d, size], n) => {
@@ -232,7 +233,7 @@ export function setUpCave(world: World, at?: { i: number; j: number }): void {
   const key = cellOf(world, at);
   const { walls, blocks, pillars } = caveRock(world.map, rooms, key && at ? { i: Math.floor(at.i) + 0.5, j: Math.floor(at.j) + 0.5 } : null);
   world.buildings = [walls];
-  const rubble = caveRubble(walls, world.scene.cave?.rubble ?? 0).flatMap((p) => {
+  const rubble = caveRubble(walls, world.scene.cave?.rubble ?? 0, world.map.seed).flatMap((p) => {
     const raster = rasterOf(p, 0);
     return raster ? [{ spot: { i: p.i, j: p.j, level: standingHeight(world.map, p.i, p.j) }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
   });

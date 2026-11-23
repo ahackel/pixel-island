@@ -516,7 +516,11 @@ export class World {
   private viewMap(): HeightMap & { paint: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
-    const map = mapOf(this.scene);
+    // The scene's shift as a step in this view.
+    const at = this.toView({ i: 0, j: 0 }), to = this.toView(this.scene.shift ?? { i: 0, j: 0 });
+    const base = this.scene.origin ?? this.scene;
+    const seed = { i: to.i - at.i, j: to.j - at.j, x: (this.rot % 2 ? base.w : base.h) * (TILE_W / 2) + 8 };
+    const map = { ...mapOf(this.scene), seed };
     if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
@@ -525,7 +529,7 @@ export class World {
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
     }
-    return { w, h, levels, paint };
+    return { w, h, levels, paint, seed };
   }
 
   /** Turns the view; the scene itself does not change. */

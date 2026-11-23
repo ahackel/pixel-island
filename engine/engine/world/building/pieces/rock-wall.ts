@@ -72,6 +72,7 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
     on: 'edge',
     draw(site, e, height, { cut }) {
       const { map, ground } = site;
+      const sd = map.seed ?? { i: 0, j: 0 };
       const [h0, h1] = endHeights(map, e);
       const o = ground.origin;
       const xmin = o.x + (e.axis === 'H' ? e.i - e.j : e.i - e.j - 1) * HALF_W;
@@ -104,8 +105,8 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
       // corner share, so the rock runs on round it. Up the wall the field is sheared by the screen column, so walls
       // as far round but elsewhere on screen differ.
       const line = seed * 7919;
-      const along = (u: number) => (e.axis === 'H' ? (e.i + e.j) * 16 + u : (e.i + e.j + 1) * 16 - u - 1);
-      const shear = (u: number) => SHEAR * (xmin + u - o.x);
+      const along = (u: number) => (e.axis === 'H' ? (e.i - sd.i + e.j - sd.j) * 16 + u : (e.i - sd.i + e.j - sd.j + 1) * 16 - u - 1);
+      const shear = (u: number) => SHEAR * (xmin + u - o.x - (sd.i - sd.j) * HALF_W);
       // Which way along the wall is left on screen, for the light.
       const leftward = e.axis === 'H' ? 1 : -1;
       const turn = e.axis === 'H' ? TONE['+j'] : TONE['+i'];

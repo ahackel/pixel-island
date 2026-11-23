@@ -15,7 +15,7 @@ const CELL = 28;
 let lib: Record<string, string[]> = Object.fromEntries(Object.entries(ICONS).map(([k, v]) => [k, [...v]]));
 let name = Object.keys(lib)[0];
 let ink = 'x';
-type Tool = 'draw' | 'erase' | 'line' | 'rect';
+type Tool = 'draw' | 'erase' | 'line' | 'rect' | 'fill';
 let tool: Tool = 'draw';
 
 const undo = history(() => ({ lib, name }), (v) => { lib = v.lib; name = v.name; render(); });
@@ -89,6 +89,18 @@ const paint = (x: number, y: number, ch: string) => {
 };
 
 type Cell = [number, number];
+/** Paints the pixels joined to (x, y) that have its colour (up or down, left or right) with the chosen colour. */
+function flood(x: number, y: number) {
+  const rows = lib[name];
+  if (x < 0 || y < 0 || x >= N || y >= N) return;
+  const was = rows[y][x];
+  const todo: Cell[] = [[x, y]];
+  while (todo.length) {
+    const [cx, cy] = todo.pop()!;
+    if (cx < 0 || cy < 0 || cx >= N || cy >= N || rows[cy][cx] !== was || !paint(cx, cy, ink)) continue;
+    todo.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+  }
+}
 /** The cells on the straight line between two cells. */
 function lineCells(a: Cell, b: Cell): Cell[] {
   const out: Cell[] = [];
@@ -121,7 +133,9 @@ function editor(): HTMLElement {
     for (const [x, y] of tool === 'rect' ? rectCells(a, b) : lineCells(a, b)) paint(x, y, ch);
     redraw();
   };
-  canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); from = last = cell(e); base = lib[name].slice(); apply(from, from); });
+  canvas.addEventListener('pointerdown', (e) => {
+    if (tool === 'fill') { flood(...cell(e)); redraw(); undo.commit(); setSaved(null); render(); return; }
+    canvas.setPointerCapture(e.pointerId); from = last = cell(e); base = lib[name].slice(); apply(from, from); });
   canvas.addEventListener('pointermove', (e) => {
     if (!from) return;
     const to = cell(e);
@@ -153,7 +167,7 @@ function render(): void {
   // The tools float under the paint area.
   const tools = document.createElement('div');
   tools.className = 'urow';
-  tools.append(...([['draw', 'pencil'], ['erase', 'eraser'], ['line', 'line'], ['rect', 'rect']] as const).map(([id, icon]) =>
+  tools.append(...([['draw', 'pencil'], ['erase', 'eraser'], ['line', 'line'], ['rect', 'rect'], ['fill', 'bucket']] as const).map(([id, icon]) =>
     pixelButton(id[0].toUpperCase() + id.slice(1), { icon, flat: true, pressed: tool === id }, () => { tool = id; render(); })));
 
   // The inspector: the name and the colours.

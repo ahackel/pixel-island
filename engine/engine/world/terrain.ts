@@ -25,6 +25,8 @@ export interface HeightMap {
   readonly paint?: Uint8Array;
   /** The level beyond the map's edge, which the border cells slope toward: open sea (`MIN_LEVEL`) unless set. */
   readonly outside?: number;
+  /** How far the ground has moved in tiles (see `Scene.shift`), in this view: what is drawn by position is seeded from the position without it. */
+  readonly seed?: { i: number; j: number; /** Where the map's left corner was on the picture when its speckle was first seeded, so it keeps its pattern. */ x?: number };
 }
 
 export function createHeightMap(w: number, h: number, fill = MIN_LEVEL): HeightMap {
@@ -446,7 +448,11 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
     cell[p] = index;
     height[p] = level;
   };
-  const hash = pixelHash;
+  // Speckle and borders are seeded from where they are on the map itself, not on the picture or the view, so they stay put when the map is resized.
+  const sd = map.seed ?? { i: 0, j: 0 };
+  const ox = origin.x + ((sd.i - sd.j) * TILE_W) / 2, oy = origin.y + ((sd.i + sd.j) * TILE_H) / 2;
+  const baseX = sd.x ?? origin.x;
+  const hash = (x: number, y: number) => pixelHash(x - ox + baseX, y - oy + origin.y);
   const screen = (i: number, j: number, level: number) => {
     const p = toScreen(i, j, level);
     return { x: origin.x + p.x, y: origin.y + p.y };
@@ -462,8 +468,8 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
   const groundCell = (i: number, j: number, mi: number, mj: number) => {
     const u = mi - i, v = mj - j;
     if (u > BLEND && u < 1 - BLEND && v > BLEND && v < 1 - BLEND) return j * map.w + i;
-    const ni = Math.floor(mi + BLEND * wobble(mi, mj, 1));
-    const nj = Math.floor(mj + BLEND * wobble(mi, mj, 2));
+    const ni = Math.floor(mi + BLEND * wobble(mi - sd.i, mj - sd.j, 1));
+    const nj = Math.floor(mj + BLEND * wobble(mi - sd.i, mj - sd.j, 2));
     if ((ni === i && nj === j) || !inside(map, ni, nj) || !isLand(map, ni, nj) || !isLand(map, i, j)) return j * map.w + i;
     return Math.abs(levelAt(map, ni, nj) - levelAt(map, i, j)) <= SLOPE_LEVELS ? nj * map.w + ni : j * map.w + i;
   };
@@ -534,7 +540,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         const sandy = kind === 'sand' || kind === 'wet';
         // The light between the corners, in steps of a fiftieth, dithered so the steps do not band.
         const lit = w0 * l[0] + w1 * l[1] + w2 * l[2];
-        const step = Math.floor(Math.min(0.22, Math.abs(lit) * 0.9) * 50 + BAYER[(y & 3) * 4 + (x & 3)]) * Math.sign(lit);
+        const step = Math.floor(Math.min(0.22, Math.abs(lit) * 0.9) * 50 + BAYER[((y - oy + origin.y) & 3) * 4 + ((x - ox + baseX) & 3)]) * Math.sign(lit);
         const patch = 0;
         let tone = tones[kind + step + '|' + patch];
         if (!tone) {

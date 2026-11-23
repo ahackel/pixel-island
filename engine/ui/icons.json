@@ -221,8 +221,8 @@
  ],
  "de": [
   ".........",
-  "kkkkkkkkk",
-  "kkkkkkkkk",
+  "xxxxxxxxx",
+  "xxxxxxxxx",
   "rrrrrrrrr",
   "rrrrrrrrr",
   "yyyyyyyyy",
@@ -881,25 +881,25 @@
  ],
  "zoomin": [
   ".xxxxx...",
-  "x.....x..",
-  "x..x..x..",
-  "x.xxx.x..",
-  "x..x..x..",
-  "x.....x..",
+  "xgggggx..",
+  "xggwggx..",
+  "xgwwwgx..",
+  "xggwggx..",
+  "xgggggx..",
   ".xxxxxx..",
-  "......xxx",
-  ".......xx"
+  "......hhh",
+  ".......hh"
  ],
  "zoomout": [
   ".xxxxx...",
-  "x.....x..",
-  "x.....x..",
-  "x.xxx.x..",
-  "x.....x..",
-  "x.....x..",
+  "xgggggx..",
+  "xgggggx..",
+  "xgrrrgx..",
+  "xgggggx..",
+  "xgggggx..",
   ".xxxxxx..",
-  "......xxx",
-  ".......xx"
+  "......hhh",
+  ".......hh"
  ],
  "trim": [
   "x.x......",

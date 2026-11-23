@@ -82,6 +82,10 @@ export interface Scene {
   /** The painted props and locked pixels it uses, so it draws the same in a game or on another device (see prop.ts). */
   carried?: Carried;
   spawn: { i: number; j: number };
+  /** How far resizing at the north or west border has moved the ground since the scene was made, in tiles: what is drawn by position (rock, rubble, speckle) is seeded from the position without it, so it keeps its look. */
+  shift?: { i: number; j: number };
+  /** The size the scene had when it was first resized: the ground's speckle is seeded as for that size, so it keeps its look. */
+  origin?: { w: number; h: number };
   /** Set for a cave: all rock but what is carved open, seen into from the front (see cave.ts). */
   cave?: CaveSettings;
 }
@@ -170,10 +174,12 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
     plants: kept(scene.plants),
     decor: kept(scene.decor),
     animals: kept(scene.animals),
-    people: scene.people.map((p) => ({ ...p, ...spot(p) })),
+    people: kept(scene.people),
     items: kept(scene.items),
     props: kept(scene.props ?? []),
     spawn: spot(scene.spawn),
+    ...((scene.origin || w !== scene.w || h !== scene.h) && { origin: scene.origin ?? { w: scene.w, h: scene.h } }),
+    ...((scene.shift || dx || dy) && { shift: { i: (scene.shift?.i ?? 0) + dx, j: (scene.shift?.j ?? 0) + dy } }),
     ...(scene.cave && { cave: { ...scene.cave, exits: kept(scene.cave.exits) } }),
   };
 }
@@ -260,6 +266,8 @@ export function cleanScene(input: unknown): Scene {
     w, h, levels, paint, plants, decor, animals, people, items, props,
     ...(Object.keys(objects).length && { objects }),
     spawn: { i: num(s.spawn?.i, 0, w, w / 2), j: num(s.spawn?.j, 0, h, h / 2) },
+    ...(s.origin && typeof s.origin === 'object' && Number.isInteger(s.origin.w) && Number.isInteger(s.origin.h) && { origin: { w: clamp(s.origin.w, MIN_SIZE, MAX_SIZE), h: clamp(s.origin.h, MIN_SIZE, MAX_SIZE) } }),
+    ...(s.shift && typeof s.shift === 'object' && (Number(s.shift.i) || Number(s.shift.j)) && { shift: { i: Math.round(num(s.shift.i, -MAX_SIZE * 8, MAX_SIZE * 8, 0)), j: Math.round(num(s.shift.j, -MAX_SIZE * 8, MAX_SIZE * 8, 0)) } }),
   };
   const c = s.cave;
   if (c && typeof c === 'object') {

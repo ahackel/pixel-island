@@ -23,13 +23,13 @@
  ],
  "cog": [
   "....x....",
-  ".x.xxx.x.",
-  "..xxxxx..",
-  ".xxx.xxx.",
-  "xxx...xxx",
-  ".xxx.xxx.",
-  "..xxxxx..",
-  ".x.xxx.x.",
+  "..xxdxx..",
+  ".xdddddx.",
+  ".xddxddx.",
+  "xddx.xddx",
+  ".xddxddx.",
+  ".xdddddx.",
+  "..xxdxx..",
   "....x...."
  ],
  "inspector": [
@@ -154,24 +154,24 @@
   "..xxxxx.."
  ],
  "tool": [
-  ".....xx..",
-  "....xx...",
-  "....xx..x",
-  "....xxxxx",
-  "...xxxxx.",
-  "..xxx....",
-  ".xxx.....",
-  "xxx......",
-  "xx......."
+  ".....dd..",
+  "....dd...",
+  "....dd..d",
+  "....ddddd",
+  "...dlddd.",
+  "..dld....",
+  ".dld.....",
+  "dld......",
+  "dd......."
  ],
  "eye": [
   ".........",
   ".........",
   "..xxxxx..",
-  ".x.xxx.x.",
-  "x..xxx..x",
-  ".x.....x.",
-  "..xxxxx..",
+  ".xltwblx.",
+  "dltwxbtld",
+  ".dtbbbtd.",
+  "..ddddd..",
   ".........",
   "........."
  ],
@@ -221,8 +221,8 @@
  ],
  "de": [
   ".........",
-  "kkkkkkkkk",
-  "kkkkkkkkk",
+  "xxxxxxxxx",
+  "xxxxxxxxx",
   "rrrrrrrrr",
   "rrrrrrrrr",
   "rrrrrrrrr",
@@ -297,14 +297,14 @@
   "........."
  ],
  "trash": [
-  "...xxx...",
   "xxxxxxxxx",
-  ".........",
-  ".xxxxxxx.",
-  ".xx.x.xx.",
-  ".xx.x.xx.",
-  ".xx.x.xx.",
-  ".xx.x.xx.",
+  "xlllllllx",
+  ".xdddddx.",
+  ".xldldlx.",
+  ".xldldlx.",
+  ".xldldlx.",
+  ".xldldlx.",
+  ".xlllllx.",
   ".xxxxxxx."
  ],
  "download": [
@@ -341,15 +341,15 @@
   "...xxxxxx"
  ],
  "pencil": [
-  "......hh.",
-  ".....horh",
-  "....horrh",
-  "...horrh.",
-  "..horrh..",
-  ".smhrh...",
-  ".smmh....",
-  "xxss.....",
-  "xx......."
+  "......nn.",
+  ".....norn",
+  "....norrn",
+  "...norrn.",
+  "..norrn..",
+  ".smnrn...",
+  ".smmn....",
+  "hhss.....",
+  "xh......."
  ],
  "play": [
   ".........",
@@ -378,9 +378,9 @@
   "..x...x..",
   "..x...x..",
   ".xxxxxxx.",
-  ".xxxxxxx.",
-  ".xxx.xxx.",
-  ".xxxxxxx.",
+  ".xdddddx.",
+  ".xddxddx.",
+  ".xdddddx.",
   ".xxxxxxx.",
   "........."
  ],
@@ -389,9 +389,9 @@
   "..x...x..",
   "......x..",
   ".xxxxxxx.",
-  ".xxxxxxx.",
-  ".xxx.xxx.",
-  ".xxxxxxx.",
+  ".xdddddx.",
+  ".xddxddx.",
+  ".xdddddx.",
   ".xxxxxxx.",
   "........."
  ],
@@ -418,15 +418,15 @@
   "........."
  ],
  "search": [
-  ".xxxx....",
-  "x....x...",
-  "x....x...",
-  "x....x...",
-  ".xxxx....",
-  ".....xx..",
-  "......xx.",
-  ".......xx",
-  "........."
+  ".xxxxx...",
+  "xbgggbx..",
+  "xgtgggx..",
+  "xgggggx..",
+  "xgggggx..",
+  "xbgggbx..",
+  ".xxxxxoh.",
+  "......hoh",
+  ".......hh"
  ],
  "grid": [
   ".........",
@@ -627,13 +627,13 @@
   "........."
  ],
  "eraser": [
-  ".....xx..",
-  "....xxxx.",
-  "...xxxxxx",
-  "..x.xxxxx",
-  ".xxx.xxx.",
-  ".xxxx.x..",
-  ".xxxxx...",
+  ".....bb..",
+  "....bwwb.",
+  "...nwwwwb",
+  "..nrrwwwb",
+  ".nrrrrwb.",
+  ".nrrrrn..",
+  ".nrrrn...",
   "..xxxxxxx",
   "........."
  ],
@@ -660,15 +660,15 @@
   "........."
  ],
  "save": [
-  "xx.....x.",
-  "xx...x.xx",
-  "xx.....xx",
-  "xxxxxxxxx",
-  "xxxxxxxxx",
-  "xx.....xx",
-  "xx.....xx",
-  "xx.....xx",
-  "xxxxxxxxx"
+  "bbdddddb.",
+  "bwlllwlwb",
+  "bwlllwlwb",
+  "bwlllllwb",
+  "bwwwwwwwb",
+  "bwtttttwb",
+  "bwtttttwb",
+  "bwtttttwb",
+  "bbbbbbbbb"
  ],
  "shapes": [
   "....x....",
@@ -737,26 +737,26 @@
   "........."
  ],
  "pin": [
-  "..xxxxx..",
-  ".xx...xx.",
-  ".x.....x.",
-  ".x..x..x.",
-  ".xx...xx.",
-  "..xx.xx..",
-  "...xxx...",
-  "....x....",
-  "....x...."
+  "..rrrrn..",
+  "...nnn...",
+  "...rrn...",
+  "..rrrrn..",
+  ".rrrrrrn.",
+  "....d....",
+  "....d....",
+  "....l....",
+  "....l...."
  ],
  "palm": [
-  "xx.xxx.xx",
-  ".xxxxxxx.",
-  "..xxxxx..",
-  "xx..x..xx",
+  "...fff...",
+  ".fffffff.",
+  "f..fff..f",
+  "f.f.h.f.f",
+  "..f.x.f..",
+  "....h....",
   "....x....",
-  "....x....",
-  "....x....",
-  "...xx....",
-  "..xxx...."
+  "....h....",
+  "....x...."
  ],
  "grass": [
   "..x...x..",
@@ -770,26 +770,26 @@
   "........."
  ],
  "cactus": [
-  "....x....",
-  "...xxx...",
-  "x..xxx...",
-  "x..xxx..x",
-  "xxxxxx..x",
-  "...xxxxxx",
-  "...xxx...",
-  "...xxx...",
-  "..xxxxx.."
+  "..fff....",
+  ".fefff...",
+  ".ffffe.f.",
+  ".ffeff.f.",
+  ".fffff.f.",
+  ".effffff.",
+  ".fffef...",
+  ".fffff...",
+  "hhhhhhhhh"
  ],
  "leaf": [
-  "......xxx",
-  "....xxxxx",
-  "..xxxxxx.",
-  ".xxxxxx..",
-  "xxxxxx...",
-  "xxxx.....",
-  "xx.x.....",
-  "x........",
-  "........."
+  "....fffff",
+  "..fffffef",
+  ".fffefeff",
+  ".feffefff",
+  "ffefefeff",
+  "ffeeffff.",
+  "ffeeeeff.",
+  "fefffff..",
+  "fffff...."
  ],
  "rock": [
   ".........",
@@ -815,25 +815,25 @@
  ],
  "camera": [
   ".........",
-  "..xxx....",
+  "..xxxxx..",
   "xxxxxxxxx",
-  "x.xxx.xxx",
-  "xx...xxxx",
-  "xx...xxxx",
-  "x.xxx.xxx",
-  "xxxxxxxxx",
-  "........."
+  "drdtllddd",
+  "xxtbbblxx",
+  "xxlbwblxx",
+  "xxlbbblxx",
+  "xxxlllxxx",
+  "xxxxxxxxx"
  ],
  "bucket": [
   ".........",
-  "...xx....",
-  "..xxxx...",
-  ".xxxxxx..",
-  "xxxxxxx.x",
-  "xxxxxxxx.",
-  "xxxxxx.x.",
-  ".xxxx....",
-  "........."
+  "....dd...",
+  "..wdtld..",
+  ".wdlltld.",
+  "wdllxxxxx",
+  "wxdlllltd",
+  "w.xdllllx",
+  "w..xdllx.",
+  "w...xdx.."
  ],
  "pipette": [
   "......xxx",
@@ -881,25 +881,25 @@
  ],
  "zoomin": [
   ".xxxxx...",
-  "x.....x..",
-  "x..x..x..",
-  "x.xxx.x..",
-  "x..x..x..",
-  "x.....x..",
-  ".xxxxxx..",
-  "......xxx",
-  ".......xx"
+  "xbgggbx..",
+  "xgtwggx..",
+  "xgwwwgx..",
+  "xggwggx..",
+  "xbgggbx..",
+  ".xxxxxoh.",
+  "......hoh",
+  ".......hh"
  ],
  "zoomout": [
   ".xxxxx...",
-  "x.....x..",
-  "x.....x..",
-  "x.xxx.x..",
-  "x.....x..",
-  "x.....x..",
-  ".xxxxxx..",
-  "......xxx",
-  ".......xx"
+  "xbgggbx..",
+  "xgtgggx..",
+  "xgrrrgx..",
+  "xgggggx..",
+  "xbgggbx..",
+  ".xxxxxoh.",
+  "......hoh",
+  ".......hh"
  ],
  "trim": [
   "x.x......",
@@ -913,15 +913,15 @@
   "........."
  ],
  "pointer": [
-  "x........",
-  "xx.......",
-  "xxx......",
-  "xxxx.....",
-  "xxxxx....",
-  "xxxxxx...",
-  "xxxx.....",
-  "x..xx....",
-  "....xx..."
+  "....x....",
+  "...xxx...",
+  ".........",
+  ".x.....x.",
+  "xx.....xx",
+  ".x.....x.",
+  ".........",
+  "...xxx...",
+  "....x...."
  ],
  "raise": [
   "....x....",
@@ -957,26 +957,26 @@
   "........."
  ],
  "brush": [
-  ".......xx",
-  "......xxx",
-  ".....xxx.",
-  "....xxx..",
-  "...xx....",
-  "..xxo....",
-  ".woo.....",
-  "www......",
-  "ww......."
+  ".......ho",
+  "......hoh",
+  ".....hoh.",
+  "....hoh..",
+  "...doh...",
+  ".nnld....",
+  "nrrn.....",
+  "nrnn.....",
+  "nnn......"
  ],
  "pickaxe": [
-  "..xxxxx..",
-  ".x..x..x.",
-  "x...x...x",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h...."
+  ".dddd....",
+  "...dldh..",
+  "....dldh.",
+  "....hdld.",
+  "...hhhdld",
+  "..hoh..dd",
+  ".hoh....d",
+  "hoh.....d",
+  "oh......."
  ],
  "shell": [
   "..xxxxx..",
@@ -1001,11 +1001,11 @@
   "..xx.xx.."
  ],
  "flag": [
-  ".xrrrrrr.",
-  ".xrrrrrr.",
-  ".xrrrrrr.",
-  ".xrrrrrr.",
-  ".x.......",
+  ".xrrrrr..",
+  ".xrrrrr..",
+  ".xrrrrr..",
+  ".xrrrrr..",
+  ".xrrrrr..",
   ".x.......",
   ".x.......",
   ".x.......",
@@ -1023,36 +1023,36 @@
   "xxxxxxxxx"
  ],
  "turnleft": [
-  "xxx.xxx..",
-  "xx.x...x.",
-  "x..x....x",
-  "........x",
-  "........x",
-  "x.......x",
-  ".x.....x.",
+  "....x....",
+  "...xx....",
   "..xxxxx..",
-  "........."
+  "...xx..x.",
+  "....x...x",
+  ".x......x",
+  ".x......x",
+  "..x....x.",
+  "...xxxx.."
  ],
  "turnright": [
-  "..xxx.xxx",
-  ".x...x.xx",
-  "x....x..x",
-  "x........",
-  "x........",
-  "x.......x",
-  ".x.....x.",
+  "....x....",
+  "....xx...",
   "..xxxxx..",
-  "........."
+  ".x..xx...",
+  "x...x....",
+  "x......x.",
+  "x......x.",
+  ".x....x..",
+  "..xxxx..."
  ],
  "gauge": [
+  ".........",
+  ".........",
   "..xxxxx..",
-  ".x.....x.",
-  "x.....x.x",
-  "x....x..x",
-  "x...x...x",
-  "x.......x",
-  ".x.....x.",
-  "..xxxxx..",
+  ".xttdttx.",
+  "xtdtttdtx",
+  "xtttrtttx",
+  "xdttrttdx",
+  "xtttrtttx",
   "........."
  ],
  "hand": [
@@ -1067,15 +1067,15 @@
   "........."
  ],
  "hammer": [
-  ".xxxxxx..",
-  ".xxxxxxx.",
-  ".xxxxxx..",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h....",
-  "....h...."
+  "...dd....",
+  "..ddldh..",
+  "..dddldh.",
+  "...dddld.",
+  "...hdddld",
+  "..hohdddd",
+  ".hoh..dd.",
+  "hoh......",
+  "oh......."
  ],
  "collider": [
   ".........",

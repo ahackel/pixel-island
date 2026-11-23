@@ -11,5 +11,6 @@ export const C = {
 
 /** What each character of an icon's rows paints; '.' is nothing. */
 export const PAINT: Record<string, string> = {
-  x: C.ink, k: '#1f1f1f', r: '#d9412b', b: '#2f3b6e', g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
+  x: C.ink, r: '#d9412b', b: '#2f3b6e', g: '#cfe6f2', h: '#8a5a2b', y: '#f6c94a', o: '#e8862a', w: '#4f9ad6', m: '#f6e6a6', s: '#d8c27a', t: '#ffffff',
+  l: '#c9c9c9', d: '#6b6b6b', e: '#a9d98a', f: '#3f7a3a', n: '#8a2a1e',
 };
