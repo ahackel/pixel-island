@@ -249,6 +249,8 @@ export interface Thing {
   shadow?: ArrayLike<number>;
   bases?: Float32Array;
   flat?: boolean;
+  /** Where its light sits in its picture (a flame's heart, a lantern's globe), for lamps and sparks. */
+  glow?: { x: number; y: number };
 }
 
 /** Paints the island with everything on it: ground, all shadows at once, then things back to front. */

@@ -174,6 +174,14 @@ export function compileSprite(input: any): Compiled {
     item.tool = cut(TOOL_FRAME, (l) => l.handR, () => true);
     item.hold = holdFor(input.hold, item.tool);
     item.gripDx = gripOf(item.tool);
+    // Where its light sits, given in the front and back grids: moved into the tool frame the way its paint is.
+    const glow = input.glow;
+    const at = (side: 'front' | 'back') => {
+      const p = glow?.[side], hand = REFERENCE[side].handR;
+      return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x - hand.x + TOOL_FRAME.ax, y: p.y - hand.y + TOOL_FRAME.ay } : null;
+    };
+    const front = at('front'), back = at('back');
+    if (front) item.glow = { front, back: back ?? front };
   } else if (slot === 'top') {
     item.torso = cut(TORSO_FRAME, (l) => ({ x: l.torso.x, y: l.torso.top }), (x, y, l) => !onLimb(x, y, l.arms, 1) || Math.abs(x - l.torso.x) <= 3);
     extendUnderArms(item.torso);

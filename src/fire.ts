@@ -6,8 +6,8 @@ import { rgb } from '@pixel/engine/world/ocean.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 import { compileSprite } from '@pixel/engine/character/items.ts';
-import { FLAME_COLORS, FLAMES, flameFrame, shaft, torchRows } from '@pixel/engine/world/flame.ts';
-import { picture } from './rows.ts';
+import { FLAME_COLORS, FLAME_GLOW, FLAMES, flameFrame, shaft, torchRows } from '@pixel/engine/world/flame.ts';
+import { picture, type Point } from './rows.ts';
 
 const FLAME_PICTURES = FLAMES.map((rows) => picture(rows, FLAME_COLORS));
 
@@ -21,22 +21,25 @@ export const woodThing = (spot: Thing['spot']): Thing => ({ spot, picture: WOOD,
 /**
  * The stick and the torch held upright in one hand, like the spear: tool items in the wardrobe's
  * sprite format, the shaft in the spear's column, gripped near its foot (the hand is at row 35).
- * Short, so they are told to be held as a pole, not carried in both arms.
+ * Short, so they are told to be held as a pole, not carried in both arms. `glow`: where its light
+ * sits in `rows`, if it gives light.
  */
-export function tool(name: string, rows: string[], more: Record<string, string> = {}, o: { bottom?: number; hold?: 'pole' | 'carry' } = {}): ReturnType<typeof compileSprite>['item'] {
+export function tool(name: string, rows: readonly string[], more: Record<string, string> = {}, o: { bottom?: number; hold?: 'pole' | 'carry'; glow?: Point } = {}): ReturnType<typeof compileSprite>['item'] {
   const top = (o.bottom ?? 40) - rows.length;
   // Centred on the spear's column, however wide.
   const w = Math.max(...rows.map((r) => r.length));
+  const left = (x: number) => x - Math.floor(w / 2);
   const grid = (x: number) => Array.from({ length: 48 }, (_, y) => {
     const r = (rows[y - top] ?? '').padEnd(w, '.');
-    return ('.'.repeat(x - Math.floor(w / 2)) + r).padEnd(32, '.').slice(0, 32);
+    return ('.'.repeat(left(x)) + r).padEnd(32, '.').slice(0, 32);
   });
   const legend = { W: 'wood', F: 'flame', Y: 'flare', B: 'blaze', ...more };
-  return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: o.hold ?? 'pole' }).item;
+  const at = (x: number) => o.glow && { x: left(x) + o.glow.x, y: top + o.glow.y };
+  return compileSprite({ name, slot: 'tool', legend, front: grid(9), back: grid(23), hold: o.hold ?? 'pole', glow: o.glow && { front: at(9), back: at(23) } }).item;
 }
 export const STICK = tool('Stick', shaft(14));
 /** The torch, one item per frame of the flame on the stump: in the palette's letters (B blaze, Y flare, F flame, f its shade). */
-const TORCHES = FLAMES.map((rows) => tool('Torch', torchRows(rows, 10)));
+const TORCHES = FLAMES.map((rows) => tool('Torch', torchRows(rows, 10), {}, { glow: FLAME_GLOW }));
 export const torchAt = (ms: number) => flameFrame(TORCHES, ms);
 // Fire carried in the bag: the same burning stick.
 export const TORCH_ROWS = [...FLAMES[0], ...shaft(4)];
@@ -45,10 +48,11 @@ export const TORCH_COLORS: Record<string, string> = { ...FLAME_COLORS, ...WOOD_C
 // A campfire: crossed logs with a flame on them.
 const LOGS = ['.a.....a.', 'aba...aba', '.abaaaba.', '..ab.ba..'];
 const LOG_COLORS: Record<string, string> = { a: PALETTE.bark.shade, b: PALETTE.bark.base, ...FLAME_COLORS };
-// The flame's last row sits in the logs' first.
+// The flame's last row sits in the logs' first, a column in.
 const CAMPFIRES = FLAMES.map((rows) => picture([...rows.slice(0, -1).map((r) => `.${r}.`), ...LOGS], LOG_COLORS));
+const CAMPFIRE_GLOW = { x: FLAME_GLOW.x + 1, y: FLAME_GLOW.y };
 export function campfireThing(spot: Thing['spot'], ms: number): Thing {
-  return { spot, picture: flameFrame(CAMPFIRES, ms, spot.i * 7), w: 9, h: 11, foot: { x: 4, y: 9 } };
+  return { spot, picture: flameFrame(CAMPFIRES, ms, spot.i * 7), w: 9, h: 11, foot: { x: 4, y: 9 }, glow: CAMPFIRE_GLOW };
 }
 
 /** Charcoal by how bright the burnt pixel was. */
@@ -101,6 +105,7 @@ export function stumpThings(palm: Thing, ms: number): Thing[] {
     w: 7,
     h: 8,
     foot: { x: 3 - (s.top.x - palm.foot.x), y: 7 + (palm.foot.y - s.top.y) - 1 },
+    glow: FLAME_GLOW,
   };
   return [{ ...palm, picture: s.stump }, flame];
 }
@@ -223,33 +228,43 @@ const SPARK_COLORS = [PALETTE.blaze.base, PALETTE.flare.base, PALETTE.flame.base
 interface Spark { x: number; y: number; vx: number; vy: number; born: number; life: number; c: number[] }
 
 /**
- * Sparks rising from any fire: a pixel now and then from the top edge of what glows (the stump's
+ * Sparks rising from fires: a pixel now and then from the top edge of what glows in the boxes given (the stump's
  * flame, a campfire, the torch in hand), drifting up and fading. Kept in ground pixels.
  */
 export class Sparks {
   private sparks: Spark[] = [];
 
-  /** Lets the flames in a composed picture throw sparks, `dt` seconds after the last call. */
-  spawn(image: Image, view: Rect, ms: number, dt: number): void {
-    if (this.sparks.length) this.sparks = this.sparks.filter((s) => ms - s.born < s.life);
+  /**
+   * Lets the flames in a composed picture throw sparks, `dt` seconds after the last call. Only the boxes of things
+   * that burn are looked at (in the picture's pixels), not the whole picture.
+   */
+  spawn(image: Image, view: Rect, boxes: readonly { x: number; y: number; w: number; h: number }[], ms: number, dt: number): void {
     const { width: w, height: h, data: d } = image;
     const chance = SPARK_RATE * dt;
     if (chance <= 0) return;
-    for (let y = 1; y < h; y++) for (let x = 0; x < w; x++) {
-      const o = (y * w + x) * 4;
-      if (d[o + 3] !== GLOW_ALPHA || d[o - w * 4 + 3] === GLOW_ALPHA || Math.random() >= chance) continue;
-      this.sparks.push({
-        x: x + view.x, y: y + view.y - 1, vx: (Math.random() - 0.5) * 10, vy: -(12 + Math.random() * 14),
-        born: ms, life: 500 + Math.random() * 500, c: SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
-      });
+    for (const box of boxes) {
+      const x0 = Math.max(0, Math.round(box.x)), x1 = Math.min(w, Math.round(box.x + box.w));
+      const y0 = Math.max(1, Math.round(box.y)), y1 = Math.min(h, Math.round(box.y + box.h));
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const o = (y * w + x) * 4;
+        if (d[o + 3] !== GLOW_ALPHA || d[o - w * 4 + 3] === GLOW_ALPHA || Math.random() >= chance) continue;
+        this.sparks.push({
+          x: x + view.x, y: y + view.y - 1, vx: (Math.random() - 0.5) * 10, vy: -(12 + Math.random() * 14),
+          born: ms, life: 500 + Math.random() * 500, c: SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
+        });
+      }
     }
   }
 
-  /** Draws the sparks over the finished, lit picture. */
+  /** Draws the sparks over the finished, lit picture, and lets go of those burnt out. */
   draw(image: Image, view: Rect, ms: number): void {
+    let n = 0;
     for (const s of this.sparks) {
+      if (ms - s.born >= s.life) continue;
+      this.sparks[n++] = s;
       const t = (ms - s.born) / 1000;
       dot(image, view, s.x + s.vx * t + Math.sin(t * 9 + s.vx) * 1.2, s.y + s.vy * t, s.c, 1 - (ms - s.born) / s.life);
     }
+    this.sparks.length = n;
   }
 }

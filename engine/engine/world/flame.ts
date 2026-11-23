@@ -10,6 +10,8 @@ export const FLAMES = [
   ['....y..', '...oy..', '..oyo..', '..oyyo.', '.oyWyo.', '.oyWWyo', 'oyWWyyo', '.ryyyr.'],
   ['.......', '..y....', '..oy...', '.oyyo..', '.oyWyo.', 'oyWWyo.', 'oyyWWyo', '.ryyyr.'],
 ];
+/** The heart of the flame in every frame of FLAMES: where its light sits. */
+export const FLAME_GLOW = { x: 3, y: 5 };
 /** One of a flame's frames at a time: every fire flickers at the same pace, `salt` putting one out of step. */
 export const flameFrame = <T>(frames: readonly T[], ms: number, salt = 0) => frames[Math.floor(ms / 140 + salt) % frames.length];
 /** A stick `n` rows long, not quite straight: its top bends aside, a stub of a twig halfway down. W wood, w its shade. */

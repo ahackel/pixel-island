@@ -388,14 +388,16 @@ export class Actor {
       sprite = both;
     }
     const depth = this.depth(world);
-    if (depth <= 0) return { spot: { i: this.i, j: this.j, level: standingHeight(world.map, this.i, this.j) }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie };
+    // A carried thing puts the tool away, so only the body's own tool gives light.
+    const glow = this.carrying ? undefined : body.glow ?? undefined;
+    if (depth <= 0) return { spot: { i: this.i, j: this.j, level: standingHeight(world.map, this.i, this.j) }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, glow };
     // In the shallows the feet stand on the sea floor, under the surface.
     const rows = Math.round(depth * LEVEL_PX);
     let wet = this.wet.get(sprite);
     if (!wet) this.wet.set(sprite, (wet = new Map()));
     let picture = wet.get(rows);
     if (!picture) wet.set(rows, (picture = drew('wading', () => wading(sprite, rows), () => slots(SPRITE_W, SPRITE_H))));
-    return { spot: { i: this.i, j: this.j, level: SEA_LEVEL - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie };
+    return { spot: { i: this.i, j: this.j, level: SEA_LEVEL - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, glow };
   }
 }
 

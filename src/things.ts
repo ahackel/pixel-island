@@ -88,7 +88,7 @@ export function heldOf(name: string, r: Rows): ReturnType<typeof tool> {
   });
   const rows = r.rows.map((row) => [...row].map((ch) => map[ch] ?? '.').join(''));
   // The fist is round row 35: the thing hangs just below it, so it is seen.
-  return tool(name, rows, legend, { bottom: 37 + rows.length, hold: 'carry' });
+  return tool(name, rows, legend, { bottom: 37 + rows.length, hold: 'carry', glow: r.glow });
 }
 
 /** The hammer held upright in one hand, like the axe: its iron head on top of the handle. */
@@ -232,6 +232,8 @@ export const LANTERN: Rows = {
     'kkkkkkkkk',
   ],
   colors: { h: '#c8c8c8', k: '#3b3a1e', m: '#6e6c48', y: PALETTE.flare.base, W: PALETTE.blaze.base },
+  // The middle of the globe.
+  glow: { x: 4, y: 6 },
 };
 
 /** The arch of a cave mouth, upright, before it is laid on the cliff face. */
