@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { bar, box, choice, confirmDialog, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { bar, box, choice, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -13,12 +13,15 @@ const div = (css: string) => Object.assign(document.createElement('div'), { styl
 
 // Demo state.
 let value = 0.4;
-const picked: Record<string, string> = { arrows: 'a', icons: 'sun', buttons: 'moon', colors: 'o', list: 'b' };
+const picked: Record<string, string> = { arrows: 'a', icons: 'sun', buttons: 'moon', colors: 'o', list: 'b', many: 'c5', shelf: 'sun' };
+let anyColor = '#3a2f5c';
 const pickOf = (look: string) => [() => picked[look], (id: string) => { picked[look] = id; }] as const;
 
 const words: Option[] = ['a', 'b', 'c'].map((id) => ({ id, words: `No ${id}` }));
 const icons: Option[] = ['sun', 'moon', 'storm'].map((id) => ({ id, icon: id }));
 const colors: Option[] = ['o', 'r', 'y', 'g', 'b', 'm'].map((id) => ({ id, color: PAINT[id] }));
+/** More colours than a bar holds: a colour field. */
+const many: Option[] = Array.from({ length: 30 }, (_, n) => ({ id: `c${n}`, color: `hsl(${n * 12} 60% ${n % 2 ? 45 : 65}%)` }));
 const status = hud({ hunger: 'Food', energy: 'Rest' });
 status.draw('Day 1', 'sun', 0.7, 0.15, 0.25);
 const portrait = (ctx: CanvasRenderingContext2D, x: number, y: number) => drawRows(ctx, iconRows('face'), x + 6, y + 6, PAINT);
@@ -51,6 +54,9 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ['form', [() => pixelButton('Form', { icon: 'pencil' }, () => formDialog('New', [textField('Name', 'Mara', noop), numberField({ words: 'W' }, 24, noop, { min: 0, max: 99, width: 50 })], noop))]],
   ['toast', [() => pixelButton('Say', { icon: 'info' }, () => toast('Saved to the project.'))]],
   ['swatch', [() => swatch('Swatch', PAINT.o, true, noop), () => swatch('Empty', null, false, noop)]],
+  ['colour field', [() => colorField('Many colours', many, ...pickOf('many')), () => choice('Past 16 a colours choice is a field', [...many, { id: '', icon: 'reset' }], ...pickOf('many'), 'colors')]],
+  ['swatch grid', [() => swatchGrid('Swatches', many, ...pickOf('many'), 10)]],
+  ['colour picker', [() => colorPicker('Any colour', () => anyColor, (hex) => { anyColor = hex; }, { presets: ['#3a2f5c', '#1d2a3a', '#2f1d1d'] })]],
   ['slider', [() => slider('Slider', value, (v) => { value = v; }, 60, (v) => `${Math.round(v * 100)}`)]],
   ['number field', [() => numberField({ words: 'W' }, 24, noop, { min: 0, max: 99, width: 50 }), () => numberField({ icon: 'sun' }, 7, noop, { width: 40 })]],
   ['bar', [() => bar(0.6, C.hunger), () => bar(0.15, C.hunger, 32, true)]],
@@ -62,6 +68,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ['section', [() => section({ icon: 'clothes' }, [pixelButton('One', { icon: 'sun' }, noop)])]],
   ['text field', [() => textField('Name', 'Mara', noop, { dice: () => 'Kai' })]],
   ['search field', [() => Object.assign(searchField('Search', noop), { style: 'width: 200px; display: block' })]],
+  ['library', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-library', 220); panel.style.height = '240px'; const shelf = library({ key: 'pixel-ui-library', items: () => icons.map((o) => ({ id: o.id, icon: o.icon, words: o.id })), selected: () => picked.shelf, pick: (id) => { picked.shelf = id; shelf.redraw(); } }); body.append(shelf); return panel; }]],
   ['side panel', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-demo', 150); panel.style.height = '120px'; body.append(searchField('Search', noop)); return panel; }]],
   ['workspace', [() => Object.assign(workspace({ key: 'pixel-ui-workspace', left: [searchField('Search', noop)], centre: [panelPicture(30, 20)], right: [pixelButton('Button', { icon: 'sun' }, noop)], leftWidth: 120, rightWidth: 90 }), { style: 'height: 140px; width: 420px' })]],
   ['menu', [() => menu('Menu', [{ icon: 'download', label: 'Save', on: noop }, { icon: 'upload', label: 'Open', on: noop }, { icon: 'trash', label: 'Delete', on: noop }])]],

@@ -20,7 +20,7 @@ import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
 import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
-import { choice, numberField, pixelButton, tileGrid, toggle, viewTools, type Option, confirmDialog, workspace } from '../../ui/components.ts';
+import { choice, library, numberField, pixelButton, toggle, viewTools, type Library, type Option, confirmDialog, workspace } from '../../ui/components.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
@@ -199,7 +199,7 @@ function duplicate(): void {
 const root = document.getElementById('walls')!;
 const stage = h('div', { class: 'stage props__stage walls__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
-const list = h('div', { class: 'props__grid' });
+let shelf: Library;
 const tabSlot = h('div');
 const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
@@ -258,7 +258,7 @@ function render(): void {
   renderBar();
   name.set(w.name, L('Wall', 'Wand'));
   stageTag.textContent = `${w.art ? (w.locked ? L('frozen', 'eingefroren') : L('painted', 'gemalt')) : L('rule', 'Regel')} · ${w.builtin ? prefs.height : w.height} ${L('levels', 'Stufen')}`;
-  list.replaceChildren(tileGrid(wallKinds().map((k) => ({ id: k.id, icon: k.art ? 'pencil' : 'wall', words: k.name, mark: k.locked ? 'lock' : undefined })), prefs.id, pick));
+  shelf.redraw();
   const zoom = (by: number) => { prefs.zoom = Math.max(2, Math.min(4, prefs.zoom + by)); savePrefs(); benchDirty = true; };
   views.replaceChildren(snapButton(() => savePicture(bench, wall().name, 2)),
     pixelButton(L('Zoom in', 'Vergrößern'), { icon: 'zoomin' }, () => zoom(1)),
@@ -277,8 +277,12 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Walls', 'Wände');
   stage.replaceChildren(h('div', { class: 'walls__scroll' }, bench), stageTag, views);
+  shelf = library({
+    key: 'pixel-walls', label: word('search'), empty: word('nothing'), selected: () => prefs.id, pick,
+    items: () => wallKinds().map((k) => ({ id: k.id, icon: k.art ? 'pencil' : 'wall', words: k.name, mark: k.locked ? 'lock' : undefined, find: `${k.art ? 'painted' : 'rule'} ${k.locked ? 'locked frozen' : ''}` })),
+  });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-walls', left: [h('div', { class: 'uside__list' }, list)], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+    key: 'pixel-walls', left: [shelf], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
   })));
 }
 

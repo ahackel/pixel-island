@@ -7,7 +7,7 @@ import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { readStore, writeStore } from '../../shared/files.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { h, history, nameTag, savePicture, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
-import { choice, confirmDialog, field, fields, numberField, pixelButton, section, swatch, tileGrid, toggle, viewTools, workspace, type Option } from '../../ui/components.ts';
+import { choice, colorField, confirmDialog, field, fields, library, numberField, pixelButton, section, toggle, viewTools, workspace, type Library, type Option } from '../../ui/components.ts';
 import { FIRE_KEYS, PALETTE, PALETTE_KEYS, type PaletteKey, type Tone } from '../../engine/core/palette.ts';
 import {
   BUILT_IN, cleanSystem, deleteSystem, isBuiltIn, ParticlePreview, particleSystem, particleSystems, PARTICLE_STORE, reloadSystems, saveSystem,
@@ -80,22 +80,30 @@ const xy = (tip: string, v: { x: number; y: number }, min: number, max: number, 
   h('span', { class: 'urow' }, num('X', `${tip} X`, v.x, min, max, (s, n) => set(s, 'x', n)), num('Y', `${tip} Y`, v.y, min, max, (s, n) => set(s, 'y', n)));
 
 const hexOfPaint = (p: Paint) => PALETTE[p.key][p.tone];
-const samePaint = (a: Paint, b: Paint) => a.key === b.key && a.tone === b.tone;
 const TONES: Tone[] = ['light', 'base', 'shade'];
-/** Every colour of the palette, the fire tones first. */
-const PAINTS: Paint[] = [...FIRE_KEYS, ...PALETTE_KEYS.filter((k) => !FIRE_KEYS.includes(k))]
-  .flatMap((key: PaletteKey) => TONES.map((tone) => ({ key, tone })))
-  // A key whose tones are the same colour shows it once.
-  .filter((p, n, all) => all.findIndex((q) => hexOfPaint(q) === hexOfPaint(p)) === n);
+const toned = (key: PaletteKey) => new Set(TONES.map((tone) => PALETTE[key][tone])).size > 1;
+/**
+ * Every colour of the palette as swatches, a colour's three tones side by side (four colours a row), the fire first; the
+ * colours with one tone only come last, once each.
+ */
+const PAINTS: Paint[] = [...FIRE_KEYS, ...PALETTE_KEYS.filter((k) => !FIRE_KEYS.includes(k) && toned(k)), ...PALETTE_KEYS.filter((k) => !toned(k))]
+  .flatMap((key: PaletteKey) => (toned(key) ? TONES : (['base'] as Tone[])).map((tone) => ({ key, tone })));
+const paintId = (p: Paint) => `${p.key}.${p.tone}`;
+const paintOf = (id: string): Paint => { const [key, tone] = id.split('.'); return { key: key as PaletteKey, tone: tone as Tone }; };
+const PAINT_OPTIONS: Option[] = PAINTS.map((p) => ({ id: paintId(p), color: hexOfPaint(p), words: `${p.key} ${p.tone}` }));
+const PAINT_COLUMNS = 3 * 4;
+/** A field per colour the particles take at random; its popup changes it or (the eraser) takes it out. */
+function colourFields(s: ParticleSystem): Node[] {
+  const rub: Option = { id: '', icon: 'eraser', words: L('Take this colour out', 'Diese Farbe herausnehmen') };
+  return [
+    ...s.colors.map((c, i) => colorField(L(`Colour ${i + 1}`, `Farbe ${i + 1}`), [...PAINT_OPTIONS, rub], () => paintId(c),
+      (id) => change((n) => { if (id) n.colors[i] = paintOf(id); else n.colors.splice(i, 1); }), PAINT_COLUMNS)),
+    ...(s.colors.length < 16 ? [pixelButton(L('Add a colour', 'Farbe hinzufügen'), { icon: 'plus' }, () => change((n) => n.colors.push(n.colors[n.colors.length - 1] ?? PAINTS[1])))] : []),
+  ];
+}
 
 function panel(): Node[] {
   const s = current();
-  const colours = h('div', { class: 'particles__swatches' }, ...PAINTS.map((p) => {
-    const on = s.colors.some((c) => samePaint(c, p));
-    return swatch(`${p.key} ${p.tone}`, hexOfPaint(p), on, () => change((n) => {
-      n.colors = on ? n.colors.filter((c) => !samePaint(c, p)) : [...n.colors, p];
-    }));
-  }));
   const halo = s.halo;
   return [
     section({ words: L('Throw', 'Werfen') }, [fields(
@@ -116,7 +124,7 @@ function panel(): Node[] {
         num('PX', L('How far it sways', 'Wie weit es schwankt'), s.sway.amount, 0, 16, (n, v) => (n.sway.amount = v), 0.25),
         num(L('FAST', 'TEMPO'), L('How fast it sways', 'Wie schnell es schwankt'), s.sway.speed, 0, 40, (n, v) => (n.sway.speed = v)))),
     )]),
-    section({ words: L('Colours', 'Farben') }, [colours]),
+    section({ words: L('Colours', 'Farben') }, [h('div', { class: 'urow' }, ...colourFields(s))]),
     section({ words: L('Halo', 'Schein') }, [
       h('div', { class: 'urow' },
         toggle(L('Casts a halo of light', 'Wirft einen Lichtschein'), { icon: 'sun', words: L('Halo', 'Schein') }, !!halo, (on) => change((n) => (n.halo = on ? { r: 40, tiles: 3, amount: 1, flicker: true } : null))),
@@ -127,10 +135,10 @@ function panel(): Node[] {
           field({ words: L('In caves (tiles)', 'In Höhlen (Felder)') }, h('span', { class: 'urow' },
             num('T', L('How far it lights in a cave, in tiles', 'Wie weit es in einer Höhle leuchtet, in Feldern'), halo.tiles, 0, 12, (n, v) => (n.halo!.tiles = v), 0.5),
             num('%', L('How strong its light is in a cave', 'Wie stark sein Licht in einer Höhle ist'), Math.round(halo.amount * 100), 0, 100, (n, v) => (n.halo!.amount = v / 100), 5))),
+          field({ words: L('Colour', 'Farbe') }, colorField(L('The colour of its light', 'Die Farbe seines Lichts'),
+            [...PAINT_OPTIONS, { id: '', icon: 'reset', words: L('A fire\'s orange', 'Feuerorange') }], () => (halo.color ? paintId(halo.color) : ''),
+            (id) => change((n) => { if (id) n.halo!.color = paintOf(id); else delete n.halo!.color; }), PAINT_COLUMNS)),
         ),
-        h('div', { class: 'particles__swatches' },
-          swatch(L('A fire\'s orange', 'Feuerorange'), null, !halo.color, () => change((n) => delete n.halo!.color)),
-          ...PAINTS.slice(0, FIRE_KEYS.length * TONES.length).map((p) => swatch(`${p.key} ${p.tone}`, hexOfPaint(p), !!halo.color && samePaint(halo.color, p), () => change((n) => (n.halo!.color = p))))),
       ] : []),
     ]),
   ];
@@ -141,7 +149,7 @@ function panel(): Node[] {
 const root = document.getElementById('particles')!;
 const stage = h('div', { class: 'stage props__stage particles__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
-const list = h('div', { class: 'props__grid' });
+let shelf: Library;
 const side = h('div', { class: 'uside__list' });
 const barSlot = h('div', { style: 'display: contents' });
 const views = viewTools();
@@ -200,7 +208,7 @@ function render(): void {
   const s = current();
   renderBar();
   name.set(s.name, L('Particles', 'Partikel'));
-  list.replaceChildren(tileGrid(particleSystems().map((p) => ({ id: p.id, icon: p.halo && !p.rate ? 'sun' : 'sparks', words: p.name })), prefs.id, pick));
+  shelf.redraw();
   const zoom = (by: number) => { prefs.zoom = Math.max(2, Math.min(8, prefs.zoom + by)); savePrefs(); };
   views.replaceChildren(
     snapButton(() => savePicture(canvas, current().name, 4)),
@@ -218,8 +226,13 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Particles', 'Partikel');
   stage.replaceChildren(canvas, stageTag, views);
+  shelf = library({
+    key: 'pixel-particles', label: word('search'), empty: word('nothing'),
+    items: () => particleSystems().map((p) => ({ id: p.id, icon: p.halo && !p.rate ? 'sun' : 'sparks', words: p.name, find: isBuiltIn(p.id) ? 'engine' : '' })),
+    selected: () => prefs.id, pick,
+  });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-particles', left: [h('div', { class: 'uside__list' }, list)], centre: [stage], right: [side], leftWidth: 240, rightWidth: 460,
+    key: 'pixel-particles', left: [shelf], centre: [stage], right: [side], leftWidth: 240, rightWidth: 460,
   })));
 }
 

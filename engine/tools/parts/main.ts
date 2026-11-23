@@ -13,12 +13,12 @@ import { WEAR_MAX, weathered } from '../../engine/character/wear.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN, drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, SLOTS, type Facing, type Item, type Slot } from '../../engine/core/puppet.ts';
 import { withSunShadow } from '../../engine/world/island.ts';
-import { SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
+import { PALETTE, SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { box, choice, confirmDialog, pixelButton, searchField, tileGrid, turnView, viewTools, workspace } from '../../ui/components.ts';
-import { h, history, row, savePicture, section, segmented, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
+import { box, choice, confirmDialog, library, pixelButton, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { h, history, row, savePicture, section, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
 
@@ -30,9 +30,9 @@ const SLOT_WORDS: Record<Slot, [string, string]> = {
 
 // ------------------------------------------------------------------ state
 
-interface Prefs { id: string; slot: Slot | 'all'; query: string; layer: string; facing: Facing; wear: number; skin: PaletteKey; hair: PaletteKey }
+interface Prefs { id: string; slot: Slot | 'all'; layer: string; facing: Facing; wear: number; skin: PaletteKey; hair: PaletteKey }
 const PREFS_KEY = 'pixel-parts-tool';
-const prefs: Prefs = { id: CATALOG[0].id, slot: 'all', query: '', layer: '', facing: 4, wear: 0, skin: 'skinC', hair: 'hairBrown', ...readStore<Partial<Prefs>>(PREFS_KEY, {}) };
+const prefs: Prefs = { id: CATALOG[0].id, slot: 'all', layer: '', facing: 4, wear: 0, skin: 'skinC', hair: 'hairBrown', ...readStore<Partial<Prefs>>(PREFS_KEY, {}) };
 if (!CATALOG.some((e) => e.id === prefs.id)) prefs.id = CATALOG[0].id;
 const savePrefs = () => writeStore(PREFS_KEY, prefs);
 const entry = (): Entry => CATALOG.find((e) => e.id === prefs.id)!;
@@ -113,13 +113,12 @@ function thumb(e: Entry): HTMLCanvasElement {
     return trimmed(s, SPRITE_W, SPRITE_H, 52);
   });
 }
-const grid = h('div', { class: 'props__grid' });
-const search = searchField('Search', (v) => { prefs.query = v; savePrefs(); renderLibrary(); }, prefs.query);
-function renderLibrary(): void {
-  const q = prefs.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const list = CATALOG.filter((e) => (prefs.slot === 'all' || e.slot === prefs.slot) && q.every((w) => `${e.label} ${e.id} ${e.slot} ${isEdited(e.id) ? 'edited' : ''}`.toLowerCase().includes(w)));
-  grid.replaceChildren(tileGrid(list.map((e) => ({ id: e.id, picture: thumb(e), words: `${e.label} · ${L(...SLOT_WORDS[e.slot])}`, mark: isEdited(e.id) ? 'pencil' : undefined })), prefs.id, pick));
-}
+/** The library's tiles: the items of the kind chosen; the search finds them by slot and "edited" too. */
+const libraryItems = () => CATALOG.filter((e) => prefs.slot === 'all' || e.slot === prefs.slot).map((e) => ({
+  id: e.id, picture: thumb(e), words: `${e.label} · ${L(...SLOT_WORDS[e.slot])}`, mark: isEdited(e.id) ? 'pencil' : undefined, find: `${e.slot} ${isEdited(e.id) ? 'edited' : ''}`,
+}));
+let shelf: Library | undefined;
+const renderLibrary = () => shelf?.redraw();
 
 // ------------------------------------------------------------------ panel
 
@@ -167,7 +166,6 @@ const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
 const arrows = turnView(stage, turnFigure);
 const under = h('div', { class: 'props__under' });
-const head = h('div', { class: 'props__libhead' });
 const panel = h('div', { class: 'uside__list' });
 const barSlot = h('div', { style: 'display: contents' });
 let dirty = true;
@@ -211,15 +209,13 @@ function render(): void {
   renderBar();
   const e = entry();
   stageTag.textContent = `${e.label} · ${L(...SLOT_WORDS[e.slot])}`;
-  const slots = [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SLOTS.map((id) => ({ id, icon: SLOT_ICON[id], words: L(...SLOT_WORDS[id]) }))];
-  head.replaceChildren(search, choice(L('Kind', 'Art'), slots, () => prefs.slot, (id) => { prefs.slot = id as typeof prefs.slot; savePrefs(); render(); }, 'list'));
   renderLibrary();
   const wearInput = rangeInput({ min: '0', max: String(WEAR_MAX), step: '1', 'aria-label': L('Wear', 'Abnutzung') });
   wearInput.value = String(prefs.wear);
   wearInput.addEventListener('input', () => { prefs.wear = Number(wearInput.value); savePrefs(); dirty = true; });
   under.replaceChildren(
     row(L('Wear', 'Abnutzung'), wearInput),
-    row(L('Skin', 'Haut'), segmented(L('Skin', 'Haut'), SKIN_KEYS.map((k, n) => ({ id: k, label: String(n + 1) })), prefs.skin, (k) => { prefs.skin = k; savePrefs(); thumbs.of('', () => h('canvas')); render(); })));
+    row(L('Skin', 'Haut'), choice(L('Skin', 'Haut'), SKIN_KEYS.map((k) => ({ id: k, color: PALETTE[k].base })), () => prefs.skin, (k) => { prefs.skin = k as PaletteKey; savePrefs(); thumbs.of('', () => h('canvas')); render(); }, 'colors', 44)));
   const scroll = panel.scrollTop;
   panel.replaceChildren(...layerPanel());
   panel.scrollTop = scroll;
@@ -230,8 +226,13 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Parts', 'Teile');
   stage.replaceChildren(big, stageTag, ...arrows, viewTools(snapButton(() => savePicture(big, entry().label))));
+  const slots = () => [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SLOTS.map((id) => ({ id, icon: SLOT_ICON[id], words: L(...SLOT_WORDS[id]) }))];
+  shelf = library({
+    key: 'pixel-parts', label: word('search'), empty: word('nothing'), items: libraryItems, selected: () => prefs.id, pick,
+    filters: () => [choice(L('Kind', 'Art'), slots(), () => prefs.slot, (id) => { prefs.slot = id as typeof prefs.slot; savePrefs(); render(); }, 'list')],
+  });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-parts', left: [head, h('div', { class: 'uside__list' }, grid)], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,
+    key: 'pixel-parts', left: [shelf], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,
   })));
 }
 

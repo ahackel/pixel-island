@@ -1,7 +1,7 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { box, tileGrid, confirmDialog, section as pixelSection, choice, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
+import { box, tileGrid, confirmDialog, library, section as pixelSection, choice, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   ANCHORS, ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
@@ -391,17 +391,27 @@ function setFacing(next: Facing): void {
   stageTag.textContent = `${facingName(facing)} · ${sizeText}`;
 }
 
+
+// ------------------------------------------------------------------ the library: My things
+
+let shelf: Library | undefined;
+/** My things as tiles; while the one shown is not kept yet, it leads as a tile of its own. */
+const shelfItems = () => [
+  ...(current() ? [] : [{ id: '', picture: thumbnail(animal), words: L('Not saved yet', 'Noch nicht gespeichert'), mark: 'pencil' }]),
+  ...roster.map((s) => ({ id: s.id, picture: thumbnail(s.animal), words: s.name })),
+];
+function pickThing(id: string): void {
+  const chosen = roster.find((s) => s.id === id);
+  message = '';
+  if (chosen) load(chosen.animal, chosen.id);
+  else {
+    setCurrent(null);
+    render();
+  }
+}
+
 function renderBar(): void {
   const saved = current();
-  const picker = choice(L('My things', 'Meine Sachen'), [{ id: '', words: L('Not saved yet', 'Noch nicht gespeichert') }, ...roster.map((s) => ({ id: s.id, words: s.name }))], () => currentId ?? '', (id) => {
-    const chosen = roster.find((s) => s.id === id);
-    message = '';
-    if (chosen) load(chosen.animal, chosen.id);
-    else {
-      setCurrent(null);
-      render();
-    }
-  }, 'list', 60, true);
   const fileName = saved?.name ?? L('Animal', 'Tier');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'animals',
@@ -415,7 +425,6 @@ function renderBar(): void {
       L(`Files are JSON of type "pixel-animal". The game draws them with drawAnimal() from engine/animals/animal.ts, which also gives the anchor points ${ANCHORS.join(', ')} for every frame.`,
         `Dateien sind JSON vom Typ „pixel-animal“. Das Spiel zeichnet sie mit drawAnimal() aus engine/animals/animal.ts, das für jedes Bild auch die Ankerpunkte ${ANCHORS.join(', ')} liefert.`),
     ],
-    things: picker,
     more: [
       { label: L('New animal', 'Neues Tier'), icon: 'plus', run: newThing },
       { label: saved ? L('Make a copy', 'Kopie machen') : L('Keep in My things', 'In Meine Sachen behalten'), icon: 'copy', run: () => {
@@ -473,6 +482,7 @@ function newThing(): void {
 function render(): void {
   stage.style.setProperty('--ground', ground);
   renderBar();
+  shelf?.redraw();
   setFacing(facing);
   name.set(current()?.name ?? '', L('Not saved yet', 'Noch nicht gespeichert'));
   const shownTabs = TABS.filter(([id]) => id !== 'shape' || expert);
@@ -511,7 +521,8 @@ function mount(): void {
   document.title = L('Animal Editor', 'Tier-Editor');
   stage.replaceChildren(hero, stageTag, ...arrows, views);
   const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-animals', centre: [stage, box(preview)], right: [tabSlot, panel], rightWidth: 460 })));
+  shelf = library({ key: 'pixel-animals', label: word('search'), empty: word('nothing'), items: shelfItems, selected: () => currentId ?? '', pick: pickThing });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-animals', left: [shelf], centre: [stage, box(preview)], right: [tabSlot, panel], leftWidth: 240, rightWidth: 460 })));
 }
 
 undoKeys(undo.undo, undo.redo);

@@ -5,7 +5,7 @@
 import { saveToProject, canSaveToProject } from '../../shared/project.ts';
 import { history } from '../../shared/history.ts';
 import { drawRows, pixelCanvas } from '../../shared/pixel-ui.ts';
-import { box, choice, iconPicture, pixelButton, searchField, sidePanel, textField, tileGrid, type Option } from '../../ui/components.ts';
+import { box, choice, iconPicture, library, pixelButton, sidePanel, textField, type Option } from '../../ui/components.ts';
 import { ICONS } from '../../ui/icons.ts';
 import { uiPage } from '../../ui/page.ts';
 import { C, PAINT, S } from '../../ui/theme.ts';
@@ -17,7 +17,6 @@ let name = Object.keys(lib)[0];
 let ink = 'x';
 type Tool = 'draw' | 'erase' | 'line' | 'rect';
 let tool: Tool = 'draw';
-let filter = '';
 
 const undo = history(() => ({ lib, name }), (v) => { lib = v.lib; name = v.name; render(); });
 const mark = document.createElement('span');
@@ -60,14 +59,11 @@ main.className = 'uworkspace';
 document.body.classList.add('upage--fill');
 
 // Left: the library, search on top. Middle: the paint area and its tools. Right: the inspector.
-const library = sidePanel('left', 'pixel-icons-library');
-const list = document.createElement('div');
-list.className = 'uside__list';
-library.body.append(searchField('Search', (v) => { filter = v.trim().toLowerCase(); renderList(); }), list);
+const shelf = sidePanel('left', 'pixel-icons-library');
 const area = document.createElement('div');
 area.className = 'uwork';
 const inspector = sidePanel('right', 'pixel-icons-inspector', 200);
-main.append(library.panel, area, inspector.panel);
+main.append(shelf.panel, area, inspector.panel);
 
 /** A library tile's picture: the working copy of an icon. */
 const picture = (rows: readonly string[]) => {
@@ -129,12 +125,11 @@ function editor(): HTMLElement {
   return canvas;
 }
 
-function renderList(): void {
-  list.replaceChildren(tileGrid(Object.keys(lib).filter((k) => k.includes(filter)).map((k) => ({ id: k, picture: picture(lib[k]), words: k })), name, (k) => { name = k; undo.reset(); render(); }));
-}
+const list = library({ key: 'pixel-icons', items: () => Object.keys(lib).map((k) => ({ id: k, picture: picture(lib[k]), words: k })), selected: () => name, pick: (k) => { name = k; undo.reset(); render(); } });
+shelf.body.append(list);
 
 function render(): void {
-  renderList();
+  list.redraw();
 
   const rename = (to: string) => {
     to = to.trim();

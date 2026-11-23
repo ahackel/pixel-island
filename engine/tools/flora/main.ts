@@ -1,5 +1,5 @@
 import './style.css';
-import { box, tileGrid, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
+import { box, tileGrid, library, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
@@ -228,8 +228,9 @@ try {
 } catch {
   // Without storage expert tools start off.
 }
-type Panel = Tab | 'island';
-let panelTab: Panel = state.tab;
+/** The right panel: the plant shown (its colours, its recipe) or the island scene. */
+type Panel = 'plant' | 'island';
+let panelTab: Panel = 'plant';
 
 const undo = history(() => state, (value) => {
   state = value;
@@ -268,21 +269,31 @@ const sceneCanvas = h('canvas', { class: 'scene__canvas', width: String(SCENE_W)
 const cardPictures = new Map<string, HTMLElement>();
 let editorFor = '';
 
-const TAB_ICONS: Record<Panel, IconName> = { all: 'grid', palm: 'palm', grass: 'grass', cactus: 'cactus', jungle: 'leaf', rock: 'rock', driftwood: 'driftwood', island: 'mountain' };
+const TAB_ICONS: Record<Tab | 'island', IconName> = { all: 'grid', palm: 'palm', grass: 'grass', cactus: 'cactus', jungle: 'leaf', rock: 'rock', driftwood: 'driftwood', island: 'mountain' };
 const dryName = (d: number) => t(`dry.${Math.round(d * 2)}` as Key);
 const sizeName = (s: number) => `${Math.round(sizeStep(s) * 100)}%`;
 
 /** The plants of the group picked. */
 const pool = () => FLORA.filter((e) => state.tab === 'all' || e.category === state.tab);
 
-function cards(): HTMLElement {
+/** The library's tiles: the plants of the group picked; the search finds them by group and "edited" too. */
+function cards() {
   cardPictures.clear();
-  const tiles = pool().map((entry) => {
+  return pool().map((entry) => {
     const picture = h('span', { class: 'card__picture' }, thumb(rasterOf(entry, 0, 0, 0, state.dryness, 1), 60));
     cardPictures.set(entry.id, picture);
-    return { id: entry.id, picture, words: plantName(entry.id, entry.label), mark: state.custom[entry.id] ? 'pencil' : undefined };
+    return { id: entry.id, picture, words: plantName(entry.id, entry.label), mark: state.custom[entry.id] ? 'pencil' : undefined, find: `${entry.category} ${t(`cat.${entry.category}` as Key)} ${state.custom[entry.id] ? 'edited' : ''}` };
   });
-  return tileGrid(tiles, state.selected, (id) => { state.selected = id; state.seed = 0; changed(); });
+}
+let shelf: Library | undefined;
+/** Shows another group of plants in the library; the preview follows to its first plant unless the current one belongs to it. */
+function pickGroup(id: Tab): void {
+  state.tab = id;
+  if (id !== 'all' && selectedEntry().category !== id) {
+    state.selected = FLORA.find((e) => e.category === id)?.id ?? state.selected;
+    state.seed = 0;
+  }
+  changed();
 }
 
 function colours(): HTMLElement[] {
@@ -389,7 +400,7 @@ function renderBar(): void {
       }) },
       { label: currentLang() === 'de' ? 'Neu beginnen' : 'Start over', icon: 'reset', run: () => {
         state = defaultState();
-        panelTab = state.tab;
+        panelTab = 'plant';
         editorFor = '';
         changed();
       } },
@@ -423,7 +434,8 @@ function render(): void {
   const ground = GROUNDS.find((g) => g.id === state.ground)!;
   stage.style.setProperty('--ground', ground.color);
   renderBar();
-  const list: Panel[] = [...TABS, 'island'];
+  shelf?.redraw();
+  const list: Panel[] = ['plant', 'island'];
   // The die picks another plant from this group; the island tab rolls a new island.
   const die = tabTools(() => {
     if (panelTab === 'island') {
@@ -431,16 +443,8 @@ function render(): void {
       changed();
     } else shuffle();
   });
-  tabSlot.replaceChildren(tabs(t('sections'), list.map((id) => ({ id, label: id === 'island' ? t('scene') : t(`cat.${id}` as Key), icon: TAB_ICONS[id] })), panelTab, (id) => {
+  tabSlot.replaceChildren(tabs(t('sections'), list.map((id) => ({ id, label: id === 'island' ? t('scene') : t('tab.plant'), icon: id === 'island' ? TAB_ICONS.island : 'leaf' })), panelTab, (id) => {
     panelTab = id;
-    if (id !== 'island') {
-      state.tab = id;
-      // The preview follows the group: its first plant, unless the current one belongs to it.
-      if (id !== 'all' && selectedEntry().category !== id) {
-        state.selected = FLORA.find((e) => e.category === id)?.id ?? state.selected;
-        state.seed = 0;
-      }
-    }
     panel.scrollTop = 0;
     changed();
   }, new Set(), die));
@@ -457,7 +461,7 @@ function render(): void {
     ));
     requestAnimationFrame(fitScene);
   } else {
-    const parts: Node[] = [section(t(`cat.${state.tab}` as Key), cards()), section(currentLang() === 'de' ? 'Farben' : 'Colours', ...colours())];
+    const parts: Node[] = [section(currentLang() === 'de' ? 'Farben' : 'Colours', ...colours())];
     if (expert) {
       renderEditor();
       parts.push(section(t('recipe'), editor));
@@ -491,7 +495,11 @@ function mount(): void {
   sizeSlider.setAttribute('aria-label', t('size'));
   stage.replaceChildren(preview, ...arrows, views);
   const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', centre: [stage, box(previewSec)], right: [tabSlot, panel], rightWidth: 460 })));
+  shelf = library({
+    key: 'pixel-flora', label: word('search'), empty: word('nothing'), items: cards, selected: () => state.selected, pick: (id) => { state.selected = id; state.seed = 0; changed(); },
+    filters: () => [choice(t('sections'), TABS.map((id) => ({ id, icon: TAB_ICONS[id], words: t(`cat.${id}` as Key) })), () => state.tab, (id) => pickGroup(id as Tab), 'list')],
+  });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', left: [shelf], centre: [stage, box(previewSec)], right: [tabSlot, panel], leftWidth: 260, rightWidth: 460 })));
 }
 
 drySlider.addEventListener('input', () => {

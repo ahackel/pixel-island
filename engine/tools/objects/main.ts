@@ -1,7 +1,7 @@
 // The object editor: pick a thing, then change its size, parts and colours, see it in all four
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { choice, tileGrid, confirmDialog, toggle as pixelToggle, turnView, viewTools, workspace } from '../../ui/components.ts';
+import { choice, tileGrid, confirmDialog, library, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import {
   COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_ORIGIN, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
@@ -233,17 +233,26 @@ function newThing(): void {
   }));
 }
 
+// ------------------------------------------------------------------ the library: My things
+
+let shelf: Library | undefined;
+/** My things as tiles; while the one shown is not kept yet, it leads as a tile of its own. */
+const shelfItems = () => [
+  ...(current() ? [] : [{ id: '', picture: thumbnail(prop), words: L('Not saved yet', 'Noch nicht gespeichert'), mark: 'pencil' }]),
+  ...roster.map((s) => ({ id: s.id, picture: thumbnail(s.prop), words: s.name })),
+];
+function pickThing(id: string): void {
+  const chosen = roster.find((s) => s.id === id);
+  message = '';
+  if (chosen) load(chosen.prop, chosen.id);
+  else {
+    setCurrent(null);
+    render();
+  }
+}
+
 function renderBar(): void {
   const saved = current();
-  const picker = choice(L('My things', 'Meine Sachen'), [{ id: '', words: L('Not saved yet', 'Noch nicht gespeichert') }, ...roster.map((s) => ({ id: s.id, words: s.name }))], () => currentId ?? '', (id) => {
-    const chosen = roster.find((s) => s.id === id);
-    message = '';
-    if (chosen) load(chosen.prop, chosen.id);
-    else {
-      setCurrent(null);
-      render();
-    }
-  }, 'list', 60, true);
   const fileName = saved?.name ?? L('Object', 'Objekt');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
     tool: 'objects',
@@ -257,7 +266,6 @@ function renderBar(): void {
       L('Files are JSON of type "pixel-object". The game draws them with drawObject() from engine/objects/object.ts, which also gives the points for every frame.',
         'Dateien sind JSON vom Typ „pixel-object“. Das Spiel zeichnet sie mit drawObject() aus engine/objects/object.ts, das für jedes Bild auch die Punkte liefert.'),
     ],
-    things: picker,
     more: [
       { label: L('New object', 'Neues Objekt'), icon: 'plus', run: newThing },
       { label: saved ? L('Make a copy', 'Kopie machen') : L('Keep in My things', 'In Meine Sachen behalten'), icon: 'copy', run: () => {
@@ -298,6 +306,7 @@ function renderBar(): void {
 function render(): void {
   stage.style.setProperty('--ground', ground);
   renderBar();
+  shelf?.redraw();
   setTurn(turn);
   name.set(current()?.name ?? '', L('Not saved yet', 'Noch nicht gespeichert'));
   const shownTabs = TABS.filter(([id]) => id !== 'points' || expert);
@@ -322,7 +331,8 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Object Editor', 'Objekt-Editor');
   stage.replaceChildren(hero, stageTag, ...arrows, views);
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', centre: [stage], right: [tabSlot, panel], rightWidth: 460 })));
+  shelf = library({ key: 'pixel-objects', label: word('search'), empty: word('nothing'), items: shelfItems, selected: () => currentId ?? '', pick: pickThing });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', left: [shelf], centre: [stage], right: [tabSlot, panel], leftWidth: 240, rightWidth: 460 })));
 }
 
 // What the preview shows now; render() clears `shown` so marks follow the panel.

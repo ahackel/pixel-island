@@ -3,8 +3,9 @@
 /** How many screen pixels one interface pixel takes: big enough to tap on an iPad, which the games are made for. */
 export const S = 4;
 
+/** `paper` is a button's own colour; `panel` the slightly darker ground panels, popups and the header lay them on, so buttons stand out. */
 export const C = {
-  ink: '#2b1d12', paper: '#f6ecd2', empty: '#f6ecd28c', shadow: '#00000040', track: '#e2d3ae', hunger: '#e0862e', energy: '#4f9ad6', low: '#d9412b',
+  ink: '#2b1d12', paper: '#f6ecd2', panel: '#e9dcb9', empty: '#f6ecd28c', shadow: '#00000040', track: '#e2d3ae', hunger: '#e0862e', energy: '#4f9ad6', low: '#d9412b',
   lit: '#e8862a', night: '#2f3b6e', moon: '#f3eccf', white: '#ffffff',
 };
 

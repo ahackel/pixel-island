@@ -53,7 +53,7 @@ body {
   pointer-events: none;
 }
 
-/* One line of tool buttons under the scene, on the paper of the header. */
+/* One line of tool buttons under the scene, on the panel colour of the header. */
 .toolbar {
   position: relative;
   z-index: 5;
@@ -63,7 +63,7 @@ body {
   scrollbar-width: none;
   padding: 12px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: #f6ecd2;
+  background: var(--ui-panel);
   box-shadow: 0 -4px 0 #00000040;
 }
 .toolbar > * {

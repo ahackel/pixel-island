@@ -254,18 +254,51 @@ export type Look = 'arrows' | 'buttons' | 'colors' | 'list';
 
 const faceOf = (o: Option): ButtonFace => ({ icon: o.icon, color: o.icon ? undefined : o.color, words: o.icon || o.color ? undefined : o.words });
 
-/** A button that opens a panel of `content` under it; a tap outside or inside (given `close`) shuts it. */
+/**
+ * Opens a panel of `content` under `anchor`, kept on the page: it floats over everything (a side panel's scrolling does not
+ * clip it) and shifts left or above when there is no room. A tap outside `anchor` and the panel, Escape, or `close` shuts it;
+ * `closed` is told. Returns `close`.
+ */
+export function popover(anchor: HTMLElement, content: (close: () => void) => Node, closed?: () => void): () => void {
+  const pop = el('div', 'upop');
+  pop.append(box(content(() => close())));
+  const place = () => {
+    if (!anchor.isConnected) return close();
+    const a = anchor.getBoundingClientRect(), p = pop.getBoundingClientRect();
+    const below = a.bottom + 8 + p.height <= innerHeight - 8 || a.top - 8 - p.height < 8;
+    pop.style.left = `${Math.max(8, Math.min(a.left, innerWidth - 8 - p.width))}px`;
+    pop.style.top = `${below ? Math.min(a.bottom + 8, Math.max(8, innerHeight - 8 - p.height)) : a.top - 8 - p.height}px`;
+  };
+  const away = (e: Event) => { if (!anchor.contains(e.target as Node) && !pop.contains(e.target as Node)) close(); };
+  const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+  const scrolled = (e: Event) => { if (!pop.contains(e.target as Node)) place(); };
+  let open = true;
+  const close = () => {
+    if (!open) return;
+    open = false;
+    pop.remove();
+    removeEventListener('pointerdown', away, true);
+    removeEventListener('keydown', key, true);
+    removeEventListener('scroll', scrolled, true);
+    removeEventListener('resize', place);
+    closed?.();
+  };
+  document.body.append(pop);
+  place();
+  addEventListener('pointerdown', away, true);
+  addEventListener('keydown', key, true);
+  addEventListener('scroll', scrolled, true);
+  addEventListener('resize', place);
+  return close;
+}
+
+/** A button that opens a panel of `content` under it (see `popover`); a second tap on it, or a tap outside, shuts it. */
 export function opener(label: string, face: ButtonFace, content: (close: () => void) => Node): HTMLElement {
   const wrap = el('span', 'upopwrap');
-  let pop: HTMLElement | null = null;
-  const away = (e: Event) => { if (pop && !wrap.contains(e.target as Node)) close(); };
-  const close = () => { pop?.remove(); pop = null; removeEventListener('pointerdown', away, true); };
+  let close: (() => void) | null = null;
   wrap.append(pixelButton(label, face, () => {
-    if (pop) return close();
-    pop = el('div', 'upop');
-    pop.append(box(content(close)));
-    wrap.append(pop);
-    addEventListener('pointerdown', away, true);
+    if (close) return close();
+    close = popover(wrap, content, () => { close = null; });
   }));
   return wrap;
 }
@@ -303,7 +336,10 @@ function groupLook(label: string, options: Option[], current: string | null, pic
  */
 export function choice(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, look: Look = 'arrows', width = 60, flat = false): Live {
   const index = () => Math.max(0, options.findIndex((o) => o.id === get()));
-  if (look === 'colors') return colorsLook(label, options.filter((o) => o.color || o.icon).map((o) => ({ value: o.id, color: o.color, icon: o.color ? undefined : o.icon })), get, pick, width);
+  if (look === 'colors') {
+    return options.length > BAR_COLORS ? colorField(label, options, get, pick)
+      : colorsLook(label, options.filter((o) => o.color || o.icon).map((o) => ({ value: o.id, color: o.color, icon: o.color ? undefined : o.icon })), get, pick, width);
+  }
   if (look === 'arrows') {
     return arrowsLook(label, () => options[index()], (by) => pick(options[(index() + by + options.length) % options.length].id), width);
   }
@@ -320,6 +356,157 @@ export function choice(label: string, options: Option[], get: () => string | nul
   }
   self.redraw();
   return self;
+}
+
+// ------------------------------------------------------------------ colours
+
+/**
+ * How colours are chosen, everywhere: up to this many side by side in a colour bar (`choice(..., 'colors')`); more in a colour
+ * field (`colorField`) that shows the chosen one and opens a popup of swatches; any colour at all in a colour field that opens
+ * an HSV picker (`colorPicker`). `choice` with the `colors` look turns into a colour field by itself past this count.
+ */
+export const BAR_COLORS = 16;
+const FIELD_W = 27;
+
+/** A colour field's face: a panel, the colour (or an icon, or an empty well for none) and a small arrow. */
+function colorFace(face: { color?: string; icon?: string } | null): HTMLCanvasElement {
+  const { canvas, ctx } = pixelCanvas(FIELD_W, 14, S);
+  panel(ctx, 0, 0, FIELD_W, 13, C.paper, C.shadow);
+  if (face?.color) { ctx.fillStyle = face.color; ctx.fillRect(2, 2, FIELD_W - 13, 9); }
+  else if (face?.icon) drawRows(ctx, iconRows(face.icon), Math.floor((FIELD_W - 11 - 9) / 2) + 1, 2, PAINT);
+  else rounded(ctx, 2, 2, FIELD_W - 13, 9, C.empty);
+  drawRows(ctx, iconRows('down'), FIELD_W - 10, 2, C.ink);
+  return canvas;
+}
+
+/** The button of a colour field: its face, and a popup of `content` on a tap (a second tap shuts it). */
+function colorButton(label: string, face: () => { color?: string; icon?: string } | null, content: (close: () => void) => Node): Live {
+  const self = Object.assign(el('span', 'ucolor'), { redraw: () => {} }) as Live;
+  let close: (() => void) | null = null;
+  const b = el('button', 'pbtn');
+  b.title = b.ariaLabel = label;
+  b.addEventListener('click', () => { close ? close() : (close = popover(self, content, () => { close = null; })); });
+  self.redraw = () => b.replaceChildren(colorFace(face()));
+  self.append(b);
+  self.redraw();
+  return self;
+}
+
+/**
+ * Swatches to pick one from, in rows of `columns`: one picture, the chosen one framed in ink. An option with an icon and no
+ * colour (reset, eraser) is a cell showing that icon. The pointer's option is named in the tooltip.
+ */
+export function swatchGrid(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, columns = Math.min(12, Math.ceil(Math.sqrt(options.length * 2)))): HTMLElement {
+  const CELL = 11;
+  const rows = Math.ceil(options.length / columns);
+  const { canvas, ctx } = pixelCanvas(columns * CELL, rows * CELL, S);
+  const now = get();
+  options.forEach((o, n) => {
+    const x = (n % columns) * CELL, y = Math.floor(n / columns) * CELL;
+    if (o.color) { ctx.fillStyle = o.color; ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2); }
+    else if (o.icon) drawRows(ctx, iconRows(o.icon), x + 1, y + 1, PAINT);
+    if (o.id !== now) return;
+    ctx.fillStyle = C.ink;
+    ctx.fillRect(x, y, CELL, 1); ctx.fillRect(x, y + CELL - 1, CELL, 1); ctx.fillRect(x, y, 1, CELL); ctx.fillRect(x + CELL - 1, y, 1, CELL);
+    if (o.color) { ctx.fillStyle = C.paper; ctx.fillRect(x + 1, y + 1, CELL - 2, 1); ctx.fillRect(x + 1, y + CELL - 2, CELL - 2, 1); ctx.fillRect(x + 1, y + 1, 1, CELL - 2); ctx.fillRect(x + CELL - 2, y + 1, 1, CELL - 2); }
+  });
+  const at = (e: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
+    const col = Math.floor((e.clientX - r.left) / (CELL * S)), row = Math.floor((e.clientY - r.top) / (CELL * S));
+    return col >= 0 && col < columns && row >= 0 ? options[row * columns + col] : undefined;
+  };
+  const wrap = el('span', 'uswatches');
+  wrap.title = label;
+  wrap.setAttribute('role', 'listbox');
+  wrap.setAttribute('aria-label', label);
+  canvas.addEventListener('pointermove', (e) => { const o = at(e); wrap.title = o ? o.words ?? o.id : label; });
+  canvas.addEventListener('click', (e) => { const o = at(e); if (o) pick(o.id); });
+  wrap.append(canvas);
+  return wrap;
+}
+
+/** One colour of many: a field showing the chosen one, a popup of swatches to change it (see `swatchGrid` for `columns`). */
+export function colorField(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, columns?: number): Live {
+  const self: Live = colorButton(label, () => options.find((o) => o.id === get()) ?? null,
+    (close) => swatchGrid(label, options, get, (id) => { close(); if (id !== get()) pick(id); self.redraw(); }, columns));
+  return self;
+}
+
+const hexByte = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
+/** A colour from hue (0 to 360), saturation and value (0 to 1) as `#rrggbb`. */
+export function hsvToHex(h: number, s: number, v: number): string {
+  const f = (n: number) => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return `#${hexByte(f(5) * 255)}${hexByte(f(3) * 255)}${hexByte(f(1) * 255)}`;
+}
+/** `#rgb` or `#rrggbb` (any alpha dropped) as hue, saturation and value; null if it is not a colour. */
+export function hexToHsv(hex: string): { h: number; s: number; v: number } | null {
+  let m = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(hex.trim())?.[1];
+  if (!m) return null;
+  if (m.length === 3) m = [...m].map((c) => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m!.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  const h = d === 0 ? 0 : max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: h * 60, s: max ? d / max : 0, v: max };
+}
+
+/**
+ * Any colour: a field showing it, and a popup with an HSV picker: a square of saturation (across) and value (up) in the
+ * chosen hue, a hue bar, the three as numbers and the colour as hex to type, and optionally a row of `presets`. `change` is
+ * told every step of a drag; `done` once it ends (or a number or hex is typed), for undo.
+ */
+export function colorPicker(label: string, get: () => string, change: (hex: string) => void, o: { presets?: string[]; done?: (hex: string) => void } = {}): Live {
+  const self: Live = colorButton(label, () => ({ color: get() }), () => hsvPanel(label, get, (hex, end) => { change(hex); self.redraw(); if (end) o.done?.(hex); }, o.presets ?? []));
+  return self;
+}
+
+function hsvPanel(label: string, get: () => string, set: (hex: string, end: boolean) => void, presets: string[]): HTMLElement {
+  const SW = 64, SH = 40, HH = 7;
+  let { h, s, v } = hexToHsv(get()) ?? { h: 0, s: 0, v: 0 };
+  const square = pixelCanvas(SW, SH, S), hue = pixelCanvas(SW, HH, S);
+  const numbers = el('div', 'urow'), hexRow = el('div', 'urow');
+  const draw = () => {
+    for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) { square.ctx.fillStyle = hsvToHex(h, x / (SW - 1), 1 - y / (SH - 1)); square.ctx.fillRect(x, y, 1, 1); }
+    const mx = Math.round(s * (SW - 1)), my = Math.round((1 - v) * (SH - 1));
+    square.ctx.fillStyle = v > 0.6 && s < 0.5 ? C.ink : C.white;
+    for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) square.ctx.fillRect(mx + dx, my + dy, 1, 1);
+    hue.ctx.clearRect(0, 0, SW, HH);
+    for (let x = 0; x < SW; x++) { hue.ctx.fillStyle = hsvToHex((x / (SW - 1)) * 360, 1, 1); hue.ctx.fillRect(x, 1, 1, HH - 2); }
+    const hx = Math.round((h / 360) * (SW - 1));
+    hue.ctx.fillStyle = C.ink;
+    hue.ctx.fillRect(hx - 1, 0, 3, 1); hue.ctx.fillRect(hx - 1, HH - 1, 3, 1); hue.ctx.fillRect(hx, 0, 1, HH);
+  };
+  // The typed parts are rebuilt after a change made elsewhere, never while one of them is in use.
+  const fill = () => {
+    const num = (words: string, tip: string, value: number, max: number, to: (n: number) => void) =>
+      numberField({ words, tip }, Math.round(value), (n) => { to(n); draw(); set(hsvToHex(h, s, v), false); fillHex(); }, { min: 0, max, width: 30 });
+    numbers.replaceChildren(
+      num('H', 'Hue', h, 360, (n) => (h = n)), num('S', 'Saturation', s * 100, 100, (n) => (s = n / 100)), num('V', 'Value', v * 100, 100, (n) => (v = n / 100)));
+    fillHex();
+  };
+  const fillHex = () => hexRow.replaceChildren(
+    textField(label, hsvToHex(h, s, v), () => {}, { width: 44, done: (typed) => { const c = hexToHsv(typed); if (!c) return fillHex(); ({ h, s, v } = c); draw(); set(hsvToHex(h, s, v), true); fill(); } }),
+    ...presets.map((p) => swatch(p, p, p.toLowerCase() === hsvToHex(h, s, v), () => { ({ h, s, v } = hexToHsv(p)!); draw(); set(hsvToHex(h, s, v), true); fill(); })));
+  const drag = (canvas: HTMLCanvasElement, to: (fx: number, fy: number) => void) => {
+    const at = (e: PointerEvent) => {
+      const r = canvas.getBoundingClientRect();
+      to(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+      draw();
+      set(hsvToHex(h, s, v), false);
+    };
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); at(e); });
+    canvas.addEventListener('pointermove', (e) => canvas.hasPointerCapture(e.pointerId) && at(e));
+    canvas.addEventListener('pointerup', () => { set(hsvToHex(h, s, v), true); fill(); });
+  };
+  drag(square.canvas, (fx, fy) => { s = fx; v = 1 - fy; });
+  drag(hue.canvas, (fx) => { h = fx * 360; });
+  square.canvas.title = 'Saturation, value';
+  hue.canvas.title = 'Hue';
+  draw();
+  fill();
+  const wrap = el('div', 'uhsv');
+  wrap.append(square.canvas, hue.canvas, numbers, hexRow);
+  return wrap;
 }
 
 // ------------------------------------------------------------------ layout and input
@@ -651,6 +838,39 @@ export function tileGrid(tiles: Tile[], selected: string | null, pick: (id: stri
   return grid;
 }
 
+/** A thing in a `library`: its tile, and more words the search finds it by (its kind, tags, "edited"). */
+export interface LibraryItem extends Tile { find?: string }
+export type Library = HTMLElement & { redraw: () => void };
+
+/**
+ * The left panel of every editor: a search field over the tiles of everything the editor can edit, the one being edited lit.
+ * The search matches each typed word against a tile's words, id and `find`, and is kept in the browser under `key`.
+ * `filters` (optional) are controls between the search and the tiles, asked again at every redraw; call `redraw` after
+ * the things, the one picked or a filter changed. `empty` is said when nothing matches.
+ */
+export function library(o: { key: string; label?: string; items: () => LibraryItem[]; selected: () => string | null; pick: (id: string) => void; filters?: () => Node[]; empty?: string }): Library {
+  const KEY = `${o.key}-search`;
+  let query = '';
+  try { query = localStorage.getItem(KEY) ?? ''; } catch { /* none */ }
+  const self = Object.assign(el('div', 'ulibrary'), { redraw: () => {} }) as Library;
+  const filters = el('div', 'ulibrary__filters');
+  const list = el('div', 'uside__list');
+  self.redraw = () => {
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = o.items().filter((t) => { const hay = `${t.words ?? ''} ${t.id} ${t.find ?? ''}`.toLowerCase(); return words.every((w) => hay.includes(w)); });
+    const scroll = list.scrollTop;
+    list.replaceChildren(shown.length ? tileGrid(shown, o.selected(), o.pick) : label_(caps(o.empty ?? 'Nothing matches'), C.ink, S));
+    list.scrollTop = scroll;
+    const f = o.filters?.() ?? [];
+    filters.replaceChildren(...f);
+    filters.hidden = !f.length;
+  };
+  const search = searchField(o.label ?? 'Search', (v) => { query = v; try { localStorage.setItem(KEY, v); } catch { /* not kept */ } self.redraw(); }, query);
+  self.append(search, filters, list);
+  self.redraw();
+  return self;
+}
+
 /** A frame round a preview: its content on the ground, a name tag at the top left and tools at the top right. */
 export function previewFrame(content: Node, options: { tag?: Node; tools?: Node[] } = {}): HTMLElement {
   const frame = el('div', 'uframe');
@@ -708,7 +928,8 @@ export function confirmDialog(question: string): Promise<boolean> {
     text.textContent = question;
     const buttons = el('div', 'urow');
     const done = (yes: boolean) => { veil.remove(); removeEventListener('keydown', key, true); resolve(yes); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done(false); else if (e.key === 'Enter') done(true); };
+    // A popup open over the box (a colour picker) takes Escape and Enter itself.
+    const key = (e: KeyboardEvent) => { if (document.querySelector('.upop')) return; if (e.key === 'Escape') done(false); else if (e.key === 'Enter') done(true); };
     buttons.append(pixelButton('No', { icon: 'close' }, () => done(false)), pixelButton('Yes', { icon: 'check', lit: true }, () => done(true)));
     veil.append(box(text, buttons));
     veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done(false); });
@@ -724,7 +945,7 @@ export function formDialog(title: string, rows: Node[], submit: () => void): voi
   head.append(label_(caps(title), C.ink, S));
   const buttons = el('div', 'urow');
   const done = (yes: boolean) => { veil.remove(); removeEventListener('keydown', key, true); if (yes) submit(); };
-  const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done(false); else if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) done(true); };
+  const key = (e: KeyboardEvent) => { if (document.querySelector('.upop')) return; if (e.key === 'Escape') done(false); else if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)) done(true); };
   buttons.append(pixelButton('No', { icon: 'close' }, () => done(false)), pixelButton('Yes', { icon: 'check', lit: true }, () => done(true)));
   veil.append(box(head, ...rows, buttons));
   veil.addEventListener('pointerdown', (e) => { if (e.target === veil) done(false); });

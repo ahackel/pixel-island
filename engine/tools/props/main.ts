@@ -21,7 +21,7 @@ import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { choice, pixelButton, searchField, tileGrid, toggle, turnView, viewTools, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
+import { choice, library, pixelButton, toggle, turnView, viewTools, type Library, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
 import { checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -48,14 +48,14 @@ const DIR_NAMES = ['0°', '45°', '90°', '135°', '180°', '225°', '270°', '3
 // ------------------------------------------------------------------ state
 
 interface Prefs {
-  id: string; tab: Tab; dir: number; query: string; source: Source | 'all'; feature: Feature | 'all';
+  id: string; tab: Tab; dir: number; source: Source | 'all'; feature: Feature | 'all';
   hidden: boolean; person: boolean; colliders: boolean; ground: string; playing: boolean; view: number; shape: BuildTab;
 }
 type Tab = 'views' | 'shape' | 'features' | 'pixels';
 const PREFS_KEY = 'pixel-props-tool';
 const GROUNDS = [['Sand', 'Sand', '#e9d9a0'], ['Grass', 'Gras', '#8fcf78'], ['Floor', 'Boden', '#d9d3c4'], ['Rock', 'Fels', '#aeaba3']] as const;
 const prefs: Prefs = {
-  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, query: '', source: 'all', feature: 'all', hidden: false, person: true, colliders: false,
+  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, source: 'all', feature: 'all', hidden: false, person: true, colliders: false,
   ground: GROUNDS[0][2], playing: true, view: 0, shape: 'parts',
   ...readStore<Partial<Prefs>>(PREFS_KEY, {}),
 };
@@ -191,25 +191,16 @@ const SOURCE_ICON: Record<string, string> = { painted: 'pencil', grown: 'sprout'
 function matches(k: PropKind): boolean {
   if (!prefs.hidden && isHidden(k.id)) return false;
   if (prefs.source !== 'all' && k.source !== prefs.source) return false;
-  if (prefs.feature !== 'all' && !k.features.includes(prefs.feature)) return false;
-  const q = prefs.query.trim().toLowerCase();
-  if (!q) return true;
-  const hay = [k.name, k.id, sourceWord(k.source), k.source, ...k.tags, ...k.features, k.locked ? 'locked frozen' : ''].join(' ').toLowerCase();
-  return q.split(/\s+/).every((w) => hay.includes(w));
+  return prefs.feature === 'all' || k.features.includes(prefs.feature);
 }
 
-const libraryGrid = h('div', { class: 'props__grid' });
-const search = searchField('Search', (v) => {
-  prefs.query = v;
-  savePrefs();
-  renderLibrary();
-}, prefs.query);
-function renderLibrary(): void {
-  const list = propKinds().filter(matches);
-  libraryGrid.replaceChildren(list.length
-    ? tileGrid(list.map((k) => ({ id: k.id, picture: thumb(k), words: `${k.name} · ${sourceWord(k.source)}`, mark: k.locked ? 'lock' : undefined })), prefs.id, pickKind)
-    : h('p', { class: 'note' }, L('Nothing matches.', 'Nichts passt.')));
-}
+/** The library's tiles: the kinds the source, feature and hidden filters let through; the search finds them by kind, tags and features too. */
+const libraryItems = () => propKinds().filter(matches).map((k) => ({
+  id: k.id, picture: thumb(k), words: `${k.name} · ${sourceWord(k.source)}`, mark: k.locked ? 'lock' : undefined,
+  find: [k.source, ...k.tags, ...k.features, k.locked ? 'locked frozen' : ''].join(' '),
+}));
+let shelf: Library | undefined;
+const renderLibrary = () => shelf?.redraw();
 function chips(): HTMLElement {
   const flip = (change: () => void) => { change(); savePrefs(); render(); };
   const sources: Pick[] = [{ id: 'all', icon: 'grid', words: L('All', 'Alle') }, ...SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }))];
@@ -454,7 +445,6 @@ const barSlot = h('div', { style: 'display: contents' });
 const views = viewTools();
 // Arrows at its sides and a drag on it turn the prop an eighth at a time.
 const arrows = turnView(stage, (step) => { prefs.dir = (prefs.dir + step + 8) % 8; savePrefs(); render(); });
-const libraryHead = h('div', { class: 'props__libhead' });
 const name = nameTag();
 name.onRename((n) => {
   if (!n.trim() || n === kind().name) return;
@@ -524,7 +514,6 @@ function render(): void {
   renderBar();
   name.set(k.name, L('Prop', 'Requisite'));
   stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${viewWord()} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
-  libraryHead.replaceChildren(search, chips());
   renderLibrary();
   views.replaceChildren(snapButton(() => savePicture(hero, kind().name)),
     toggle(L('Wind', 'Wind'), { icon: 'storm' }, prefs.playing, (on) => { prefs.playing = on; savePrefs(); stageDirty = true; }),
@@ -547,8 +536,9 @@ function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Props', 'Requisiten');
   stage.replaceChildren(hero, stageTag, ...arrows, views);
+  shelf = library({ key: 'pixel-props', label: word('search'), empty: word('nothing'), items: libraryItems, selected: () => prefs.id, pick: pickKind, filters: () => [chips()] });
   root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
-    key: 'pixel-props', left: [libraryHead, h('div', { class: 'uside__list' }, libraryGrid)], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+    key: 'pixel-props', left: [shelf], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
   })));
 }
 

@@ -1,8 +1,4 @@
 /* The props tool: library | stage | panel, on a workspace. */
-.props__libhead { display: grid; gap: 8px; }
-
-.props__grid .card { position: relative; }
-
 .stage.props__stage { min-height: 46vh; }
 .props__under { flex: none; }
 .props__feature { display: grid; gap: 0; margin-bottom: 6px; }

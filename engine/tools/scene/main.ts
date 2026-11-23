@@ -1,6 +1,6 @@
 import './style.css';
 import { frameDone, part } from '../../shared/stats.ts';
-import { box, choice, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { box, choice, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
 import { saveToProject } from '../../shared/project.ts';
@@ -1522,9 +1522,8 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   let rubble = caveNow?.rubble ?? CAVE_DEFAULTS.rubble;
   const size = { min: MIN_SIZE, max: MAX_SIZE, width: 44 };
   const level = (label: string, icon: string, value: number, set: (n: number) => void) => field({ icon, tip: label }, pixelSlider(label, value, (v) => set(Math.round(v * 20) / 20), 60));
-  // A few dark tints to choose from; a tint saved earlier that is not one of them stays as a cell of its own.
-  const tints = [...new Set([...CAVE_TINTS, tint])];
-  const color = choice(t('dialog.tint'), tints.map((id) => ({ id, color: id })), () => tint, (id) => (tint = id), 'colors', 8 * tints.length + 4);
+  // Any dark tint, a few good ones offered in the picker.
+  const color = colorPicker(t('dialog.tint'), () => tint, (hex) => (tint = hex), { presets: [...CAVE_TINTS] });
   formDialog(t(kind === 'new' ? 'dialog.new' : 'dialog.settings'), [
     fields(
       field({ icon: 'pencil', tip: t('dialog.name') }, textField(t('dialog.name'), name, (v) => (name = v), { width: 80 })),

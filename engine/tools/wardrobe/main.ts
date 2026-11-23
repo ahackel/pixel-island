@@ -1,7 +1,7 @@
 // The wardrobe: the character editor the island game opens before each new game (engine/character/editor.ts), with every
 // row and a tab for how the preview shows the character, and around it the tools' bar: the characters kept on this
 // device, undo, a random one, and the page where the eye and mouth shapes are drawn.
-import { choice, confirmDialog, pixelButton, sidePanel } from '../../ui/components.ts';
+import { confirmDialog, library, pixelButton, sidePanel, type Library } from '../../ui/components.ts';
 import { BROWS, EYE_COLORS, EYE_SHAPES, GLASSES_COLORS, HAIR_STYLES, HEAD_SHAPES, MOODS, NOSES } from '../../engine/character/base.ts';
 import { canSaveToProject, saveStores } from '../../shared/project.ts';
 import { ROSTER_KEY } from '../../engine/character/character.ts';
@@ -17,7 +17,7 @@ import { BODY_WINDOW, BUILDS, drawCharacter, FACING_VIEWS, type Facing } from '.
 import { WEAR_MAX } from '../../engine/character/wear.ts';
 import { cheer, h, history, NAMES, nameTag, pick, pickStart, shuffled, topBar, undoKeys, word } from '../../shared/shell.ts';
 import { currentLang, LANGS } from '../../shared/lang.ts';
-import { fitWhole, paintSprite, type Rect } from '../../shared/pixels.ts';
+import { fitWhole, paintSprite, pictureCache, type Rect } from '../../shared/pixels.ts';
 import { itemName, missingItemNames, t, type Key } from './i18n.ts';
 import { shapeEditor } from './shapes.ts';
 import './wardrobe.css';
@@ -80,6 +80,9 @@ shapes.panel.classList.add('wardrobe__shapes');
 shapes.panel.setAttribute('aria-label', t('shapes'));
 const shapesSlot = shapes.body;
 new ResizeObserver(() => stage.style.setProperty('--shapes-w', `${shapes.panel.offsetWidth}px`)).observe(shapes.panel);
+// My things at the left, as in every editor.
+const shelfSide = sidePanel('left', 'pixel-wardrobe-left', 240);
+let shelf: Library | undefined;
 
 // My things: saved characters on this device, shared with the scene editor. The working character
 // is kept on every change as before; while a saved one is picked, changes go straight into it.
@@ -202,17 +205,26 @@ async function importThing(): Promise<void> {
   render();
 }
 
-function thingsPicker(): HTMLElement {
-  return choice(t('things'), [{ id: '', words: t('saved.none') }, ...roster.map((c) => ({ id: c.id, words: c.name }))], () => currentId ?? '', (id) => {
-    const saved = roster.find((c) => c.id === id);
-    setCurrent(saved?.id ?? null);
-    if (saved) state = structuredClone(saved.state);
-    message = '';
-    undo.reset();
-    version++;
-    saveState();
-    render();
-  }, 'list', 60, true);
+/** My things as tiles; while the character shown is not kept yet, it leads as a tile of its own. */
+const thumbs = pictureCache('thumb');
+const thumbOf = (source: State) => thumbs.of(JSON.stringify(source), () => {
+  const canvas = h('canvas', { class: 'thumb', width: String(BODY_WINDOW.w), height: String(BODY_WINDOW.h) });
+  paintSprite(canvas, standing(source), BODY_WINDOW);
+  return fitWhole(canvas, 52, 4);
+});
+const shelfItems = () => [
+  ...(current() ? [] : [{ id: '', picture: thumbOf(state), words: t('saved.none'), mark: 'pencil' }]),
+  ...roster.map((c) => ({ id: c.id, picture: thumbOf(c.state), words: c.name })),
+];
+function pickThing(id: string): void {
+  const saved = roster.find((c) => c.id === id);
+  setCurrent(saved?.id ?? null);
+  if (saved) state = structuredClone(saved.state);
+  message = '';
+  undo.reset();
+  version++;
+  saveState();
+  render();
 }
 
 function renderBar(): void {
@@ -223,7 +235,6 @@ function renderBar(): void {
     title: word('wardrobe'),
     name: name.el,
     about: [t('lede'), t('foot.items', { count: CATALOG.length, paint: paintCount, recipe: CATALOG.length - paintCount }), t('foot.rules'), t('foot.base')],
-    things: thingsPicker(),
     more: [
       { label: t('saved.new'), icon: 'plus', run: newThing },
       { label: saved ? t('saved.copy') : t('saved.keep'), icon: 'copy', run: copyThing },
@@ -342,6 +353,7 @@ function shapesView(): void {
 
 function render(): void {
   renderBar();
+  shelf?.redraw();
   const saved = current();
   name.set(saved?.name ?? '', t('saved.none'));
   stage.classList.toggle('wardrobe--shapes', shapesPage);
@@ -368,7 +380,9 @@ function mount(): void {
     turned: () => shapesPage && render(),
   });
   stage.replaceChildren(editor, shapes.panel);
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot, h('main', { class: 'shell__main wardrobe__main' }, stage)));
+  shelf = library({ key: 'pixel-wardrobe', label: word('search'), empty: word('nothing'), items: shelfItems, selected: () => currentId ?? '', pick: pickThing });
+  shelfSide.body.replaceChildren(shelf);
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, h('main', { class: 'shell__main wardrobe__main' }, shelfSide.panel, h('div', { class: 'wardrobe__room' }, stage))));
 }
 
 undoKeys(undo.undo, undo.redo);

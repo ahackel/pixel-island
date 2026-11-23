@@ -152,13 +152,13 @@ const WORDS = {
     tools: 'Tools', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', particles: 'Particles', parts: 'Parts',
     icons: 'Icons', ui: 'Interface', animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
     name: 'Name', rollName: 'Roll a name', picture: 'Save a picture', rollTab: 'Shuffle this tab', lock: 'Keep this tab when shuffling all',
-    pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones',
+    pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones', search: 'Search', nothing: 'Nothing matches',
   },
   de: {
     tools: 'Werkzeuge', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', particles: 'Partikel', parts: 'Teile',
     icons: 'Symbole', ui: 'Oberfläche', animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
     name: 'Name', rollName: 'Namen würfeln', picture: 'Bild speichern', rollTab: 'Diesen Reiter würfeln', lock: 'Beim Würfeln behalten',
-    pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln',
+    pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln', search: 'Suchen', nothing: 'Nichts passt',
   },
 } satisfies Record<Lang, Record<string, string>>;
 export const word = (key: keyof typeof WORDS.en): string => WORDS[currentLang()][key];

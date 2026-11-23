@@ -1,5 +1,7 @@
 /* The wardrobe under the tools' bar: the game's character editor over the game's sea, as before a new game. */
-.wardrobe__main { display: block; position: relative; min-height: 0; }
+.wardrobe__main { display: flex; position: relative; min-height: 0; }
+.wardrobe__room { position: relative; flex: 1; min-width: 0; }
+@media (max-width: 699px) { .wardrobe__main { flex-direction: column; } .wardrobe__main > .uside { max-height: 30vh; } }
 .wardrobe { position: absolute; inset: 0; background: #8cc3c9; --gap: 12px; overflow: hidden; }
 .wardrobe .editor { overflow-y: auto; }
 /* While the shapes are drawn the choices step aside for them, beside the preview. */
