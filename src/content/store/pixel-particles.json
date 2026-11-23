@@ -1,0 +1,198 @@
+[
+  {
+    "id": "campfire",
+    "name": "Campfire",
+    "rate": 1.6,
+    "offset": {
+      "x": 0,
+      "y": -3
+    },
+    "spread": {
+      "x": 3,
+      "y": 2
+    },
+    "speed": {
+      "x": 0,
+      "y": -19
+    },
+    "jitter": {
+      "x": 5,
+      "y": 7
+    },
+    "gravity": 0,
+    "sway": {
+      "amount": 1.2,
+      "speed": 9
+    },
+    "life": {
+      "min": 500,
+      "max": 1000
+    },
+    "colors": [
+      {
+        "key": "blaze",
+        "tone": "base"
+      },
+      {
+        "key": "flare",
+        "tone": "base"
+      },
+      {
+        "key": "flame",
+        "tone": "base"
+      }
+    ],
+    "halo": {
+      "r": 46,
+      "tiles": 3.5,
+      "flicker": true
+    }
+  },
+  {
+    "id": "stump-fire",
+    "name": "Burning stump",
+    "rate": 1.6,
+    "offset": {
+      "x": 0,
+      "y": -3
+    },
+    "spread": {
+      "x": 3,
+      "y": 2
+    },
+    "speed": {
+      "x": 0,
+      "y": -19
+    },
+    "jitter": {
+      "x": 5,
+      "y": 7
+    },
+    "gravity": 0,
+    "sway": {
+      "amount": 1.2,
+      "speed": 9
+    },
+    "life": {
+      "min": 500,
+      "max": 1000
+    },
+    "colors": [
+      {
+        "key": "blaze",
+        "tone": "base"
+      },
+      {
+        "key": "flare",
+        "tone": "base"
+      },
+      {
+        "key": "flame",
+        "tone": "base"
+      }
+    ],
+    "halo": {
+      "r": 40,
+      "tiles": 3,
+      "flicker": true
+    }
+  },
+  {
+    "id": "torch",
+    "name": "Torch",
+    "rate": 1.6,
+    "offset": {
+      "x": 0,
+      "y": -3
+    },
+    "spread": {
+      "x": 3,
+      "y": 2
+    },
+    "speed": {
+      "x": 0,
+      "y": -19
+    },
+    "jitter": {
+      "x": 5,
+      "y": 7
+    },
+    "gravity": 0,
+    "sway": {
+      "amount": 1.2,
+      "speed": 9
+    },
+    "life": {
+      "min": 500,
+      "max": 1000
+    },
+    "colors": [
+      {
+        "key": "blaze",
+        "tone": "base"
+      },
+      {
+        "key": "flare",
+        "tone": "base"
+      },
+      {
+        "key": "flame",
+        "tone": "base"
+      }
+    ],
+    "halo": {
+      "r": 28,
+      "tiles": 3,
+      "flicker": true
+    }
+  },
+  {
+    "id": "lantern",
+    "name": "Lantern",
+    "rate": 0,
+    "offset": {
+      "x": 0,
+      "y": 0
+    },
+    "spread": {
+      "x": 0,
+      "y": 0
+    },
+    "speed": {
+      "x": 0,
+      "y": 0
+    },
+    "jitter": {
+      "x": 0,
+      "y": 0
+    },
+    "gravity": 0,
+    "sway": {
+      "amount": 0,
+      "speed": 0
+    },
+    "life": {
+      "min": 500,
+      "max": 1000
+    },
+    "colors": [
+      {
+        "key": "blaze",
+        "tone": "base"
+      },
+      {
+        "key": "flare",
+        "tone": "base"
+      },
+      {
+        "key": "flame",
+        "tone": "base"
+      }
+    ],
+    "halo": {
+      "r": 64,
+      "tiles": 4.2,
+      "flicker": true
+    }
+  }
+]

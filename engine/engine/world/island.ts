@@ -249,9 +249,12 @@ export interface Thing {
   shadow?: ArrayLike<number>;
   bases?: Float32Array;
   flat?: boolean;
-  /** Where its light sits in its picture (a flame's heart, a lantern's globe), for lamps and sparks. */
-  glow?: { x: number; y: number };
+  /** A particle system attached to it (see particles.ts): sparks and the glow halo of a fire, a lantern's light. */
+  fx?: Attach;
 }
+
+/** A particle system attached to a picture: the point it sits at, in the picture's pixels, and the system's id. */
+export interface Attach { x: number; y: number; system: string }
 
 /** Paints the island with everything on it: ground, all shadows at once, then things back to front. */
 export function paintIsland(map: HeightMap, ground: TerrainImage, things: Thing[]): Pixels {

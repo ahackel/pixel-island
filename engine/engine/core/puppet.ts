@@ -179,8 +179,11 @@ export interface Item {
   hold?: 'pole' | 'carry';
   /** Columns from the tool stamp's anchor to its shaft, front and back, so the fist closes on the shaft itself. */
   gripDx?: { front: number; back: number };
-  /** Where a tool's light sits in its stamps, front and back (a torch's flame, a lantern's globe); the drawn sprite says where it lands. */
-  glow?: { front: { x: number; y: number }; back: { x: number; y: number } };
+  /**
+   * A particle system attached to a tool (world/particles.ts: a torch's sparks and halo, a lantern's light): its id,
+   * and the point it sits at in the stamps, front and back. The drawn sprite says where that point lands (`Sprite.fx`).
+   */
+  fx?: { system: string; front: { x: number; y: number }; back: { x: number; y: number } };
 }
 
 export const SLOTS = ['bottom', 'shoes', 'top', 'beard', 'hair', 'hat', 'tool'] as const;
@@ -268,8 +271,8 @@ export class Sprite {
   drawingNearArm = false;
   /** 1 where such an arm (with its hand) shows in the finished picture, for drawing it over something carried. */
   readonly nearArm = new Uint8Array(SPRITE_W * SPRITE_H);
-  /** Where the held tool's light landed (its `glow`), if it has one. */
-  glow: { x: number; y: number } | null = null;
+  /** Where the held tool's particle system landed (its `fx`), if it has one. */
+  fx: { x: number; y: number; system: string } | null = null;
   set(x: number, y: number, color: string): void {
     if (x < 0 || y < 0 || x >= SPRITE_W || y >= SPRITE_H) return;
     this.pixels[y * SPRITE_W + x] = this.part && color !== SHADOW ? this.part : color;
@@ -288,7 +291,7 @@ export class Sprite {
         out.nearArm[y * SPRITE_W + (SPRITE_W - x)] = this.nearArm[y * SPRITE_W + x];
       }
     }
-    if (this.glow) out.glow = { x: SPRITE_W - this.glow.x, y: this.glow.y };
+    if (this.fx) out.fx = { ...this.fx, x: SPRITE_W - this.fx.x };
     return out;
   }
 }
@@ -343,8 +346,8 @@ function laidDown(standing: Sprite, down: boolean): Sprite {
     }
   }
   for (const [x, y, c] of placed) out.set(x, y, c);
-  const g = standing.glow;
-  if (g) out.glow = { x: cx + (g.y - middle), y: ORIGIN_Y - 3 - (down ? cx - g.x : g.x - cx) };
+  const g = standing.fx;
+  if (g) out.fx = { system: g.system, x: cx + (g.y - middle), y: ORIGIN_Y - 3 - (down ? cx - g.x : g.x - cx) };
   return out;
 }
 
@@ -1135,12 +1138,12 @@ function drawFigure(look: Look, pose: Pose, facing: Facing, options: DrawOptions
           for (const { dx, dy, cell } of turned(side(tool.tool!), pivotX, TOOL_FRAME.ay, steps)) {
             sprite.set(Math.round(hand.x) + dx, Math.round(hand.y) + dy, hexOf(cell));
           }
-          if (tool.glow) {
-            // The light point turned about the grip the same way as the stamp (see `turned`).
-            const g = back ? tool.glow.back : tool.glow.front;
+          if (tool.fx) {
+            // The particle system's point, turned about the grip the same way as the stamp (see `turned`).
+            const g = back ? tool.fx.back : tool.fx.front;
             const u = g.x - pivotX, v = g.y - TOOL_FRAME.ay;
             const cos = Math.cos((steps * Math.PI) / 4), sin = Math.sin((steps * Math.PI) / 4);
-            sprite.glow = { x: Math.round(hand.x) + u * cos - v * sin, y: Math.round(hand.y) + u * sin + v * cos };
+            sprite.fx = { system: tool.fx.system, x: Math.round(hand.x) + u * cos - v * sin, y: Math.round(hand.y) + u * sin + v * cos };
           }
         }
       },

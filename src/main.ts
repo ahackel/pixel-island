@@ -14,10 +14,11 @@ import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import type { PlacedPerson } from '@pixel/engine/world/scene.ts';
 import { turnFacing } from '@pixel/engine/core/puppet.ts';
-import { along, light, lightByTile, mixTint, TINTS, type Lamp, type Tint } from '@pixel/engine/world/daylight.ts';
+import { along, light, lightByTile, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
 import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
+import { emittersOf, halos, particleSystem, Particles } from '@pixel/engine/world/particles.ts';
 import { heightAt, isLand, SEA_LEVEL, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
@@ -45,7 +46,7 @@ import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fis
 import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, lacking, recipeFor, takeFrom, without, type BagItem, type Build, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
-import { breakOf, Burst, campfireThing, Sparks, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
+import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_COLORS, TORCH_ROWS, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
 /** Debug: `?speed=20` runs the game clock 20 times faster. */
@@ -1448,40 +1449,16 @@ function fadeAt(ms: number): number {
   return 0;
 }
 
-/** Where a thing's light sits (see `Thing.glow`), in the view's pixels; null if it gives none. */
-function glowIn(t: Thing, rect: { x: number; y: number }): { x: number; y: number } | null {
-  if (!t.glow) return null;
-  const o = topLeft(t);
-  return { x: o.x + t.glow.x - rect.x, y: o.y + t.glow.y - rect.y };
-}
-/** How far each light reaches, in pixels: a campfire, the burning stump, the torch and the lantern in hand. */
-const REACH_PX = { campfire: 46, stump: 40, torch: 28, lantern: 64 };
-/**
- * The lights in the dark, in the view's pixels, each on its flame (see `Thing.glow`): the island's fires (campfires,
- * the burning stump), each flickering out of step by where it stands; and the torch or the lantern in hand.
- */
-function lamps(rect: { x: number; y: number }, fires: readonly { thing: Thing; r: number }[], me: Thing | null, ms: number): Lamp[] {
-  const out: Lamp[] = [];
-  for (const { thing, r } of fires) {
-    const p = glowIn(thing, rect);
-    if (p) out.push({ ...p, r: r * flicker(ms, thing.spot.i * 3.1 + thing.spot.j * 1.7) });
-  }
-  const held = me && glowIn(me, rect);
-  if (held) out.push({ ...held, r: (hand === 'lantern' ? REACH_PX.lantern : REACH_PX.torch) * flicker(ms) });
-  return out;
-}
 /**
  * The cave's lights, tile by tile (see `World.lightField`): its own (the daylight at its open side, its crystals,
  * mushrooms and torches), and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
  */
-function caveLamps(ms: number): TileLamp[] {
+function caveLamps(me: Thing | null, ms: number): TileLamp[] {
   if (!cave) return [];
-  const f = flicker(ms);
-  const carried = hand === 'lantern' || hand === 'fire';
-  return [
-    ...caveOwnLamps(cave.world, ms),
-    ...(carried && present ? [{ i: actor.i, j: actor.j, r: (hand === 'lantern' ? 4.2 : 3) * f, amount: Math.min(1, f) }] : []),
-  ];
+  // The halo of what is in hand (its particle system's), in tiles.
+  const halo = me?.fx && particleSystem(me.fx.system)?.halo;
+  const f = halo?.flicker ? flicker(ms) : 1;
+  return [...caveOwnLamps(cave.world, ms), ...(halo ? [{ i: actor.i, j: actor.j, r: halo.tiles * f, amount: Math.min(1, f) }] : [])];
 }
 
 /** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
@@ -1567,7 +1544,7 @@ const SEA_AWAY = 400;
 let strikeFx: Strike | null = null;
 /** Splinters flying from the crate smashed. */
 let bursts: Burst[] = [];
-const sparks = new Sparks();
+const particles = new Particles();
 let last = performance.now();
 function frame(ms: number): void {
   const begun = performance.now();
@@ -1668,8 +1645,6 @@ function frame(ms: number): void {
     stumpFlame = stump[1];
   }
   const campfires = inCave() ? [] : game.fires.map((f) => campfireThing(groundSpot(f), ms));
-  /** The fires burning in view, and how far each one lights. */
-  const fires = [...campfires.map((thing) => ({ thing, r: REACH_PX.campfire })), ...(stumpFlame ? [{ thing: stumpFlame, r: REACH_PX.stump }] : [])];
   const hutBuild = buildOf('hut');
   island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   const me = present ? actor.thing(world, ms) : null;
@@ -1697,20 +1672,20 @@ function frame(ms: number): void {
   let t0 = part('things', begun);
   const image = world.compose(rect, things, undefined, false, ms);
   t0 = performance.now();
-  // Sparks fly from the fires and the torch in hand, not from the lantern.
-  const sparking = [...fires.map((f) => f.thing), ...(hand === 'fire' && me ? [me] : [])];
-  sparks.spawn(image, rect, sparking.map((t) => { const o = topLeft(t); return { x: o.x - rect.x, y: o.y - rect.y, w: t.w, h: t.h }; }), ms, paused ? 0 : dt);
-  if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(ms)));
+  // The particle systems of the fires and of what is in hand: their sparks, and their halos in the dark.
+  const emitters = emittersOf([...campfires, stumpFlame, me], world.ground);
+  particles.emit(emitters, ms, paused ? 0 : dt);
+  if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(me, ms)));
   else {
     light(image, weatherLight(weather, night));
     // A flash lights the world as bright as day for a moment, at night too, then shows it stark.
     const flash = (striking ? 1 : flashNow) * (1 - fade);
     const tint = tintAt(time);
-    light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, lamps(rect, fires, me, ms));
+    light(image, { ...tint, amount: tint.amount * (1 - flash) }, fade, halos(emitters, rect, ms));
     lightning(image, flash);
   }
   t0 = part('light', t0);
-  sparks.draw(image, rect, ms);
+  particles.draw(image, rect, ms);
   strikeFx?.draw(image, rect, ms);
   if (strikeFx?.done(ms)) strikeFx = null;
   for (const b of bursts) b.draw(image, rect, ms);
