@@ -26,7 +26,7 @@ export function unturned(p: P, rot: number): P {
 }
 
 /** The scene's corner that the turned view puts at its own point 0, 0, as seen on the turned desk. */
-function seenCorner(s: Scene, rot: number): P {
+export function seenCorner(s: Scene, rot: number): P {
   const at = deskOf(s);
   const corners = [[0, 0], [s.w, 0], [0, s.h], [s.w, s.h]].map(([i, j]) => turned({ i: at.i + i, j: at.j + j }, rot));
   return { i: Math.min(...corners.map((c) => c.i)), j: Math.min(...corners.map((c) => c.j)) };
@@ -68,4 +68,41 @@ export function freePlace(s: Scene, others: Scene[], rot: number): P {
 export function tilesOf(dx: number, dy: number, rot: number): P {
   const a = dx / (TILE_W / 2), b = dy / (TILE_H / 2);
   return unturned({ i: Math.round((a + b) / 2), j: Math.round((b - a) / 2) }, rot);
+}
+
+/** A pixel of the desk as a point of the turned desk, in tiles (the frame `seenCorner` and `World.toView` are in). */
+export function seenAt(x: number, y: number): P {
+  const a = x / (TILE_W / 2), b = y / (TILE_H / 2);
+  return { i: (a + b) / 2, j: (b - a) / 2 };
+}
+
+/** The place (`Scene.desk`) that puts the scene's middle, as seen on the turned desk, at `mid`, in whole tiles. */
+export function placeFor(s: Scene, mid: P, rot: number): P {
+  const [w, h] = rot % 2 ? [s.h, s.w] : [s.w, s.h];
+  const c = { i: Math.round(mid.i - w / 2), j: Math.round(mid.j - h / 2) };
+  // The seen box from c turned back is the scene's box on the desk; its smallest corner is the place.
+  const corners = [[0, 0], [w, 0], [0, h], [w, h]].map(([i, j]) => unturned({ i: c.i + i, j: c.j + j }, rot));
+  return { i: Math.min(...corners.map((p) => p.i)), j: Math.min(...corners.map((p) => p.j)) };
+}
+
+/**
+ * The free place nearest `at` for a scene among `others`: `at` itself if it is free, else the nearest one on the first
+ * ring of tiles round it that has a free place (rings grow one tile at a time).
+ */
+export function nearestFree(s: Scene, at: P, others: Scene[]): P {
+  const free = (p: P) => !others.some((o) => crowds(p, s, o));
+  if (free(at)) return at;
+  for (let r = 1; r < 1000; r++) {
+    let best: P | null = null;
+    let far = Infinity;
+    for (let k = -r; k <= r; k++) {
+      for (const [di, dj] of [[k, -r], [k, r], [-r, k], [r, k]]) {
+        const d = di * di + dj * dj;
+        const p = { i: at.i + di, j: at.j + dj };
+        if (d < far && free(p)) [best, far] = [p, d];
+      }
+    }
+    if (best) return best;
+  }
+  return freePlace(s, others, 0);
 }

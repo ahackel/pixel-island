@@ -8,7 +8,7 @@ import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
 import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
-import { heightAt, inside, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W } from '../../engine/world/terrain.ts';
+import { heightAt, inside, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
@@ -35,7 +35,7 @@ import { roundBrush } from '../../shared/brush.ts';
 import { h, nameTag, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
-import { crowds, deskOf, freePlace, offsetOf, outline as deskOutline, tilesOf } from './desk.ts';
+import { crowds, DESK_GAP, deskOf, freePlace, nearestFree, offsetOf, outline as deskOutline, placeFor, seenAt, seenCorner, tilesOf } from './desk.ts';
 
 // The scene editor: build a scene's ground and plants in Edit, walk around it with a saved
 // character in Play. Scenes, and the editor's own settings, are kept in this browser.
@@ -304,21 +304,20 @@ function sceneNamed(name: string): Scene | null {
     return null;
   }
 }
-/** Opens a scene on the desk with the scenes its holes and ladders lead to, and theirs in turn (an island and its caves). */
-function openWithLinks(scene: Scene): void {
+/**
+ * Opens a scene on the desk at `at` without editing it; a scene open already moves there. The place is taken as it
+ * is: the caller has made sure it is free (`nearestFree`).
+ */
+function openAt(scene: Scene, at: { i: number; j: number }): void {
   if (!library.scenes.includes(scene)) library.scenes.push(scene);
-  const todo = [scene];
-  const seen = new Set<Scene>();
-  while (todo.length && seen.size < 12) {
-    const s = todo.shift()!;
-    if (seen.has(s)) continue;
-    seen.add(s);
-    placeOnDesk(s);
-    for (const it of s.items) {
-      const there = it.to && sceneNamed(it.to.scene);
-      if (there && !seen.has(there)) todo.push(there);
-    }
+  if (library.open.includes(scene.id)) moveOnDesk(scene, at);
+  else {
+    scene.desk = at;
+    library.open.push(scene.id);
   }
+  store();
+  version++;
+  render();
 }
 /** Takes a scene off the desk (it stays in the list); the last one stays. */
 function closeScene(id: string): void {
@@ -402,7 +401,131 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     const o = offsetOf(l.world);
     ctx.drawImage(l.picture, Math.round(o.x - here.x - PAD.x - view.x), Math.round(o.y - here.y - PAD.y - view.y));
   }
+  const toCanvas = (p: { x: number; y: number }) => ({ x: Math.round(p.x - here.x - view.x), y: Math.round(p.y - here.y - view.y) });
+  const ways = prefs.mode === 'edit' ? stubs() : [];
+  for (const st of ways) pixelLine(toCanvas(st.way), toCanvas(st.label), STUB_LINE);
+  if (ghost) {
+    // Where a scene dragged from the list lands: white where it was let go, orange when moved aside to a free place.
+    const corners = deskOutline({ ...ghost.scene, desk: ghost.at }, prefs.rot).map(toCanvas);
+    ctx.fillStyle = ghost.moved ? '#f0b35a33' : '#ffffff26';
+    ctx.beginPath();
+    corners.forEach((c, k) => (k ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y)));
+    ctx.fill();
+    corners.forEach((c, k) => pixelLine(c, corners[(k + 1) % 4], ghost!.moved ? '#f0b35a' : '#ffffff'));
+  }
   placeTabs(view);
+  placeStubs(view, ways);
+}
+
+/** A line of whole pixels on the desk canvas, as the pixel art is drawn; thicker when zoomed out, so it still shows. */
+function pixelLine(a: { x: number; y: number }, b: { x: number; y: number }, color: string): void {
+  ctx.fillStyle = color;
+  const t = Math.max(1, Math.round(1.5 / zoom)), o = Math.floor(t / 2);
+  const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
+  for (let k = 0; k <= n; k++) ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / n) - o, Math.round(a.y + ((b.y - a.y) * k) / n) - o, t, t);
+}
+
+/** A scene being dragged from the list over the desk: where it would land, and whether it was moved aside to a free place. */
+let ghost: { scene: Scene; at: { i: number; j: number }; moved: boolean } | null = null;
+
+/** Where on the desk a scene let go at the pointer lands: its middle under the pointer, or the nearest free place to that. */
+function landing(scene: Scene, e: { clientX: number; clientY: number }): { at: { i: number; j: number }; moved: boolean } {
+  const p = groundPixel(e);
+  const here = offsetOf(world);
+  const want = placeFor(scene, seenAt(p.x + here.x, p.y + here.y), prefs.rot);
+  const at = nearestFree(scene, want, openScenes().filter((o) => o.id !== scene.id));
+  return { at, moved: at.i !== want.i || at.j !== want.j };
+}
+
+// Portal stubs: a way (hole or ladder) whose scene is not on the desk gets a short line to a label naming that scene; a
+// click on the label opens it beside the way. Once it is open the stub goes (lines between open scenes come later).
+
+/** A way leading off the desk: where it is and where its label goes (desk pixels), its scene's file name and name. */
+interface Stub { key: string; way: { x: number; y: number }; label: { x: number; y: number }; to: string; name: string; seen: { i: number; j: number }; dir: { i: number; j: number } }
+const STUB_LINE = '#f0b35a';
+/** How far a label stands from its way, in desk pixels: a little further when zoomed out, so the line shows on the screen. */
+const stubReach = () => Math.max(24, 40 / zoom);
+
+/** The scene a way leads to by file name, if there is one, without opening it: the editor's own of that name, else the project's file. */
+function nameOfScene(file: string): string | null {
+  const own = library.scenes.find((s) => slug(s.name) === file);
+  if (own) return own.name;
+  const p = projectScenes.find((p) => p.name === file);
+  if (!p) return null;
+  p.title ??= (() => { try { return readSceneFile(p.text).name; } catch { return p.name; } })();
+  return p.title;
+}
+
+function stubs(): Stub[] {
+  const open = new Set(openScenes().map((s) => slug(s.name)));
+  const out: Stub[] = [];
+  for (const s of openScenes()) {
+    const w = s.id === world.scene.id ? world : lyingOf(s).world;
+    const o = offsetOf(w);
+    const corner = seenCorner(s, w.rot);
+    const [sw, sh] = w.rot % 2 ? [s.h, s.w] : [s.w, s.h];
+    for (const it of w.viewItems()) {
+      if (!it.to || open.has(it.to.scene)) continue;
+      const name = nameOfScene(it.to.scene);
+      if (!name) continue;
+      const g = toScreen(it.vi, it.vj, standingHeight(w.map, it.vi, it.vj));
+      const way = { x: g.x + w.ground.origin.x + o.x, y: g.y + w.ground.origin.y + o.y };
+      // Out from the scene's middle through the way, as seen; a way in the very middle points east on the screen.
+      let di = it.vi - sw / 2, dj = it.vj - sh / 2;
+      const len = Math.hypot(di, dj);
+      [di, dj] = len > 0.5 ? [di / len, dj / len] : [Math.SQRT1_2, -Math.SQRT1_2];
+      const sx = (di - dj) * (TILE_W / 2), sy = (di + dj) * (TILE_H / 2);
+      const sl = Math.hypot(sx, sy) || 1;
+      out.push({
+        key: `${s.id}:${it.to.scene}:${it.to.id}:${Math.floor(it.vi)},${Math.floor(it.vj)}`, way,
+        label: { x: way.x + (sx / sl) * stubReach(), y: way.y + (sy / sl) * stubReach() },
+        to: it.to.scene, name, seen: { i: corner.i + it.vi, j: corner.j + it.vj }, dir: { i: di, j: dj },
+      });
+    }
+  }
+  return out;
+}
+
+/** Opens the scene a stub leads to, without editing it: at its own place on the desk if that is free, else beside the way. */
+function openStub(st: Stub): void {
+  const target = sceneNamed(st.to);
+  if (!target || library.open.includes(target.id)) return;
+  const others = openScenes().filter((o) => o.id !== target.id);
+  if (target.desk && !others.some((o) => crowds(target.desk!, target, o))) return openAt(target, target.desk);
+  const out = Math.max(target.w, target.h) / 2 + DESK_GAP + 1;
+  const want = placeFor(target, { i: st.seen.i + st.dir.i * out, j: st.seen.j + st.dir.j * out }, prefs.rot);
+  openAt(target, nearestFree(target, want, others));
+}
+
+const deskStubs = h('div', { class: 'desk-tabs' });
+let stubsShown = '';
+/** Puts a label at the end of each stub's line, made again when the stubs change. */
+function placeStubs(view: Rect, all: Stub[]): void {
+  const key = all.map((st) => st.key).join('|');
+  if (key !== stubsShown) {
+    stubsShown = key;
+    deskStubs.replaceChildren(...all.map((st) => {
+      // The stub as it is when clicked (the view may have turned since the label was made).
+      const b = pixelButton(t('desk.stub', { name: st.name }), { icon: 'right', words: st.name }, () => {
+        const now = stubs().find((x) => x.key === st.key);
+        if (now) openStub(now);
+      });
+      b.classList.add('desk-stub');
+      b.dataset.key = st.key;
+      return b;
+    }));
+  }
+  const here = offsetOf(world);
+  const byKey = new Map(all.map((st) => [st.key, st]));
+  for (const b of deskStubs.children as HTMLCollectionOf<HTMLElement>) {
+    const st = byKey.get(b.dataset.key!);
+    if (!st) continue;
+    b.style.left = `${(st.label.x - here.x - view.x) * zoom}px`;
+    b.style.top = `${(st.label.y - here.y - view.y) * zoom}px`;
+    // The label hangs off the end of its line on the side away from the way, so the line shows.
+    const ux = st.label.x - st.way.x, uy = st.label.y - st.way.y, m = Math.max(Math.abs(ux), Math.abs(uy)) || 1;
+    b.style.transform = `translate(${-50 + (50 * ux) / m}%, ${-50 + (50 * uy) / m}%)`;
+  }
 }
 
 /** The open scene other than the edited one whose ground is under the pointer, the front-most. */
@@ -2082,7 +2205,6 @@ async function importScene(): Promise<void> {
     say(t('scene.badFile'));
     return;
   }
-  openWithLinks(scene);
   switchTo(scene);
   say(t('scene.imported', { name: scene.name }));
 }
@@ -2091,7 +2213,7 @@ async function importScene(): Promise<void> {
 
 /** The scenes saved in the project (content/scenes) by file name; the dev server and the build both see them. */
 const projectScenes = Object.entries(import.meta.glob('/src/content/scenes/*.json', { eager: true, import: 'default' }))
-  .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data) }));
+  .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data), title: undefined as string | undefined }));
 /** The scenes of the editor, then the project's own that the editor has not opened yet (a tap on one opens a copy of it). */
 const sceneTiles = () => [
   ...library.scenes.map((s) => ({ id: s.id, words: s.name, picture: sceneThumb(s) })),
@@ -2123,17 +2245,69 @@ current = canon(sceneNow());
 const sceneList = tileLibrary({
   key: 'pixel-scenes', label: t('scene.search'), empty: t('scene.none'), items: sceneTiles, selected: () => library.current,
   pick: (id) => {
-    // A scene picked opens on the desk with the scenes its ways lead to.
+    // A scene picked opens on the desk (beside the ones open) and is edited; one dragged onto the desk only opens there.
     const file = projectScenes.find((p) => `file:${p.name}` === id);
     let scene = library.scenes.find((s) => s.id === id);
     if (file) {
       try { scene = readSceneFile(file.text); } catch { return say(t('scene.badFile')); }
     }
     if (!scene) return;
-    openWithLinks(scene);
     switchTo(scene);
   },
 });
+
+// A scene's tile dragged out of the list onto the desk opens the scene there, without editing it (a mouse drags any
+// way; a finger drags sideways, as up and down scrolls the list). While over the desk, where it will land is outlined.
+let listDrag: { pointer: number; id: string; tile: HTMLElement; x: number; y: number; touch: boolean; scene: Scene | null } | null = null;
+sceneList.addEventListener('pointerdown', (e) => {
+  const tile = (e.target as Element).closest<HTMLElement>('.utile');
+  if (e.button !== 0 || listDrag || prefs.mode !== 'edit' || !tile?.dataset.id) return;
+  listDrag = { pointer: e.pointerId, id: tile.dataset.id, tile, x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch', scene: null };
+});
+/** The scene a tile of the list stands for: the editor's own, or a new copy of a project file (kept only once dropped). */
+function sceneOfTile(id: string): Scene | null {
+  const file = projectScenes.find((p) => `file:${p.name}` === id);
+  if (!file) return library.scenes.find((s) => s.id === id) ?? null;
+  try { return readSceneFile(file.text); } catch { return null; }
+}
+const overDesk = (e: PointerEvent) => {
+  const box = canvas.getBoundingClientRect();
+  return document.elementsFromPoint(e.clientX, e.clientY).includes(canvas) && e.clientX >= box.left && e.clientY >= box.top && e.clientX < box.right && e.clientY < box.bottom;
+};
+sceneList.addEventListener('pointermove', (e) => {
+  const d = listDrag;
+  if (!d || e.pointerId !== d.pointer) return;
+  if (!d.scene) {
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (Math.hypot(dx, dy) < 6 || (d.touch && Math.abs(dx) < Math.abs(dy))) return;
+    d.scene = sceneOfTile(d.id);
+    if (!d.scene) return void (listDrag = null);
+    d.tile.setPointerCapture(e.pointerId);
+    document.body.classList.add('desk-dragging');
+  }
+  ghost = overDesk(e) ? { scene: d.scene, ...landing(d.scene, e) } : null;
+  version++;
+});
+const dropListTile = (e: PointerEvent) => {
+  const d = listDrag;
+  if (!d || e.pointerId !== d.pointer) return;
+  listDrag = null;
+  if (!d.scene) return;
+  document.body.classList.remove('desk-dragging');
+  // The click that ends a drag does not also pick the scene.
+  const eat = (c: Event) => c.stopPropagation();
+  window.addEventListener('click', eat, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 0);
+  const at = e.type === 'pointerup' && ghost ? ghost.at : null;
+  ghost = null;
+  version++;
+  if (!at) return;
+  // A project file dropped twice is one scene: the copy the editor already has of it, if any.
+  const scene = library.scenes.find((s) => s.id === d.scene!.id) ?? d.scene;
+  openAt(scene, at);
+};
+sceneList.addEventListener('pointerup', dropListTile);
+sceneList.addEventListener('pointercancel', dropListTile);
 const side = sidePanel('left', 'pixel-scene-list', 200);
 side.body.append(sceneList);
 
@@ -2146,6 +2320,7 @@ function mount(): void {
   brightToggle = toggle(t('bright'), { icon: 'sun' }, prefs.bright, (bright) => set({ bright }));
   viewport.replaceChildren(
     canvas,
+    deskStubs,
     deskTabs,
     dockBox,
     h('div', { class: 'zoom' },

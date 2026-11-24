@@ -132,3 +132,13 @@ body {
 .desk-tab--crowded {
   outline: 3px solid #d9412b;
 }
+
+/* A way's label on the desk naming the scene it leads to, which is not open; a click opens it beside the way. */
+.desk-stub {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+/* The scene list's tiles can be dragged sideways onto the desk with a finger; up and down still scrolls the list. */
+.editor .uside--left .utile { touch-action: pan-y; }
+body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
