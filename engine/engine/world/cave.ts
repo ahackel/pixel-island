@@ -10,12 +10,12 @@ import { decorById } from './decor.ts';
 import { flicker } from './flame.ts';
 import { particleSystem, tileHalo } from './particles.ts';
 import type { Thing } from './island.ts';
-import type { Scene } from './scene.ts';
-import { inside, LEVEL_PX, MIN_LEVEL, PAINTS, SEA_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
+import { CAVE_FLOOR, type Scene } from './scene.ts';
+import { inside, isRock, LEVEL_PX, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
 import { rasterOf, type TileLamp, type World } from './world.ts';
 
-/** The level of a cave's floor, and how tall its walls stand in levels. */
-export const CAVE_FLOOR = SEA_LEVEL;
+/** The level of a new cave's floor (scene.ts), and how tall its walls stand in levels. */
+export { CAVE_FLOOR };
 export const CAVE_WALL = 5;
 /** The daylight coming in at a way out: cool, and how far it reaches into the dark, in tiles. */
 export const CAVE_DAY = '#c8d4e8';
@@ -26,16 +26,32 @@ const CAVE_GROUND = PAINTS.indexOf('cave') + 1;
 const RUBBLE_ROCKS = ['plant-rocks-9', 'plant-rocks-10'];
 const CLUSTER = [[0.22, 0.85], [0.5, 0.55], [0.8, 0.35]] as const;
 
-const isOpen = (map: HeightMap, i: number, j: number) => inside(map, i, j) && map.levels[j * map.w + i] >= SEA_LEVEL;
+const isOpen = (map: HeightMap, i: number, j: number) => inside(map, i, j) && !isRock(map.levels[j * map.w + i]);
 
-/** Carves cells open to floor, or fills them back with rock. Says whether anything changed. */
+/**
+ * The level a cell of rock is carved down to: the floor beside it, the level most of its open neighbours have (the
+ * lower one on a tie), or `CAVE_FLOOR` with none.
+ */
+function floorBeside(map: HeightMap, c: number): number {
+  const i = c % map.w, j = Math.floor(c / map.w);
+  const count = new Map<number, number>();
+  for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    if (!isOpen(map, i + di, j + dj)) continue;
+    const level = map.levels[(j + dj) * map.w + i + di];
+    count.set(level, (count.get(level) ?? 0) + 1);
+  }
+  let best = CAVE_FLOOR, most = 0;
+  for (const [level, n] of count) if (n > most || (n === most && level < best)) [best, most] = [level, n];
+  return best;
+}
+
+/** Carves cells of rock open, down to the floor beside them, or fills cells back with rock. Says whether anything changed. */
 export function carve(map: HeightMap & { paint: Uint8Array }, cells: number[], open: boolean): boolean {
   let changed = false;
   const levels = map.levels as Int8Array;
   for (const c of cells) {
-    const level = open ? CAVE_FLOOR : MIN_LEVEL;
-    if (levels[c] === level) continue;
-    levels[c] = level;
+    if (open === !isRock(levels[c])) continue;
+    levels[c] = open ? floorBeside(map, c) : ROCK_LEVEL;
     map.paint[c] = CAVE_GROUND;
     changed = true;
   }
@@ -162,7 +178,7 @@ function blockThing(world: World, c: number): Thing {
   };
   // Sorted just behind the walls on its front edges, which reach a little into it.
   return {
-    spot: { i: i + 0.5, j: j + 0.5, level: CAVE_FLOOR }, picture, w: TILE_W, h: height, foot: { x: hw, y: hh + ROCK_TOP }, shadow: [],
+    spot: { i: i + 0.5, j: j + 0.5, level: world.flatLevel }, picture, w: TILE_W, h: height, foot: { x: hw, y: hh + ROCK_TOP }, shadow: [],
     box: { x0: i, x1: i + 0.8, y0: j, y1: j + 0.8, key: i + j + 1 },
   };
 }
@@ -176,7 +192,7 @@ function pillarThing(world: World, c: number): Thing[] {
   const sd = world.map.seed ?? { i: 0, j: 0 };
   const r = (k: number) => h01(i - sd.i, j - sd.j, k);
   const raster = rasterOf({ plant: PILLAR, seed: Math.floor(r(1) * 4), size: 1.2, turn: Math.floor(r(2) * 8) }, 0);
-  return raster ? [{ spot: { i: i + 0.5, j: j + 0.5, level: CAVE_FLOOR }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
+  return raster ? [{ spot: { i: i + 0.5, j: j + 0.5, level: world.flatLevel }, picture: raster, w: raster.w, h: raster.h, foot: raster.foot }] : [];
 }
 
 /** A hash of integers to 0..1, so the rubble of an edge stays put while other edges are carved. */
@@ -214,7 +230,7 @@ const derived = new WeakMap<World, { ground: unknown; rooms: Int16Array; key: st
 const cellOf = (world: World, at?: { i: number; j: number }) => {
   if (!at) return '';
   const i = Math.floor(at.i), j = Math.floor(at.j);
-  return inside(world.map, i, j) && world.map.levels[j * world.map.w + i] >= SEA_LEVEL ? `${i},${j}` : '';
+  return isOpen(world.map, i, j) ? `${i},${j}` : '';
 };
 
 /**
@@ -223,7 +239,7 @@ const cellOf = (world: World, at?: { i: number; j: number }) => {
  * changed (or the view turned), so they follow; `caveThings` does when it has to.
  */
 export function setUpCave(world: World, at?: { i: number; j: number }): void {
-  // Drawn again once as a void, so lone rock cells get their floor (see `World.void`).
+  // Drawn again once as a void: nothing but black beyond its rock (see `World.void`).
   if (!world.void) { world.void = true; world.redraw(); }
   world.trackSpots = true;
   world.shadowDepth = 2.4;

@@ -9,7 +9,7 @@
 //  - neighbouring cell pieces of one kind make a patch, drawn as one piece over its bounding rectangle;
 //  - a covering patch (a roof) rests on the wall tops: the walls under it stop below its eaves and
 //    lie in its shade, and standing in it hides it and cuts its front walls to half height.
-import { cornersOf, LEVEL_M, LEVEL_PX, SEA_LEVEL, SHADOW_RUN, TILE_H, TILE_W, type HeightMap, type TerrainImage } from '../terrain.ts';
+import { cornersOf, isRock, LEVEL_M, levelAt, LEVEL_PX, SEA_LEVEL, SHADOW_RUN, TILE_H, TILE_W, type HeightMap, type TerrainImage } from '../terrain.ts';
 
 export const HALF_W = TILE_W / 2; // screen columns along one cell edge
 export const HALF_H = TILE_H / 2; // rows down along one cell edge
@@ -69,21 +69,19 @@ export type PieceKind = EdgeKind | CellKind;
 
 /**
  * The ground height, in levels, at the two ends of an edge: the higher of what the two cells that
- * share the edge say, so a wall never sinks into the ground and, across a cliff, stands on top.
+ * share the edge say, so a wall never sinks into the ground and, across a cliff, stands on top. Rock on one side
+ * is no ground: the wall stands on the other side's (a cave's wall on its floor).
  */
 export function endHeights(map: HeightMap, e: Edge): [number, number] {
+  const [bi, bj] = e.axis === 'H' ? [e.i, e.j - 1] : [e.i - 1, e.j];
   const front = cornersOf(map, e.i, e.j);
-  let a: number, b: number;
-  if (e.axis === 'H') {
-    const behind = cornersOf(map, e.i, e.j - 1);
-    a = Math.max(front[0], behind[3]);
-    b = Math.max(front[1], behind[2]);
-  } else {
-    const behind = cornersOf(map, e.i - 1, e.j);
-    a = Math.max(front[0], behind[1]);
-    b = Math.max(front[3], behind[2]);
-  }
-  return [Math.max(SEA_LEVEL, a), Math.max(SEA_LEVEL, b)];
+  const behind = cornersOf(map, bi, bj);
+  // The two ends on each side: the edge's first and second end, by which corners of each cell they are.
+  const f = e.axis === 'H' ? [front[0], front[1]] : [front[0], front[3]];
+  const k = e.axis === 'H' ? [behind[3], behind[2]] : [behind[1], behind[2]];
+  const rockFront = isRock(levelAt(map, e.i, e.j)), rockBehind = isRock(levelAt(map, bi, bj));
+  const end = (n: 0 | 1) => (rockBehind && !rockFront ? f[n] : rockFront && !rockBehind ? k[n] : Math.max(f[n], k[n]));
+  return [Math.max(SEA_LEVEL, end(0)), Math.max(SEA_LEVEL, end(1))];
 }
 
 /** The highest ground under a patch. */
@@ -152,7 +150,13 @@ const frontOf = (e: Edge, p: Patch) => (e.axis === 'H' ? e.j === p.j1 + 1 && e.i
 /** Draws buildings with a set of piece kinds, keeping what it drew until `forget`. */
 export class BuildingView {
   private kept = new Map<string, Part>();
-  constructor(private kinds: Record<string, PieceKind>, private site: Site) {}
+  private kinds: Record<string, PieceKind>;
+  private site: Site;
+  // Plain fields, not parameter properties, so node can load this file with its types stripped (the game's tests).
+  constructor(kinds: Record<string, PieceKind>, site: Site) {
+    this.kinds = kinds;
+    this.site = site;
+  }
 
   /** Drops everything drawn, after the kinds' options, the site or the building's height change. */
   forget(): void {

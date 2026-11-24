@@ -15,6 +15,13 @@ export const LEVEL_PX = 8;
 export const SEA_LEVEL = 0;
 export const MIN_LEVEL = -4;
 export const MAX_LEVEL = 12;
+/**
+ * Solid rock: a cell at this level or higher is not ground but rock standing over the ground beside it (a cave's
+ * walls, cut off by the dark above). Rock is not land, nothing stands on it, and the ground beside it keeps its own
+ * height up to it.
+ */
+export const ROCK_LEVEL = 30;
+export const isRock = (level: number) => level >= ROCK_LEVEL;
 
 export interface HeightMap {
   readonly w: number;
@@ -33,7 +40,7 @@ export function createHeightMap(w: number, h: number, fill = MIN_LEVEL): HeightM
   return { w, h, levels: new Int8Array(w * h).fill(fill) };
 }
 
-const clampLevel = (n: number) => Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, Math.round(n)));
+const clampLevel = (n: number) => (isRock(n) ? ROCK_LEVEL : Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, Math.round(n))));
 
 export const inside = (map: HeightMap, i: number, j: number) => i >= 0 && j >= 0 && i < map.w && j < map.h;
 
@@ -77,7 +84,11 @@ export function surfaceAt(map: HeightMap, i: number, j: number): Surface {
   return 'grass';
 }
 
-export const isLand = (map: HeightMap, i: number, j: number) => levelAt(map, i, j) >= SEA_LEVEL;
+/** Ground at or above the water line that one can stand on: not sea, not rock. */
+export const isLand = (map: HeightMap, i: number, j: number) => {
+  const level = levelAt(map, i, j);
+  return level >= SEA_LEVEL && !isRock(level);
+};
 
 /** The largest difference between neighbouring cells that is drawn as a slope rather than a cliff. */
 export const SLOPE_LEVELS = 2;
@@ -143,12 +154,17 @@ export function toScreen(i: number, j: number, level = 0): { x: number; y: numbe
  * west (i, j + 1). A corner is the average of the four cells round it, kept within one level of
  * this cell. Neighbours share their corners, so a step of one or two levels becomes a slope, and a
  * larger step leaves the difference as a cliff. The sea floor slopes the same way, so a beach
- * runs into the water.
+ * runs into the water. Rock is no ground to slope to: round a corner it counts as this cell, and rock's own top is flat.
  */
 export function cornersOf(map: HeightMap, i: number, j: number): [number, number, number, number] {
   const own = levelAt(map, i, j);
+  if (isRock(own)) return [own, own, own, own];
+  const at = (ci: number, cj: number) => {
+    const level = levelAt(map, ci, cj);
+    return isRock(level) ? own : level;
+  };
   const corner = (vi: number, vj: number) => {
-    const mean = (levelAt(map, vi - 1, vj - 1) + levelAt(map, vi, vj - 1) + levelAt(map, vi - 1, vj) + levelAt(map, vi, vj)) / 4;
+    const mean = (at(vi - 1, vj - 1) + at(vi, vj - 1) + at(vi - 1, vj) + at(vi, vj)) / 4;
     return Math.max(own - 1, Math.min(own + 1, mean));
   };
   return [corner(i, j), corner(i + 1, j), corner(i + 1, j + 1), corner(i, j + 1)];

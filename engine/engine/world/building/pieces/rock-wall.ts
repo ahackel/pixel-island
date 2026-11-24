@@ -6,7 +6,7 @@
 // wall is, i + j, and the height up it, sheared by where it is on screen), not per edge, so a run of
 // edges reads as one rock face, and the rock goes on round corners without a seam. Drawn by rule per
 // screen column like the plank wall.
-import { LEVEL_PX } from '../../terrain.ts';
+import { isRock, LEVEL_PX } from '../../terrain.ts';
 import { endHeights, HALF_H, HALF_W, hex, mul, shadowAt, TONE, type Box, type EdgeKind } from '../building.ts';
 
 export interface RockWallOptions {
@@ -79,12 +79,13 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
       const sy = o.y + (e.i + e.j) * HALF_H; // the row of the first end at level 0
       const pad = 1;
       const tall = (cut ? height / 2 : height) * LEVEL_PX;
-      // The cap: how many cells behind the wall lie below its foot, so are rock.
+      // The cap: how many cells behind the wall are rock (or ground below its foot).
       let n = 0;
       const low = Math.min(h0, h1);
       while (n < capMax) {
         const ci = e.axis === 'H' ? e.i : e.i - 1 - n, cj = e.axis === 'H' ? e.j - 1 - n : e.j;
-        if (ci >= 0 && cj >= 0 && ci < map.w && cj < map.h && map.levels[cj * map.w + ci] >= low) break;
+        const level = ci >= 0 && cj >= 0 && ci < map.w && cj < map.h ? map.levels[cj * map.w + ci] : -Infinity;
+        if (!isRock(level) && level >= low) break;
         n++;
       }
       const w = 16 + 2 * pad + n * HALF_W;

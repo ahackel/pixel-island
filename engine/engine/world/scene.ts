@@ -14,7 +14,7 @@ import { decorById, type PlacedDecor } from './decor.ts';
 import { LINKING, nameLink, OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
-import { createHeightMap, generateIsland, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, type HeightMap } from './terrain.ts';
+import { createHeightMap, generateIsland, isRock, MAX_LEVEL, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
   /** A flora catalogue id. */
@@ -64,9 +64,9 @@ export interface Scene {
   name: string;
   w: number;
   h: number;
-  /** Level per tile, row by row. */
+  /** Level per tile, row by row; `ROCK_LEVEL` is solid rock (terrain.ts). */
   levels: number[];
-  /** Painted surface per tile: 0 follows the height, otherwise `PAINTS[n - 1]`. */
+  /** Painted surface per tile: 0 follows the height (in a cave, the cave's own stone), otherwise `PAINTS[n - 1]`. */
   paint: number[];
   plants: PlacedPlant[];
   /** Starfish, shells and the like, lying on the ground. */
@@ -131,27 +131,43 @@ export function createScene(name: string, w: number, h: number, island: boolean,
 }
 
 /**
- * A cave's ground is flat: every tile at the water line, and the paint says what is open. A painted tile (by default
- * `CAVE_OPEN`, the cave's own stone, or sand, dirt and so on) is floor, an unpainted one is rock (so a carved floor is
- * not a different height from the rock around it).
+ * A cave's ground: solid rock (`ROCK_LEVEL`) with floor carved out of it, the floor at `CAVE_FLOOR`, a tier over the
+ * water line so there is room to dig down. Unpainted floor is the cave's own stone, `CAVE_OPEN` as the terrain paints it.
  */
 export const CAVE_OPEN = PAINTS.indexOf('cave') + 1;
+export const CAVE_FLOOR = SEA_LEVEL + 3;
 
 /** A new cave: solid rock all through, to be carved open (cave.ts `carve`). */
 export function createCave(name: string, w: number, h: number): Scene {
   const scene = createScene(name, w, h, false);
-  scene.levels.fill(SEA_LEVEL);
+  scene.levels.fill(ROCK_LEVEL);
   scene.paint.fill(0);
   return { ...scene, cave: { ...CAVE_DEFAULTS, exits: [] } };
 }
 
-/** The scene's ground as the terrain code reads it. */
+/** The scene's ground as the terrain code reads it. In a cave, beyond the map is rock, and unpainted floor its own stone. */
 export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
   w: scene.w, h: scene.h,
-  // In a cave the world works with rock as ground below the water line, all of it painted as cave, though the scene keeps it all flat (see `CAVE_OPEN`).
   paint: scene.cave ? Uint8Array.from(scene.paint, (p) => p || CAVE_OPEN) : Uint8Array.from(scene.paint),
-  levels: scene.cave ? Int8Array.from(scene.paint, (p) => (p ? SEA_LEVEL : MIN_LEVEL)) : Int8Array.from(scene.levels),
+  levels: Int8Array.from(scene.levels),
+  ...(scene.cave && { outside: ROCK_LEVEL }),
 });
+
+/**
+ * A cave saved before rock was stored as rock comes in two older forms: all of it flat at the water line with the
+ * floor painted and the rock not (the paint said what was open), or before that the rock below the water line. Both
+ * have no ground above the water line, which a cave never has since (its floor is at `CAVE_FLOOR`). Its levels and
+ * paint as they are now, or nothing when it is no old cave.
+ */
+function oldCave(levels: number[], paint: number[]): { levels: number[]; paint: number[] } | null {
+  if (levels.some((l) => l > SEA_LEVEL)) return null;
+  const sunk = levels.some((l) => l < SEA_LEVEL);
+  const open = levels.map((l, c) => (sunk ? l >= SEA_LEVEL : paint[c] > 0));
+  return {
+    levels: open.map((o) => (o ? CAVE_FLOOR : ROCK_LEVEL)),
+    paint: open.map((o, c) => (o && !sunk ? paint[c] : 0)),
+  };
+}
 
 /**
  * A scene with a new size, keeping what fits; new ground is sea, or in a cave rock. With `dx` and `dy` the old ground
@@ -161,7 +177,7 @@ export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
 export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Scene {
   w = clamp(Math.round(w), MIN_SIZE, MAX_SIZE);
   h = clamp(Math.round(h), MIN_SIZE, MAX_SIZE);
-  const levels = new Array(w * h).fill(scene.cave ? SEA_LEVEL : MIN_LEVEL);
+  const levels = new Array(w * h).fill(scene.cave ? ROCK_LEVEL : MIN_LEVEL);
   const paint = new Array(w * h).fill(0);
   for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) {
     const ni = i + dx, nj = j + dy;
@@ -198,8 +214,11 @@ export function cleanScene(input: unknown): Scene {
   const h = Number(s.h);
   if (!Number.isInteger(w) || !Number.isInteger(h) || w < MIN_SIZE || h < MIN_SIZE || w > MAX_SIZE || h > MAX_SIZE) throw new Error('bad size');
   if (!Array.isArray(s.levels) || s.levels.length !== w * h) throw new Error('bad ground');
-  const levels = s.levels.map((n) => clamp(Math.round(Number(n)) || 0, MIN_LEVEL, MAX_LEVEL));
-  const paint = Array.isArray(s.paint) && s.paint.length === w * h
+  let levels = s.levels.map((n) => {
+    const level = Math.round(Number(n)) || 0;
+    return isRock(level) ? ROCK_LEVEL : clamp(level, MIN_LEVEL, MAX_LEVEL);
+  });
+  let paint = Array.isArray(s.paint) && s.paint.length === w * h
     ? s.paint.map((n) => (Number.isInteger(n) && n >= 0 && n <= PAINTS.length ? n : 0))
     : new Array(w * h).fill(0);
   const num = (n: unknown, lo: number, hi: number, fallback: number) => (typeof n === 'number' && Number.isFinite(n) ? clamp(n, lo, hi) : fallback);
@@ -288,9 +307,11 @@ export function cleanScene(input: unknown): Scene {
       rubble: num(c.rubble, 0, 1, CAVE_DEFAULTS.rubble),
       exits: (Array.isArray(c.exits) ? c.exits : []).filter((e) => !!e && typeof e === 'object').map((e) => ({ i: num(e.i, 0, w, w / 2), j: num(e.j, 0, h, h / 2) })),
     };
-    // A cave saved before its ground was flat has rock below the water line: it becomes unpainted ground, the floor painted open.
-    if (levels.some((l) => l < SEA_LEVEL)) scene.paint = levels.map((l) => (l >= SEA_LEVEL ? CAVE_OPEN : 0));
-    scene.levels.fill(SEA_LEVEL);
+    const old = oldCave(levels, paint);
+    if (old) ({ levels, paint } = old);
+    // The cave's own stone is unpainted floor, and rock has no paint.
+    scene.levels = levels;
+    scene.paint = paint.map((p, c) => (p === CAVE_OPEN || isRock(levels[c]) ? 0 : p));
   }
   refreshLinks(scene, sources);
   return scene;

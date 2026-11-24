@@ -8,7 +8,7 @@ import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
 import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
-import { heightAt, inside, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
+import { heightAt, inside, isLand, isRock, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
@@ -416,7 +416,8 @@ function moveOnDesk(scene: Scene, at: { i: number; j: number }): void {
 /** The start point, shown while editing: a small flag. */
 function flagOf(w: World): Thing {
   const s = w.toView(w.scene.spawn);
-  return { spot: { i: s.i, j: s.j, level: Math.max(SEA_LEVEL, levelAt(w.map, Math.floor(s.i), Math.floor(s.j))) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
+  const level = levelAt(w.map, Math.floor(s.i), Math.floor(s.j));
+  return { spot: { i: s.i, j: s.j, level: isRock(level) ? w.flatLevel : Math.max(SEA_LEVEL, level) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
 }
 
 /** Draws a lying scene's picture again if the view turned (or the cave's light was switched) since it was last drawn. */
@@ -639,7 +640,7 @@ function linkEnd(e: { clientX: number; clientY: number }, from: Way): LinkEnd | 
     const away = awayUnder(e);
     return away && { scene: away.scene, w: lyingOf(away.scene).world, tile: away.tile };
   })();
-  return ground && levelAt(ground.w.map, ground.tile.i, ground.tile.j) >= SEA_LEVEL ? ground : null;
+  return ground && isLand(ground.w.map, ground.tile.i, ground.tile.j) ? ground : null;
 }
 
 /** The line of a link being dragged: to where it would end, or loose and dashed to the pointer. */
@@ -968,23 +969,23 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
     case 'spawn':
     case 'animal':
     case 'person':
-      return levelAt(w.map, at.i, at.j) < SEA_LEVEL;
+      return !isLand(w.map, at.i, at.j);
     case 'decor':
       return !decorFits(at, w);
     case 'item':
-      return levelAt(w.map, at.i, at.j) < SEA_LEVEL;
+      return !isLand(w.map, at.i, at.j);
     case 'prop': {
       const kind = propKind(prefs.prop);
       if (kind?.place === 'plant') return !grows(w.map, kind.id, at.i + 0.5, at.j + 0.5);
       if (kind?.place === 'decor') return levelAt(w.floor, at.i, at.j) < DECOR_DEPTH;
-      return levelAt(w.map, at.i, at.j) < SEA_LEVEL;
+      return !isLand(w.map, at.i, at.j);
     }
     case 'raise':
       return brushCells(at, tool, w).every((c) => w.map.levels[c] >= MAX_LEVEL);
     case 'lower':
       return brushCells(at, tool, w).every((c) => w.map.levels[c] <= MIN_LEVEL);
     case 'exit':
-      return levelAt(w.map, at.i, at.j) < SEA_LEVEL;
+      return !isLand(w.map, at.i, at.j);
     default:
       return false;
   }
@@ -1019,7 +1020,7 @@ const DECOR_DEPTH = SEA_LEVEL - 2;
 
 /** Where on a tile a thing hung on a wall goes: just in front of the wall at its back, if it has one. */
 function onWall(at: { i: number; j: number }): { i: number; j: number } | null {
-  const rock = (i: number, j: number) => !inside(world.map, i, j) || levelAt(world.map, i, j) < SEA_LEVEL;
+  const rock = (i: number, j: number) => !inside(world.map, i, j) || !isLand(world.map, i, j);
   if (rock(at.i, at.j - 1)) return { i: at.i + 0.5, j: at.j + 0.28 };
   if (rock(at.i - 1, at.j)) return { i: at.i + 0.28, j: at.j + 0.5 };
   return null;
@@ -1027,7 +1028,7 @@ function onWall(at: { i: number; j: number }): { i: number; j: number } | null {
 
 /** Decorations lie on land and the sea floor near it; in a cave only on its floor, not in the rock. */
 const decorFits = (at: { i: number; j: number }, w = world) =>
-  w.scene.cave ? levelAt(w.map, at.i, at.j) >= SEA_LEVEL : levelAt(w.floor, at.i, at.j) >= DECOR_DEPTH;
+  w.scene.cave ? isLand(w.map, at.i, at.j) : levelAt(w.floor, at.i, at.j) >= DECOR_DEPTH;
 
 function placeDecor(at: { i: number; j: number }): void {
   if (!decorFits(at)) return;
@@ -1050,7 +1051,7 @@ function animalChoices(): { id: string; name: string; animal: Animal }[] {
 }
 
 function placeAnimal(at: { i: number; j: number }): void {
-  if (levelAt(world.map, at.i, at.j) < SEA_LEVEL) return say(t('animal.cannot'));
+  if (!isLand(world.map, at.i, at.j)) return say(t('animal.cannot'));
   const choices = animalChoices();
   const choice = choices.find((c) => c.id === prefs.animal) ?? choices[0];
   const i = at.i + 0.5;
@@ -1068,7 +1069,7 @@ function personChoices(): Saved[] {
 
 /** A character in the middle of a tile, on land; one per tile. */
 function placePerson(at: { i: number; j: number }): void {
-  if (levelAt(world.map, at.i, at.j) < SEA_LEVEL) return;
+  if (!isLand(world.map, at.i, at.j)) return;
   const choice = personChoices().find((c) => c.id === prefs.person) ?? personChoices()[0];
   const seen = world.scene.people.map((p) => world.toView(p));
   world.scene.people = world.scene.people.filter((_, k) => Math.floor(seen[k].i) !== at.i || Math.floor(seen[k].j) !== at.j);
@@ -1139,7 +1140,7 @@ function objectChoices(): { id: string; name: string; prop: Build }[] {
 
 /** An object in the middle of a tile, on land, facing the way the last one was turned; one per tile. */
 function placeItem(at: { i: number; j: number }): void {
-  if (levelAt(world.map, at.i, at.j) < SEA_LEVEL) return;
+  if (!isLand(world.map, at.i, at.j)) return;
   const seen = world.viewItems();
   world.scene.items = world.scene.items.filter((_, k) => Math.floor(seen[k].vi) !== at.i || Math.floor(seen[k].vj) !== at.j);
   const choice = objectChoices().find((c) => c.id === prefs.item) ?? objectChoices()[0];
@@ -1181,7 +1182,7 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
     prefs.item = was;
     return;
   }
-  if (levelAt(world.map, at.i, at.j) < SEA_LEVEL) return;
+  if (!isLand(world.map, at.i, at.j)) return;
   const seen = world.viewProps();
   const list = world.scene.props ?? [];
   world.scene.props = list.filter((_, k) => Math.floor(seen[k].vi) !== at.i || Math.floor(seen[k].vj) !== at.j);
@@ -1268,7 +1269,7 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
 /** A way out of the cave on a tile of floor, or none there any more if it had one. */
 function toggleExit(at: { i: number; j: number }): void {
   const cave = world.scene.cave;
-  if (!cave || levelAt(world.map, at.i, at.j) < SEA_LEVEL) return;
+  if (!cave || !isLand(world.map, at.i, at.j)) return;
   const here = (e: { i: number; j: number }) => { const v = world.toView(e); return Math.floor(v.i) === at.i && Math.floor(v.j) === at.j; };
   if (cave.exits.some(here)) cave.exits = cave.exits.filter((e) => !here(e));
   else cave.exits.push(world.toData({ i: at.i + 0.5, j: at.j + 0.5 }));
@@ -1382,7 +1383,7 @@ function canStand(sel: Selected, at: { i: number; j: number }): boolean {
   if (!inside(world.map, i, j)) return false;
   if (sel.kind === 'plant') return grows(world.map, (sel.obj as PlacedPlant).plant, at.i, at.j);
   if (sel.kind === 'decor') return decorFits({ i, j });
-  return levelAt(world.map, i, j) >= SEA_LEVEL;
+  return isLand(world.map, i, j);
 }
 
 /**
@@ -1474,7 +1475,7 @@ function startPlay(): void {
   roster = loadRoster();
   if (prefs.character && !roster.some((c) => c.id === prefs.character)) prefs.character = '';
   let at = world.toView(world.scene.spawn);
-  if (!inside(world.map, Math.floor(at.i), Math.floor(at.j)) || levelAt(world.map, Math.floor(at.i), Math.floor(at.j)) < SEA_LEVEL) {
+  if (!inside(world.map, Math.floor(at.i), Math.floor(at.j)) || !isLand(world.map, Math.floor(at.i), Math.floor(at.j))) {
     at = world.nearestLand(at.i, at.j);
   }
   actor = new Actor(characterLook(), at);
@@ -1600,7 +1601,7 @@ function pickUp(p: Pickable, ms: number): void {
 function drop(): void {
   if (!actor || !herd || !held) return;
   const spot = actor.ahead(0.55);
-  const dry = inside(world.map, Math.floor(spot.i), Math.floor(spot.j)) && levelAt(world.map, Math.floor(spot.i), Math.floor(spot.j)) >= SEA_LEVEL;
+  const dry = inside(world.map, Math.floor(spot.i), Math.floor(spot.j)) && isLand(world.map, Math.floor(spot.i), Math.floor(spot.j));
   if (!dry || !world.canWalk(actor, spot)) return say(t('drop.cannot'));
   const at = world.toData(spot);
   if ('item' in held) world.loose!.push({ item: held.item.item, ...at });
@@ -2555,7 +2556,7 @@ function sceneThumb(s: Scene): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const im = g.createImageData(s.w, s.h);
   const put = (i: number, rgb: number[]) => { im.data.set([...rgb, 255], i * 4); };
-  s.levels.forEach((l, i) => put(i, s.cave ? (s.paint[i] ? [226, 204, 140] : [0, 0, 0]) : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
+  s.levels.forEach((l, i) => put(i, isRock(l) ? [0, 0, 0] : s.cave ? [226, 204, 140] : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
   for (const p of s.plants) { const i = Math.floor(p.j) * s.w + Math.floor(p.i); if (i >= 0 && i < s.w * s.h) put(i, [40, 90, 50]); }
   g.putImageData(im, 0, 0);
   const k = 52 / Math.max(s.w, s.h);
