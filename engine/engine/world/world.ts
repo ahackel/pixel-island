@@ -9,9 +9,10 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater, waterOf,
+  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, standingHeight, surfaceAt, underwater, waterOf,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
+import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
 import { FACING_VIEWS, turnFacing, type Facing } from '../core/puppet.ts';
 import type { Herd } from './herd.ts';
@@ -297,15 +298,19 @@ export const grows = (map: HeightMap, plant: string, i: number, j: number) => {
 };
 
 /** A copy of a map where each cell of rock with floor on all four sides (a stalagmite) stands as high as the lowest of them. */
-function withLoneRockFloored<M extends HeightMap>(map: M): M {
+function withLoneRockFloored<M extends HeightMap & { shape: Uint8Array }>(map: M): M {
   const levels = Int8Array.from(map.levels);
+  const shape = Uint8Array.from(map.shape);
   const at = (i: number, j: number) => map.levels[j * map.w + i];
   for (let j = 1; j < map.h - 1; j++) for (let i = 1; i < map.w - 1; i++) {
     if (!isRock(at(i, j))) continue;
     const round = [at(i + 1, j), at(i - 1, j), at(i, j + 1), at(i, j - 1)];
-    if (!round.some(isRock)) levels[j * map.w + i] = Math.min(...round);
+    if (round.some(isRock)) continue;
+    // Flat, at the lowest floor round it.
+    levels[j * map.w + i] = Math.min(...round);
+    shape[j * map.w + i] = CUT;
   }
-  return { ...map, levels };
+  return { ...map, levels, shape };
 }
 
 /** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change. */
@@ -367,7 +372,7 @@ export class World {
   /** Quarter turns, 0 to 3. */
   rot: number;
   /** The ground as seen: the scene's ground turned by `rot`. Edits go here and are copied back by `redraw`. */
-  map: HeightMap & { paint: Uint8Array };
+  map: HeightMap & { paint: Uint8Array; shape: Uint8Array };
   ground!: TerrainImage;
   /** The ground as drawn: the map, with the sea floor sloping gently from every coast. Walkers wade on it. */
   floor!: HeightMap;
@@ -453,7 +458,7 @@ export class World {
    */
   alone = false;
   /** The map the ground is drawn from: `map`, but a lone cell of rock is drawn as floor, for what stands there (a cave's stalagmite) to stand on. */
-  private shown!: HeightMap & { paint: Uint8Array };
+  private shown!: HeightMap & { paint: Uint8Array; shape: Uint8Array };
   /** How much darker than outside shadows fall: more in a cave, where little else lights the ground. */
   shadowDepth = 1;
   /** Fish under the water, in view coordinates on `floor`; the game moves them (see fish.ts). */
@@ -524,23 +529,27 @@ export class World {
     return Math.floor(d.j) * this.scene.w + Math.floor(d.i);
   }
 
-  private viewMap(): HeightMap & { paint: Uint8Array } {
+  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
     // The scene's shift as a step in this view.
     const at = this.toView({ i: 0, j: 0 }), to = this.toView(this.scene.shift ?? { i: 0, j: 0 });
     const base = this.scene.origin ?? this.scene;
     const seed = { i: to.i - at.i, j: to.j - at.j, x: (this.rot % 2 ? base.w : base.h) * (TILE_W / 2) + 8 };
-    const map = { ...mapOf(this.scene), seed };
+    const data = { ...mapOf(this.scene), seed };
+    const map = { ...data, shape: data.shape ?? defaultShape(data) };
     if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
+    const shape = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const c = this.dataCell(i, j);
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
+      // A ramp turns with the view.
+      shape[j * w + i] = turnShape(map.shape[c], this.rot);
     }
-    return { ...map, w, h, levels, paint };
+    return { ...map, w, h, levels, paint, shape };
   }
 
   /** Turns the view; the scene itself does not change. */
@@ -577,16 +586,24 @@ export class World {
     for (const l of this.shown.levels) if (l >= this.water && !isRock(l) && l < flat) flat = l;
     if (flat === Infinity) flat = this.scene.cave ? CAVE_FLOOR : SEA_LEVEL;
     this.flatLevel = flat;
-    return renderTerrain({ ...this.shown, levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)), ...(this.void && { outside: flat }) });
+    // Rock drawn so is cut ground; beyond a void's edge lies rock, which the ground beside it does not slope to.
+    return renderTerrain({
+      ...this.shown,
+      levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
+      shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
+      ...(this.void && { outside: ROCK_LEVEL }),
+    });
   }
 
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
   commit(): void {
+    const shape = (this.scene.shape ??= new Array(this.scene.w * this.scene.h).fill(0));
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
       const at = j * this.map.w + i;
       const level = this.map.levels[at], paint = this.map.paint[at];
       this.scene.levels[c] = level;
+      shape[c] = turnShape(this.map.shape[at], -this.rot);
       // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock has no paint.
       this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || isRock(level)) ? 0 : paint;
     }
@@ -1377,14 +1394,28 @@ export class World {
     }
   }
 
-  /** Whether a walker can stand at a point: land or the shallows, reached without a cliff, clear of big plants. */
+  /**
+   * Whether a walker can step from one cell to the next (ground.ts): across an edge whose ends are within a level on
+   * both sides, onto ground that is no rock, hole or too steep a slope; diagonally by way of a cell beside both.
+   */
+  private stepOk(a: [number, number], b: [number, number]): boolean {
+    const f = this.floor;
+    const di = b[0] - a[0], dj = b[1] - a[1];
+    if (Math.abs(di) > 1 || Math.abs(dj) > 1) return true;
+    if (!di || !dj) return edgeWalkable(f, ...a, ...b);
+    const via = (m: [number, number]) => standable(f, ...m) && edgeWalkable(f, ...a, ...m) && edgeWalkable(f, ...m, ...b);
+    return via([b[0], a[1]]) || via([a[0], b[1]]);
+  }
+
+  /** Whether a walker can stand at a point: land or the shallows, reached without a cliff or too steep a slope, clear of big plants. */
   canWalk(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
     const a: [number, number] = [Math.floor(from.i), Math.floor(from.j)];
     const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)];
     if (!inside(this.floor, ...b) || this.water - levelAt(this.floor, ...b) > WADE) return false;
-    if (isRock(levelAt(this.map, ...b))) return false;
-    // A step of more than a slope is a cliff, on land or under the water.
-    if ((a[0] !== b[0] || a[1] !== b[1]) && Math.abs(levelAt(this.floor, ...a) - levelAt(this.floor, ...b)) > SLOPE_LEVELS) return false;
+    if (isRock(levelAt(this.map, ...b)) || shapeAt(this.map, ...b) === HOLE) return false;
+    // Onto a cell (not about in the one stood on, so nobody is stuck on a slope they were set down on): not too steep, and
+    // across no step, on land or under the water.
+    if ((a[0] !== b[0] || a[1] !== b[1]) && (!standable(this.floor, ...b) || !this.stepOk(a, b))) return false;
     for (const p of this.viewPlants()) {
       const r = BLOCK[plantById(p.plant)!.category] * p.size;
       if (!r) continue;

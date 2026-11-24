@@ -21,6 +21,7 @@ import {
 } from '../../engine/world/scene.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
+import { bestRamp, CUT, HOLE, RAMP, rampDir, SMOOTH } from '../../engine/world/ground.ts';
 import { carve, caveLamps, caveThings, caveTint, CAVE_DAY, flicker } from '../../engine/world/cave.ts';
 import { lightByTile } from '../../engine/world/daylight.ts';
 import { isHidden, propKind, propKinds, propPicture, variantsOf } from '../../engine/world/prop.ts';
@@ -46,11 +47,14 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
+const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
-/** An island's ground is shaped by height and paint; a cave's is carved out of the rock and has ways out. */
+/** A cave's ground is carved out of the rock and has ways out; smoothing, which runs over rock too, is for islands. */
 const CAVE_ONLY: Tool[] = ['carve', 'exit'];
-const ISLAND_ONLY: Tool[] = ['raise', 'lower', 'smooth', 'level'];
+const ISLAND_ONLY: Tool[] = ['smooth'];
+/** What the Shape tool makes of the ground (ground.ts). */
+const SHAPE_PICKS = [{ id: 'smooth', icon: 'smooth' }, { id: 'cut', icon: 'rect' }, { id: 'ramp', icon: 'slope' }, { id: 'hole', icon: 'down' }] as const;
+type ShapePick = (typeof SHAPE_PICKS)[number]['id'];
 const toolsFor = (s: Scene) => TOOLS.filter((tool) => !(s.cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
 const toolsHere = () => toolsFor(sceneNow());
 /**
@@ -59,12 +63,12 @@ const toolsHere = () => toolsFor(sceneNow());
  */
 const toolIn = (s: Scene): Tool => (toolsFor(s).includes(prefs.tool) ? prefs.tool : 'move');
 const toolNow = () => toolIn(sceneNow());
-const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'erase'];
+const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'carve', 'erase'];
 const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Tool, string> = {
-  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', paint: 'brush', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -72,6 +76,8 @@ interface Prefs {
   tool: Tool;
   /** 0 by height, otherwise `PAINTS[n - 1]`. */
   paint: number;
+  /** What the Shape tool makes of the ground. */
+  shape: ShapePick;
   /** Brush size in tiles across, 1 to 7; the brush is round. */
   brush: number;
   plant: string;
@@ -106,12 +112,13 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
+    if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
     if (Number.isInteger(saved?.brush) && saved.brush >= 1 && saved.brush <= BRUSH_MAX) prefs.brush = saved.brush;
     if (plantById(saved?.plant)) prefs.plant = saved.plant;
     if (decorById(saved?.decor)) prefs.decor = saved.decor;
@@ -983,6 +990,9 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
       if (kind?.place === 'decor') return levelAt(w.floor, at.i, at.j) < DECOR_DEPTH;
       return !isLand(w.map, at.i, at.j);
     }
+    case 'shape':
+    case 'level':
+      return brushCells(at, tool, w).every((c) => isRock(w.map.levels[c]));
     case 'raise':
       return brushCells(at, tool, w).every((c) => w.map.levels[c] >= MAX_LEVEL);
     case 'lower':
@@ -1201,7 +1211,7 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
  * painting a tile twice; smoothing works again on every tile the drag enters, and levelling
  * keeps to the height of the tile the drag started on.
  */
-function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true }): void {
+function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean }): void {
   const map = world.map;
   const fresh = brushCells(at).filter((c) => !stroke.touched.has(c));
   fresh.forEach((c) => stroke.touched.add(c));
@@ -1212,14 +1222,37 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
       groundDirty = true;
       break;
     case 'level':
+      // Rock is carved, not levelled.
       stroke.level ??= levelAt(map, at.i, at.j);
-      for (const c of brushCells(at)) setLevel(map, ...tile(c), stroke.level);
+      if (isRock(stroke.level)) break;
+      for (const c of brushCells(at)) if (!isRock(map.levels[c])) setLevel(map, ...tile(c), stroke.level);
       groundDirty = true;
       break;
     case 'raise':
     case 'lower':
-      for (const c of fresh) setLevel(map, c % map.w, Math.floor(c / map.w), map.levels[c] + (toolNow() === 'raise' ? 1 : -1));
+      for (const c of fresh) if (!isRock(map.levels[c])) setLevel(map, c % map.w, Math.floor(c / map.w), map.levels[c] + (toolNow() === 'raise' ? 1 : -1));
       groundDirty ||= fresh.length > 0;
+      break;
+    case 'shape':
+      for (const c of fresh) {
+        if (isRock(map.levels[c])) continue;
+        if (prefs.shape !== 'ramp') {
+          const shape = prefs.shape === 'smooth' ? SMOOTH : prefs.shape === 'cut' ? CUT : HOLE;
+          if (map.shape[c] !== shape) { map.shape[c] = shape; groundDirty = true; }
+          continue;
+        }
+        // A drag that starts on a ramp takes ramps away (cut again); otherwise it lays them, each the way it can rise.
+        stroke.unramp ??= rampDir(map.shape[c]) >= 0;
+        if (stroke.unramp) {
+          if (rampDir(map.shape[c]) >= 0) { map.shape[c] = CUT; groundDirty = true; }
+          continue;
+        }
+        if (rampDir(map.shape[c]) >= 0) continue;
+        const d = bestRamp(map, ...tile(c));
+        if (d < 0) { say(t('shape.noRamp')); continue; }
+        map.shape[c] = RAMP + d;
+        groundDirty = true;
+      }
       break;
     case 'paint':
       for (const c of fresh) map.paint[c] = prefs.paint;
@@ -2321,6 +2354,9 @@ function editOptions(): Node[] {
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }
+  if (tool === 'shape') {
+    rows.push(field({ words: t('shape') }, choice(t('shape'), SHAPE_PICKS.map((p) => ({ id: p.id, icon: p.icon, words: t(`shape.${p.id}` as Key) })), () => prefs.shape, (id) => set({ shape: id as ShapePick }), 'buttons')));
+  }
   if (BRUSHED.includes(tool)) {
     const picture = h('span', {}, brushPicture(prefs.brush));
     // Dragging only changes the number and the picture: a redraw of the panel would drop the drag.
@@ -2335,6 +2371,7 @@ function editOptions(): Node[] {
     rows.push(field({ words: t('brush') }, h('div', { class: 'urow' }, size, picture)));
   }
   if (rows.length) out.push(fields(...rows));
+  if (tool === 'shape') out.push(h('p', { class: 'opts__tip' }, t(`tip.shape.${prefs.shape}` as Key)));
   if (tool === 'prop') out.push(...propLibrary());
   if (tool === 'plant') out.push(picks(t('plants'), FLORA.map((e) => ({ id: e.id, name: plantName(e.id, e.label), picture: thumb(e.id) })), prefs.plant, (plant) => set({ plant })));
   if (tool === 'decor') out.push(picks(t('decor'), DECOR.map((d) => ({ id: d.id, name: t(`decor.${d.id}` as Key), picture: decorThumb(d.id) })), prefs.decor, (decor) => set({ decor })));

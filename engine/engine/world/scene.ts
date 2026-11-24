@@ -14,6 +14,7 @@ import { decorById, type PlacedDecor } from './decor.ts';
 import { LINKING, nameLink, OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
+import { CUT, defaultShape, SHAPES } from './ground.ts';
 import { createHeightMap, generateIsland, isRock, MAX_LEVEL, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
@@ -68,6 +69,8 @@ export interface Scene {
   levels: number[];
   /** Painted surface per tile: 0 follows the height (in a cave, the cave's own stone), otherwise `PAINTS[n - 1]`. */
   paint: number[];
+  /** Shape per tile (ground.ts: smooth, cut, a ramp's four directions, hole). Missing only in scenes from before shapes, which get theirs by rule (ground.ts `defaultShape`). */
+  shape?: number[];
   plants: PlacedPlant[];
   /** Starfish, shells and the like, lying on the ground. */
   decor: PlacedDecor[];
@@ -157,7 +160,7 @@ export function createScene(name: string, w: number, h: number, island: boolean,
   w = clamp(Math.round(w), MIN_SIZE, MAX_SIZE);
   h = clamp(Math.round(h), MIN_SIZE, MAX_SIZE);
   const map = island ? generateIsland(seed, w, h) : createHeightMap(w, h, -1);
-  return { id: newId(), name, w, h, levels: Array.from(map.levels), paint: new Array(w * h).fill(0), plants: [], decor: [], animals: [], people: [], items: [], props: [], spawn: { i: w / 2, j: h / 2 } };
+  return { id: newId(), name, w, h, levels: Array.from(map.levels), paint: new Array(w * h).fill(0), shape: Array.from(defaultShape(map)), plants: [], decor: [], animals: [], people: [], items: [], props: [], spawn: { i: w / 2, j: h / 2 } };
 }
 
 /**
@@ -172,6 +175,8 @@ export function createCave(name: string, w: number, h: number, settings?: SceneS
   const scene: Scene = { ...createScene(name, w, h, false), cave: { ...CAVE_DEFAULTS, exits: [] } };
   scene.levels.fill(ROCK_LEVEL);
   scene.paint.fill(0);
+  // A cave's floor is cut: flat, with hard steps between its tiers.
+  scene.shape = new Array(w * h).fill(CUT);
   if (settings) setSettings(scene, settings);
   return scene;
 }
@@ -184,6 +189,7 @@ export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
   w: scene.w, h: scene.h,
   paint: scene.cave ? Uint8Array.from(scene.paint, (p) => p || CAVE_OPEN) : Uint8Array.from(scene.paint),
   levels: Int8Array.from(scene.levels),
+  ...(scene.shape && { shape: Uint8Array.from(scene.shape) }),
   water: settingsOf(scene).water,
   ...(scene.cave && settingsOf(scene).outside === 'void' && { outside: ROCK_LEVEL }),
 });
@@ -214,18 +220,21 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
   h = clamp(Math.round(h), MIN_SIZE, MAX_SIZE);
   const levels = new Array(w * h).fill(scene.cave ? ROCK_LEVEL : MIN_LEVEL);
   const paint = new Array(w * h).fill(0);
+  const was = scene.shape ?? Array.from(defaultShape(mapOf(scene)));
+  const shape = new Array(w * h).fill(scene.cave ? CUT : 0);
   for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) {
     const ni = i + dx, nj = j + dy;
     if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
     levels[nj * w + ni] = scene.levels[j * scene.w + i];
     paint[nj * w + ni] = scene.paint[j * scene.w + i];
+    shape[nj * w + ni] = was[j * scene.w + i];
   }
   const moved = <T extends { i: number; j: number }>(o: T): T => ({ ...o, i: o.i + dx, j: o.j + dy });
   const inMap = (o: { i: number; j: number }) => o.i >= 0 && o.j >= 0 && o.i < w && o.j < h;
   const kept = <T extends { i: number; j: number }>(list: T[]) => list.map(moved).filter(inMap);
   const spot = (o: { i: number; j: number }) => ({ i: Math.max(0, Math.min(w - 0.5, o.i + dx)), j: Math.max(0, Math.min(h - 0.5, o.j + dy)) });
   return {
-    ...scene, w, h, levels, paint,
+    ...scene, w, h, levels, paint, shape,
     plants: kept(scene.plants),
     decor: kept(scene.decor),
     animals: kept(scene.animals),
@@ -357,6 +366,9 @@ export function cleanScene(input: unknown): Scene {
       headroom: Math.round(num(set.headroom, 0, MAX_HEADROOM, 0)),
     });
   }
+  // Shapes as saved, or for a scene from before shapes, by rule from its ground (with its water line).
+  scene.shape = Array.isArray(s.shape) && s.shape.length === w * h && s.shape.every((n) => Number.isInteger(n) && n >= 0 && n < SHAPES)
+    ? s.shape.slice() : Array.from(defaultShape(mapOf(scene)));
   refreshLinks(scene, sources);
   return scene;
 }

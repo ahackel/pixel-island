@@ -5,6 +5,9 @@
 // one can walk, and how it is painted.
 
 import { cellHash, pixelHash, rng } from '../../shared/random.ts';
+import { cornersOf, defaultShape, HOLE, POINT_UV, rampDir, shapeAt, topOf, heightIn, trianglesOf, SMOOTH, type Top } from './ground.ts';
+
+export { cornersOf };
 
 /** A ground tile on screen: one metre across. */
 export const TILE_W = 32;
@@ -34,6 +37,8 @@ export interface HeightMap {
   readonly paint?: Uint8Array;
   /** The level beyond the map's edge, which the border cells slope toward: open sea (`MIN_LEVEL`) unless set. */
   readonly outside?: number;
+  /** Shape per cell (ground.ts: smooth, cut, ramps, hole); by rule where missing (ground.ts `defaultShape`). */
+  readonly shape?: Uint8Array;
   /** The level water fills up to: cells below it are under water, cells at it are beach. `SEA_LEVEL` unless set; null for none at all (a dry cave). */
   readonly water?: number | null;
   /** How far the ground has moved in tiles (see `Scene.shift`), in this view: what is drawn by position is seeded from the position without it. */
@@ -160,39 +165,11 @@ export function toScreen(i: number, j: number, level = 0): { x: number; y: numbe
 
 // ------------------------------------------------------------------ slopes
 
-/**
- * The heights of a cell's four corners: north (i, j), east (i + 1, j), south (i + 1, j + 1) and
- * west (i, j + 1). A corner is the average of the four cells round it, kept within one level of
- * this cell. Neighbours share their corners, so a step of one or two levels becomes a slope, and a
- * larger step leaves the difference as a cliff. The sea floor slopes the same way, so a beach
- * runs into the water. Rock is no ground to slope to: round a corner it counts as this cell, and rock's own top is flat.
- */
-export function cornersOf(map: HeightMap, i: number, j: number): [number, number, number, number] {
-  const own = levelAt(map, i, j);
-  if (isRock(own)) return [own, own, own, own];
-  const at = (ci: number, cj: number) => {
-    const level = levelAt(map, ci, cj);
-    return isRock(level) ? own : level;
-  };
-  const corner = (vi: number, vj: number) => {
-    const mean = (at(vi - 1, vj - 1) + at(vi, vj - 1) + at(vi - 1, vj) + at(vi, vj)) / 4;
-    return Math.max(own - 1, Math.min(own + 1, mean));
-  };
-  return [corner(i, j), corner(i + 1, j), corner(i + 1, j + 1), corner(i, j + 1)];
-}
-
-/** Which diagonal a cell folds along: the one whose ends are closest in height. */
-const foldsNorthSouth = (c: [number, number, number, number]) => Math.abs(c[0] - c[2]) <= Math.abs(c[1] - c[3]);
-
-/** The ground's height in levels at any point of the map, on the slopes between corners. */
+/** The ground's height in levels at any point of the map, on its cell's top (ground.ts `topOf`). */
 export function heightAt(map: HeightMap, i: number, j: number): number {
   const ci = Math.floor(i);
   const cj = Math.floor(j);
-  const [n, e, s, w] = cornersOf(map, ci, cj);
-  const u = i - ci;
-  const v = j - cj;
-  if (foldsNorthSouth([n, e, s, w])) return u >= v ? n + u * (e - n) + v * (s - e) : n + v * (w - n) + u * (s - w);
-  return u + v <= 1 ? n + u * (e - n) + v * (w - n) : s + (1 - u) * (w - s) + (1 - v) * (e - s);
+  return heightIn(topOf(map, ci, cj), i - ci, j - cj);
 }
 
 /** Where things stand: on the ground, or on the water where the ground is under it. */
@@ -305,6 +282,10 @@ const CLUTTER: Record<Ground, { chance: number; tries: number; stamps: string[][
   cave: { chance: 0.4, tries: 2, stamps: [['lm', 'mds'], ['lmm', 'mdds'], ['l'], ['d']] },
   dirt: { chance: 0.3, tries: 2, stamps: [['md'], ['lm', 'mds'], ['d']] },
 };
+/** How deep a hole's dark reaches, in levels, the faces round it fading into it over the first `HOLE_FADE`. */
+const HOLE_DEPTH = 6;
+const HOLE_FADE = 3.2;
+const HOLE_DARK = '#000000';
 /** How deep under water, in levels, pebbles still show on the sea floor, fading with depth. */
 const PEBBLE_DEPTH = 1.4;
 /** Under water a pebble pixel tints the water over it, by role: the colour and how much. */
@@ -355,18 +336,13 @@ const SHADE_STEPS = 4;
  * the lowest level.
  */
 export function groundOf(map: HeightMap): (i: number, j: number) => number {
-  const corners = new Float32Array(map.w * map.h * 4);
-  for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) corners.set(cornersOf(map, i, j), (j * map.w + i) * 4);
+  const tops: Top[] = [];
+  for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) tops.push(topOf(map, i, j));
   return (i, j) => {
     const ci = Math.floor(i);
     const cj = Math.floor(j);
     if (!inside(map, ci, cj)) return MIN_LEVEL;
-    const k = (cj * map.w + ci) * 4;
-    const n = corners[k], e = corners[k + 1], s = corners[k + 2], w = corners[k + 3];
-    const u = i - ci;
-    const v = j - cj;
-    if (Math.abs(n - s) <= Math.abs(e - w)) return u >= v ? n + u * (e - n) + v * (s - e) : n + v * (w - n) + u * (s - w);
-    return u + v <= 1 ? n + u * (e - n) + v * (w - n) : s + (1 - u) * (w - s) + (1 - v) * (e - s);
+    return heightIn(tops[cj * map.w + ci], i - ci, j - cj);
   };
 }
 
@@ -451,7 +427,8 @@ export function seaFloor(map: HeightMap): HeightMap {
       smooth[k] = Math.min(water - 0.25, sum / 9);
     }
   }
-  return { ...map, levels: smooth };
+  // The shapes stay those of the levels the map has, not of the smoothed ones.
+  return { ...map, levels: smooth, shape: map.shape ?? defaultShape(map) };
 }
 
 /** Paints the whole map, back to front, over open sea, then lays the water over what lies below it. */
@@ -501,18 +478,21 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
     const ni = Math.floor(mi + BLEND * wobble(mi - sd.i, mj - sd.j, 1));
     const nj = Math.floor(mj + BLEND * wobble(mi - sd.i, mj - sd.j, 2));
     if ((ni === i && nj === j) || !inside(map, ni, nj) || !isLand(map, ni, nj) || !isLand(map, i, j)) return j * map.w + i;
+    // Only across smooth ground: cut ground keeps its own to its edge.
+    if (shapeAt(map, i, j) !== SMOOTH || shapeAt(map, ni, nj) !== SMOOTH) return j * map.w + i;
     return Math.abs(levelAt(map, ni, nj) - levelAt(map, i, j)) <= SLOPE_LEVELS ? nj * map.w + ni : j * map.w + i;
   };
 
   // The slope's light on each triangle: brighter facing the light, darker facing away, flat ground 0.
-  const corners = order.map(() => [0, 0, 0, 0] as [number, number, number, number]);
+  const cellTops: Top[] = [];
+  const corners: [number, number, number, number][] = [];
   const triLight: [number[], number][][] = [];
   for (const [i, j] of order) {
     const index = j * map.w + i;
-    const c = (corners[index] = cornersOf(map, i, j));
-    const tris = foldsNorthSouth(c) ? [[0, 1, 2], [0, 2, 3]] : [[0, 1, 3], [1, 2, 3]];
-    triLight[index] = tris.map((tri) => {
-      const p = tri.map((k) => [k & 2 ? (k === 3 ? 0 : 1) : k, k >> 1, c[k]]);
+    const top = (cellTops[index] = topOf(map, i, j));
+    const c = (corners[index] = top.corners);
+    triLight[index] = trianglesOf(top).map((tri) => {
+      const p = tri.map((k) => [POINT_UV[k][0], POINT_UV[k][1], k === 4 ? top.mid! : c[k]]);
       const a = [p[1][0] - p[0][0], p[1][1] - p[0][1], (p[1][2] - p[0][2]) * LEVEL_M];
       const b = [p[2][0] - p[0][0], p[2][1] - p[0][1], (p[2][2] - p[0][2]) * LEVEL_M];
       let n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -535,33 +515,54 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
     }
     return sum / count;
   };
+  /** Calls `each` for every pixel of a screen triangle, with the pixel's weights for the triangle's three points. */
+  const eachPixel = (s: { x: number; y: number }[], each: (x: number, y: number, w0: number, w1: number, w2: number) => void) => {
+    const area = (s[1].x - s[0].x) * (s[2].y - s[0].y) - (s[2].x - s[0].x) * (s[1].y - s[0].y);
+    if (Math.abs(area) < 1e-6) return;
+    const x0 = Math.floor(Math.min(s[0].x, s[1].x, s[2].x)), x1 = Math.ceil(Math.max(s[0].x, s[1].x, s[2].x));
+    const y0 = Math.floor(Math.min(s[0].y, s[1].y, s[2].y)), y1 = Math.ceil(Math.max(s[0].y, s[1].y, s[2].y));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const px = x + 0.5, py = y + 0.5;
+      const w0 = ((s[1].x - px) * (s[2].y - py) - (s[2].x - px) * (s[1].y - py)) / area;
+      const w1 = ((s[2].x - px) * (s[0].y - py) - (s[0].x - px) * (s[2].y - py)) / area;
+      const w2 = 1 - w0 - w1;
+      if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
+      each(x, y, w0, w1, w2);
+    }
+  };
+  const isHole = (i: number, j: number) => inside(map, i, j) && shapeAt(map, i, j) === HOLE;
 
   for (const [i, j] of order) {
     const index = j * map.w + i;
     const surface = surfaces[index];
     const painted = paintAt(map, i, j) > 0;
     const c = corners[index];
-    const at: [number, number, number][] = [[i, j, c[0]], [i + 1, j, c[1]], [i + 1, j + 1, c[2]], [i, j + 1, c[3]]];
-    const light = [0, 1, 2, 3].map((k) => cornerLight(i, j, k));
-    for (const [tri] of triLight[index]) {
+    const top = cellTops[index];
+    const at: [number, number, number][] = [[i, j, c[0]], [i + 1, j, c[1]], [i + 1, j + 1, c[2]], [i, j + 1, c[3]], [i + 0.5, j + 0.5, top.mid ?? 0]];
+    const hole = isHole(i, j);
+    if (hole) {
+      // A hole has no floor: dark down into it, but for the faces of the ground behind it, which reach down into it.
+      const behind = [inside(map, i - 1, j) ? index - 1 : -2, inside(map, i, j - 1) ? index - map.w : -2];
+      const quad = [0, 1, 2, 3].map((k) => screen(at[k][0], at[k][1], at[k][2]));
+      for (const s3 of [[quad[0], quad[1], quad[2]], [quad[0], quad[2], quad[3]]]) eachPixel(s3, (x, y) => {
+        if (x < 0 || y < 0 || x >= w || y >= h) return;
+        const p = y * w + x;
+        if (behind.includes(cell[p]) && !tops[p] && height[p] < c[0] - 0.01) return;
+        // Its dark counts as standing at its rim, so no water fills a hole over the water line.
+        put(x, y, HOLE_DARK, index, c[0]);
+      });
+    }
+    const light = [0, 1, 2, 3, 4].map((k) => (k < 4 ? cornerLight(i, j, k) : triLight[index].reduce((sum, [, lit]) => sum + lit, 0) / triLight[index].length));
+    // A ramp's steps: which way it rises, and how far over the cell.
+    const ramp = rampDir(shapeAt(map, i, j));
+    const span = Math.max(...c) - Math.min(...c);
+    for (const [tri] of hole ? [] : triLight[index]) {
       const p = tri.map((k) => at[k]);
       const l = tri.map((k) => light[k]);
       const s = p.map(([pi, pj, pl]) => screen(pi, pj, pl));
-      const area = (s[1].x - s[0].x) * (s[2].y - s[0].y) - (s[2].x - s[0].x) * (s[1].y - s[0].y);
-      if (Math.abs(area) < 1e-6) continue;
-      const x0 = Math.floor(Math.min(s[0].x, s[1].x, s[2].x));
-      const x1 = Math.ceil(Math.max(s[0].x, s[1].x, s[2].x));
-      const y0 = Math.floor(Math.min(s[0].y, s[1].y, s[2].y));
-      const y1 = Math.ceil(Math.max(s[0].y, s[1].y, s[2].y));
       // The colour of each kind of ground at each step of light, plain and with a grain.
       const tones: Partial<Record<string, [string, string]>> = {};
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        const px = x + 0.5;
-        const py = y + 0.5;
-        const w0 = ((s[1].x - px) * (s[2].y - py) - (s[2].x - px) * (s[1].y - py)) / area;
-        const w1 = ((s[2].x - px) * (s[0].y - py) - (s[0].x - px) * (s[2].y - py)) / area;
-        const w2 = 1 - w0 - w1;
-        if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
+      eachPixel(s, (x, y, w0, w1, w2) => {
         const level = w0 * p[0][2] + w1 * p[1][2] + w2 * p[2][2];
         const from = groundCell(i, j, w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0], w0 * p[0][1] + w1 * p[1][1] + w2 * p[2][1]);
         let kind = groundAt(surfaces[from], level - water, paintAt(map, from % map.w, Math.floor(from / map.w)) > 0, dry);
@@ -582,17 +583,25 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
           const grain = kind === 'grass' ? GRASS_LIP : SIDES[kind][1];
           tone = tones[kind + step + '|' + patch] = [color, mixHex(color, grain, sandy ? 0.3 : 0.5)];
         }
-        const color = hash(x, y) < (sandy ? 0.01 : 0.035) ? tone[1] : tone[0];
+        let color = hash(x, y) < (sandy ? 0.01 : 0.035) ? tone[1] : tone[0];
+        if (ramp >= 0 && span > 0.01) {
+          // Lines across a ramp, a step every level where it rises more than a slope does: stairs.
+          const u = w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0] - i, v = w0 * p[0][1] + w1 * p[1][1] + w2 * p[2][1] - j;
+          const along = ramp === 0 ? u : ramp === 1 ? 1 - u : ramp === 2 ? v : 1 - v;
+          if (span > SLOPE_LEVELS + 0.01 ? (along * span) % 1 < 0.3 : (along * 4) % 1 < 0.15) color = mixHex(color, '#000000', 0.3);
+        }
         put(x, y, color, index, level, kind);
-      }
+      });
     }
     // Side faces where this cell stands above the one in front: under the east edge (to i + 1)
     // and under the south-west edge (to j + 1). Mostly cliffs; on slopes they are a pixel or none.
-    const right = cornersOf(map, i + 1, j);
-    const left = cornersOf(map, i, j + 1);
+    // Into a hole in front they reach down its depth below its rim, fading into its dark.
+    const rimRight = isHole(i + 1, j) ? levelAt(map, i + 1, j) : null, rimLeft = isHole(i, j + 1) ? levelAt(map, i, j + 1) : null;
+    const right = rimRight !== null ? [rimRight - HOLE_DEPTH, 0, 0, rimRight - HOLE_DEPTH] : cornersOf(map, i + 1, j);
+    const left = rimLeft !== null ? [rimLeft - HOLE_DEPTH, rimLeft - HOLE_DEPTH] : cornersOf(map, i, j + 1);
     const faces = [
-      { from: at[1], to: at[2], below: [right[0], right[3]], side: 1 },
-      { from: at[3], to: at[2], below: [left[0], left[1]], side: 0 },
+      { from: at[1], to: at[2], below: [right[0], right[3]], side: 1, rim: rimRight },
+      { from: at[3], to: at[2], below: [left[0], left[1]], side: 0, rim: rimLeft },
     ];
     for (const face of faces) {
       const a = screen(face.from[0], face.from[1], 0);
@@ -611,7 +620,10 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
           let color: string = SIDES[kind][face.side];
           if (surface === 'grass' && kind === 'grass' && y - yTop < 2) color = GRASS_LIP;
           else if (hash(x, y) < 0.06) color = mixHex(color, '#000000', 0.08);
-          put(x, y, color, index, level);
+          if (face.rim === null) { put(x, y, color, index, level); continue; }
+          // Down in a hole, out of the water (unless the hole itself is under it).
+          if (level < face.rim) color = mixHex(color, HOLE_DARK, Math.min(1, Math.round(((face.rim - level) / HOLE_FADE) * 10) / 10));
+          put(x, y, color, index, face.rim >= water ? Math.max(level, water) : level);
         }
       }
     }
