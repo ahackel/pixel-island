@@ -251,6 +251,8 @@ export interface Thing {
   flat?: boolean;
   /** A particle system attached to it (see particles.ts): sparks and the glow halo of a fire, a lantern's light. */
   fx?: Attach;
+  /** Where ground in front hides it, it shows as a silhouette, every other pixel (the player's, so they can always be found). */
+  silhouette?: boolean;
 }
 
 /** A particle system attached to a picture: the point it sits at, in the picture's pixels, and the system's id. */

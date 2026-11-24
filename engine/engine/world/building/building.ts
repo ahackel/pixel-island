@@ -20,7 +20,8 @@ export interface Edge { axis: Axis; i: number; j: number }
 export const edgeKey = (e: Edge) => `${e.axis}${e.i},${e.j}`;
 export const cellKey = (i: number, j: number) => `${i},${j}`;
 
-export interface EdgePiece { kind: string; edge: Edge }
+/** `fade`: how far it has dissolved down to a stub a level high (see `dissolved`), 0 to 1 in sixteenths; none unless set. */
+export interface EdgePiece { kind: string; edge: Edge; fade?: number }
 export interface CellPiece { kind: string; i: number; j: number }
 
 /** A building as built so far. */
@@ -59,8 +60,8 @@ export interface Part {
   hidden?: boolean;
 }
 
-/** How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it. */
-export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number }): Part }
+/** How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it, `fade` dissolved down to a stub. */
+export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number; fade?: number }): Part }
 /** How a patch of cell pieces is drawn; `floor` is the highest ground under it. A covering kind is a roof. */
 export interface CellKind { on: 'cell'; covers: boolean; draw(site: Site, p: Patch, floor: number, height: number): Part }
 export type PieceKind = EdgeKind | CellKind;
@@ -110,6 +111,16 @@ export function shadowAt(site: Site, out: number[], x: number, y: number, g: num
   const sx = Math.round(o.x + (x - y) * HALF_W), sy = Math.round(o.y + (x + y) * HALF_H - g * LEVEL_PX);
   if (sx >= 0 && sy >= 0 && sx < w && sy < h) out.push(sy * w + sx);
 }
+
+/** The 4×4 ordered pattern things dissolve in, as Diablo's walls did: the threshold of each pixel, 0 to 1. */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+/** A stub that something dissolving goes down to stands this many pixels over its foot. */
+export const STUB_PX = LEVEL_PX;
+/**
+ * Whether the pixel at `x`, `y` of the ground image is gone from something dissolved by `fade` (0 to 1, in sixteenths
+ * so its pictures can be kept by it). Ground-image positions, so pictures dissolving side by side share one pattern.
+ */
+export const dissolved = (x: number, y: number, fade: number) => fade > 0 && BAYER[(y & 3) * 4 + (x & 3)] < fade;
 
 export function hex(s: string): [number, number, number] {
   const n = parseInt(s.slice(1), 16);
@@ -189,7 +200,8 @@ export class BuildingView {
       const cut = !!home && frontOf(e, home);
       const over = roofs.find((p) => p !== home && under(e, p));
       const cap = over && floorOf(map, over) + b.height;
-      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}`, () => kind.draw(this.site, e, b.height, { cut, cap })));
+      const fade = piece.fade ?? 0;
+      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}|${fade}`, () => kind.draw(this.site, e, b.height, { cut, cap, fade })));
     }
     for (const p of patches) {
       const kind = this.kinds[p.kind];

@@ -74,6 +74,11 @@ const EDGE = '#e0332e';
 const EDGE_HOT = '#ffe066';
 const COLLIDER = '#e0332ee0';
 const ROCK_GRID = 48; // grey of the grid lines on a cave's black rock
+/** The pale tone of the player's silhouette where ground hides them, as a whole pixel (little-endian RGBA). */
+const SILHOUETTE = (() => {
+  const [r, g, b] = rgb('#a7b6dc');
+  return (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+})();
 const GRID_SHADE = 0.2; // how much darker grid lines are than the ground
 const SHADE_RGB = rgb(SHADE);
 /** How deep, in levels, a shadow still shows on the water; it fades out toward there. */
@@ -591,6 +596,7 @@ export class World {
       ...this.shown,
       levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
       shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
+      solid: Uint8Array.from(this.shown.levels, (l) => (isRock(l) ? 1 : 0)),
       ...(this.void && { outside: ROCK_LEVEL }),
     });
   }
@@ -1122,18 +1128,23 @@ export class World {
       const p = gy * g.w + gx;
       return diags[p] > diag && highs[p] > limit;
     };
+    const px = new Uint32Array(image.data.buffer, image.data.byteOffset, w * h);
     for (const t of paintOrder(placed)) {
       // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
       // A wall's pixels stand at heights of their own: none can be hidden if its lowest cannot.
       const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(this.water, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
       const hides = this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
-      if (!spots && !t.bases) {
+      const outline = t.silhouette && hides;
+      if (!spots && !t.bases && !outline) {
         stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => behind(x, y, diag, limit) : undefined);
         continue;
       }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
         const hidden = hides && behind(x, y, diag, t.bases ? Math.max(this.water, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
-        if (!hidden && spots) {
+        // Hidden, every other pixel of a silhouette's shows in one pale tone, on a pattern that stays put as the view moves.
+        const traced = hidden && outline && ((x + view.x + y + view.y) & 1) === 0;
+        if (traced) px[y * w + x] = SILHOUETTE;
+        if ((!hidden || traced) && spots) {
           const b = t.box;
           if (b) {
             // A wall is long: each column of it is lit by the light at its own place along the wall, not all by its middle's.

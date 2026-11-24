@@ -1978,10 +1978,10 @@ function frame(ms: number): void {
     const cave = world.scene.cave;
     const things: Thing[] = [
       ...world.plantThings(wind), ...world.decorThings(ms), ...world.animalThings(ms, herd ?? undefined), ...world.itemThings(), ...world.propThings(wind), ...world.scene.people.map((p) => personThing(p, ms)),
-      // In Play the rock is cut in front of the room the character is in; while editing, in front of every room.
-      ...(cave ? caveThings(world, prefs.mode === 'play' && actor ? actor : undefined) : []),
+      // In Play the rock in front of the character dissolves as they walk; while editing, all rock that hides floor is down to its stub.
+      ...(cave ? (prefs.mode === 'play' && actor ? caveThings(world, actor, ms) : caveThings(world)) : []),
     ];
-    if (prefs.mode === 'play' && actor) things.push(actor.thing(world, ms), ...actor.dropThings());
+    if (prefs.mode === 'play' && actor) things.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
     else {
       things.push(flagOf(world));
       for (const e of cave?.exits ?? []) {

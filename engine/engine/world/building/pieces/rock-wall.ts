@@ -7,7 +7,7 @@
 // edges reads as one rock face, and the rock goes on round corners without a seam. Drawn by rule per
 // screen column like the plank wall.
 import { isRock, LEVEL_PX } from '../../terrain.ts';
-import { endHeights, HALF_H, HALF_W, hex, mul, shadowAt, TONE, type Box, type EdgeKind } from '../building.ts';
+import { dissolved, endHeights, HALF_H, HALF_W, hex, mul, shadowAt, STUB_PX, TONE, type Box, type EdgeKind } from '../building.ts';
 
 export interface RockWallOptions {
   /** The rock's colour, shaded by the bands below. */
@@ -70,7 +70,7 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
   const capMax = opt.cap ?? 0;
   return {
     on: 'edge',
-    draw(site, e, height, { cut }) {
+    draw(site, e, height, { cut, fade = 0 }) {
       const { map, ground } = site;
       const sd = map.seed ?? { i: 0, j: 0 };
       const [h0, h1] = endHeights(map, e);
@@ -125,7 +125,7 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
           const a = (x0 + lx + 0.5 - o.x) / HALF_W, b = (y0 + ly + 0.5 - o.y + top) / HALF_H;
           const x = (a + b) / 2, y = (b - a) / 2;
           const on = e.axis === 'H' ? x >= e.i && x <= e.i + 1 && y >= e.j - n && y <= e.j : x >= e.i - n && x <= e.i && y >= e.j && y <= e.j + 1;
-          if (!on) continue;
+          if (!on || dissolved(x0 + lx, y0 + ly, fade)) continue;
           const p = ly * w + lx;
           rgba[p * 4 + 3] = 255;
           baseOf[p] = Math.max(h0, h1);
@@ -139,12 +139,14 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
         const foot = footRow(u);
         if (n > 0) for (let v = sky + 1; v <= top - levelAt(tOf(u)) * LEVEL_PX; v++) {
           const lx = u + pad + ux, ly = foot - v - y0;
-          if (lx < 0 || lx >= w || ly < 0 || ly >= h) continue;
+          if (lx < 0 || lx >= w || ly < 0 || ly >= h || (v > STUB_PX && dissolved(x0 + lx, y0 + ly, fade))) continue;
           const p = ly * w + lx;
           rgba[p * 4] = rgba[p * 4 + 1] = rgba[p * 4 + 2] = 0; rgba[p * 4 + 3] = 255;
           baseOf[p] = levelAt(tOf(u));
         }
         for (let v = -1; v <= sky; v++) {
+          // Dissolving, it goes down to a stub a level high, whose top catches the light where the rock over it is gone.
+          if (v > STUB_PX && dissolved(x0 + u + pad + ux, foot - v, fade)) continue;
           let step: Step;
           if (v <= 0) step = 0; // the dark line where the rock meets the floor
           else if (crackAt(a, v + sh)) step = 0;
@@ -164,10 +166,10 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
             // Just under a crack its lip catches the light.
             if (v > 2 && crackAt(a, vs + 1)) step = 3;
           }
-          // The skyline's own pixel is a lit edge.
-          if (v === sky && step > 0) step = 3;
-          const fade = 1 - FADE * Math.max(0, Math.min(1, v / tall));
-          const px = tones ? mul(tones[step], fade) : mul(base, BANDS[step] * turn * fade);
+          // The skyline's own pixel is a lit edge, and so is the stub's where the rock over it is gone.
+          if ((v === sky || (v === STUB_PX && dissolved(x0 + u + pad + ux, foot - v - 1, fade))) && step > 0) step = 3;
+          const dim = 1 - FADE * Math.max(0, Math.min(1, v / tall));
+          const px = tones ? mul(tones[step], dim) : mul(base, BANDS[step] * turn * dim);
           const lx = u + pad + ux, ly = foot - v - y0;
           if (lx < 0 || lx >= w || ly < 0 || ly >= h) continue;
           const p = ly * w + lx;
@@ -178,7 +180,8 @@ export function rockWall(opt: Partial<RockWallOptions> = {}): EdgeKind {
 
       // Its shadow on the ground: the wall as a sheet from its foot to its top.
       const shadow: number[] = [];
-      const levels = tall / LEVEL_PX;
+      // Dissolving, a little less of it stands to cast one.
+      const levels = (tall + (STUB_PX - tall) * fade) / LEVEL_PX;
       for (let s = 0; s <= 1; s += 1 / 48) {
         const g = h0 + (h1 - h0) * s;
         const [x, y] = e.axis === 'H' ? [e.i + s, e.j] : [e.i, e.j + s];

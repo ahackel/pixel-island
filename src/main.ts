@@ -1633,7 +1633,8 @@ function frame(ms: number): void {
   const hutBuild = buildOf('hut');
   // A cave tried on its own as the island keeps its rock walls.
   if (!islandScene.cave) island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
-  const me = present ? actor.thing(world, ms) : null;
+  // The survivor shows as a silhouette where ground in front hides them.
+  const me = present ? { ...actor.thing(world, ms), silhouette: true } : null;
   let hutParts = onIsland() ? island.buildingThings(actor) : [];
   // Behind the hut, its walls come down to knee height and the roof off, so the survivor is seen.
   if (hutBuild && onIsland() && hides(hutParts, me)) {
@@ -1646,7 +1647,7 @@ function frame(ms: number): void {
   }
   // The island's own things lie on the island: none of them show in the cave or in another scene a way led to.
   const scenery = [...plants, ...world.itemThings(), ...world.propThings(windFrame)];
-  const things: Thing[] = inCave() ? [...scenery, ...caveThings(world, actor), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))]
+  const things: Thing[] = inCave() ? [...scenery, ...caveThings(world, actor, ms), ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))]
     : !onIsland() ? [...scenery, ...world.decorThings(ms), ...scene.people.map((p) => propThing(p, ms))] : [
     ...(rocky ? [still(rocky.face, mouthThing)] : []),
     ...scenery,

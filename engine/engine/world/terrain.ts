@@ -39,6 +39,8 @@ export interface HeightMap {
   readonly outside?: number;
   /** Shape per cell (ground.ts: smooth, cut, ramps, hole); by rule where missing (ground.ts `defaultShape`). */
   readonly shape?: Uint8Array;
+  /** Per cell, 1 for solid rock drawn as nothing but black (world.ts draws a cave's rock so): the faces of ground toward it are black too. */
+  readonly solid?: Uint8Array;
   /** The level water fills up to: cells below it are under water, cells at it are beach. `SEA_LEVEL` unless set; null for none at all (a dry cave). */
   readonly water?: number | null;
   /** How far the ground has moved in tiles (see `Scene.shift`), in this view: what is drawn by position is seeded from the position without it. */
@@ -599,9 +601,11 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
     const rimRight = isHole(i + 1, j) ? levelAt(map, i + 1, j) : null, rimLeft = isHole(i, j + 1) ? levelAt(map, i, j + 1) : null;
     const right = rimRight !== null ? [rimRight - HOLE_DEPTH, 0, 0, rimRight - HOLE_DEPTH] : cornersOf(map, i + 1, j);
     const left = rimLeft !== null ? [rimLeft - HOLE_DEPTH, rimLeft - HOLE_DEPTH] : cornersOf(map, i, j + 1);
+    // Toward solid rock that is not drawn, a face is the rock's own black.
+    const solid = (ni: number, nj: number) => !!map.solid && inside(map, ni, nj) && map.solid[nj * map.w + ni] === 1;
     const faces = [
-      { from: at[1], to: at[2], below: [right[0], right[3]], side: 1, rim: rimRight },
-      { from: at[3], to: at[2], below: [left[0], left[1]], side: 0, rim: rimLeft },
+      { from: at[1], to: at[2], below: [right[0], right[3]], side: 1, rim: rimRight, black: solid(i + 1, j) },
+      { from: at[3], to: at[2], below: [left[0], left[1]], side: 0, rim: rimLeft, black: solid(i, j + 1) },
     ];
     for (const face of faces) {
       const a = screen(face.from[0], face.from[1], 0);
@@ -616,6 +620,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         const yBottom = ground - bottom * LEVEL_PX;
         for (let y = Math.ceil(yTop - 0.5); y < yBottom; y++) {
           const level = (ground - (y + 0.5)) / LEVEL_PX;
+          if (face.black) { put(x, y, '#000000', index, level); continue; }
           const kind = groundAt(surface, level - water, painted, dry);
           let color: string = SIDES[kind][face.side];
           if (surface === 'grass' && kind === 'grass' && y - yTop < 2) color = GRASS_LIP;
