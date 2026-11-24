@@ -142,3 +142,6 @@ body {
 /* The scene list's tiles can be dragged sideways onto the desk with a finger; up and down still scrolls the list. */
 .editor .uside--left .utile { touch-action: pan-y; }
 body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
+/* A way's link handle (drag it onto another way): half the size of a button, as each way of the scene has one. */
+.desk-handle canvas { width: 26px !important; height: 28px !important; }
+.desk-handle { cursor: grab; touch-action: none; }

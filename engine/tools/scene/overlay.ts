@@ -21,6 +21,9 @@ export interface Pin {
   make: () => HTMLElement;
 }
 
+/** A line between two points of the desk (desk pixels), drawn at the screen's own thickness; dashed for a weaker tie. */
+export interface Line { from: XY; to: XY; color: string; dashed?: boolean }
+
 /** A line's pixels, in screen pixels: a little under one pixel of the editor's buttons. */
 export const LINE_PIXEL = 3;
 
@@ -44,8 +47,11 @@ export class Overlay {
     return this.shown.get(key);
   }
 
-  /** Shows these pins, the later ones over the earlier; `screenOf` puts a point of the desk on the view, in screen pixels. */
-  show(pins: Pin[], screenOf: (p: XY) => XY): void {
+  /**
+   * Shows these pins, the later ones over the earlier, and these lines under them; `screenOf` puts a point of the desk
+   * on the view, in screen pixels.
+   */
+  show(pins: Pin[], screenOf: (p: XY) => XY, lines: Line[] = []): void {
     const keys = pins.map((p) => p.key).join('\n');
     if (keys !== this.keys) {
       this.keys = keys;
@@ -71,6 +77,7 @@ export class Overlay {
     }
     const ctx = this.lines.getContext('2d')!;
     ctx.clearRect(0, 0, w, h);
+    for (const l of lines) line(ctx, screenOf(l.from), screenOf(l.to), l.color, l.dashed);
     for (const pin of pins) {
       const a = screenOf(pin.at);
       const out = pin.out ?? { x: 0, y: 0 };
@@ -87,11 +94,13 @@ export class Overlay {
 }
 
 /** A line of square pixels, as the pixel art is drawn, the same thickness at any zoom. */
-function line(ctx: CanvasRenderingContext2D, a: XY, b: XY, color: string): void {
+function line(ctx: CanvasRenderingContext2D, a: XY, b: XY, color: string, dashed = false): void {
   const p = LINE_PIXEL;
   ctx.fillStyle = color;
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / p));
   for (let k = 0; k <= n; k++) {
+    // Dashes of three pixels with three left out.
+    if (dashed && k % 6 >= 3) continue;
     const x = a.x + ((b.x - a.x) * k) / n, y = a.y + ((b.y - a.y) * k) / n;
     ctx.fillRect(Math.floor(x / p) * p, Math.floor(y / p) * p, p, p);
   }

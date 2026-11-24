@@ -36,7 +36,7 @@ import { h, nameTag, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
 import { crowds, DESK_GAP, deskOf, freePlace, nearestFree, offsetOf, outline as deskOutline, placeFor, seenAt, seenCorner, tilesOf } from './desk.ts';
-import { Overlay, type Pin } from './overlay.ts';
+import { Overlay, type Line, type Pin } from './overlay.ts';
 
 // The scene editor: build a scene's ground and plants in Edit, walk around it with a saved
 // character in Play. Scenes, and the editor's own settings, are kept in this browser.
@@ -186,59 +186,81 @@ function sceneChanged(): void {
 window.addEventListener('pagehide', () => saveTimer && store());
 
 /**
- * The scene as it was before each of the last edits, to step back to. One list for every scene: each entry is a whole
- * scene, by its id, so stepping back to an edit of another scene edits that one again.
+ * The scenes as they were before each of the last edits, to step back to. One list for every scene: a step holds
+ * each scene the edit changed, whole and by its id (most edits change one; carrying a thing into another scene or
+ * linking two ways changes two or more), so stepping back to an edit of another scene edits that one again.
  */
-const undoStack: Scene[] = [];
+const undoStack: Scene[][] = [];
 const UNDO_MAX = 40;
-/** The scenes undone, to step forward to again; any new edit empties it. */
-const redoStack: Scene[] = [];
+/** The steps undone, to step forward to again; any new edit empties it. */
+const redoStack: Scene[][] = [];
 let barUndo: HTMLButtonElement | null = null;
 let barRedo: HTMLButtonElement | null = null;
 const syncUndo = () => {
   if (barUndo) barUndo.disabled = !undoStack.length;
   if (barRedo) barRedo.disabled = !redoStack.length;
 };
-/** Keeps the scene as it is now, before an edit changes it. */
-function remember(): void {
+/**
+ * Keeps a scene (the edited one if none is given) as it is now, before an edit changes it: as a step of its own, or
+ * with `join` as part of the last step, which then undoes both together (a scene already in it is kept as it was).
+ */
+function remember(scene = world.scene, join = false): void {
   world.commit();
   redoStack.length = 0;
-  undoStack.push(structuredClone(world.scene));
+  const last = undoStack[undoStack.length - 1];
+  if (join && last) {
+    if (!last.some((s) => s.id === scene.id)) last.push(structuredClone(scene));
+    return;
+  }
+  undoStack.push([structuredClone(scene)]);
   if (undoStack.length > UNDO_MAX) undoStack.shift();
 }
 /** Drops the steps back and forward of one scene (one gone, or changed in a way that is not undone), or of all. */
 function forget(id?: string): void {
   for (const stack of [undoStack, redoStack]) {
-    const kept = stack.filter((s) => id !== undefined && s.id !== id);
+    const kept = stack.map((step) => step.filter((s) => id !== undefined && s.id !== id)).filter((step) => step.length);
     stack.splice(0, stack.length, ...kept);
   }
   syncUndo();
 }
 /**
- * Shows `scene` (the same scene as it was before or after an edit) in place of its scene now, which it edits. It
- * stays where that one lies on the desk: undoing an edit does not move a scene about.
+ * Puts `scene` (the same scene as it was before or after an edit) in place of its scene now. It stays where that one
+ * lies on the desk: undoing an edit does not move a scene about. The edited scene is shown with `show`.
  */
+function putBack(scene: Scene): Scene | null {
+  const now = library.scenes.find((s) => s.id === scene.id);
+  if (!now) return null;
+  if (now.desk) scene.desk = { ...now.desk };
+  else delete scene.desk;
+  library.scenes[library.scenes.indexOf(now)] = scene;
+  dropLying(scene.id);
+  return now;
+}
+/** Shows `scene` (as it was before or after an edit) in place of its scene now, and edits it. */
 function show(scene: Scene): void {
   const now = library.scenes.find((s) => s.id === scene.id);
   if (!now) return;
-  if (now.desk) scene.desk = { ...now.desk };
-  else delete scene.desk;
   if (scene.id !== world.scene.id) switchTo(now, library.open.includes(now.id));
-  library.scenes[library.scenes.indexOf(now)] = scene;
+  putBack(scene);
   world = worldFor(scene);
   selected = null;
   sceneChanged();
   showOptions();
 }
-/** One step back or forward: the scene of the step is kept as it is now on the other list, then shown as it was. */
-function step(from: Scene[], to: Scene[]): void {
+/**
+ * One step back or forward: its scenes are kept as they are now on the other list, then put back as they were. The
+ * edited scene stays the edited one if the step changed it; otherwise its first scene is edited.
+ */
+function step(from: Scene[][], to: Scene[][]): void {
   const then = from.pop();
   if (!then) return;
   world.commit();
-  const now = library.scenes.find((s) => s.id === then.id);
-  if (!now) return syncUndo();
-  to.push(structuredClone(now));
-  show(then);
+  const known = then.filter((s) => library.scenes.some((n) => n.id === s.id));
+  if (!known.length) return syncUndo();
+  to.push(known.map((s) => structuredClone(library.scenes.find((n) => n.id === s.id)!)));
+  const edited = known.find((s) => s.id === world.scene.id) ?? known[0];
+  for (const s of known) if (s !== edited) putBack(s);
+  show(edited);
 }
 const undo = () => step(undoStack, redoStack);
 const redo = () => step(redoStack, undoStack);
@@ -250,6 +272,8 @@ const redo = () => step(redoStack, undoStack);
  */
 function switchTo(scene: Scene, keepView = false): void {
   if (saveTimer) store();
+  // A scene kept from before an undo put it back is edited as it is now.
+  scene = library.scenes.find((s) => s.id === scene.id) ?? scene;
   if (!library.scenes.includes(scene)) library.scenes.push(scene);
   placeOnDesk(scene);
   const before = offsetOf(world);
@@ -430,8 +454,15 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     corners.forEach((c, k) => pixelLine(c, corners[(k + 1) % 4], ghost!.moved ? '#f0b35a' : '#ffffff'));
   }
   // The scenes' names and the ways to scenes not open, over the desk at the screen's own size.
-  const pins = prefs.mode === 'edit' ? [...stubs().map(stubPin), ...openScenes().map(tabPin)] : [];
-  overlay.show(pins, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }));
+  const editing = prefs.mode === 'edit';
+  const ways = editing ? waysOnDesk() : [];
+  const pins = editing ? [
+    ...stubs(ways).map(stubPin),
+    ...ways.filter((w) => w.scene.id === world.scene.id).map(handlePin),
+    ...openScenes().map(tabPin),
+  ] : [];
+  const lines = editing ? [...linkLines(ways), ...linkDragLine()] : [];
+  overlay.show(pins, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }), lines);
 }
 
 /** A line of whole pixels on the desk canvas, as the pixel art is drawn; thicker when zoomed out, so it still shows. */
@@ -454,8 +485,44 @@ function landing(scene: Scene, e: { clientX: number; clientY: number }): { at: {
   return { at, moved: at.i !== want.i || at.j !== want.j };
 }
 
-// Portal stubs: a way (hole or ladder) whose scene is not on the desk gets a short line to a label naming that scene; a
-// click on the label opens it beside the way. Once it is open the stub goes (lines between open scenes come later).
+// Ways between scenes on the desk. A way (hole or ladder) whose scene is not on the desk gets a stub: a short line to a
+// label naming that scene, which a click opens beside the way. Once that scene is open a line joins the two ways
+// (dashed where the other end does not lead back). Each way of the edited scene has a handle to drag onto another way
+// to link the two, or onto open ground to make the way there.
+
+/** A way (hole or ladder) in an open scene: the scene, its world, the way itself, where it is seen and on the desk. */
+interface Way { scene: Scene; w: World; item: PlacedItem; vi: number; vj: number; at: { x: number; y: number } }
+function waysOnDesk(): Way[] {
+  const out: Way[] = [];
+  for (const s of openScenes()) {
+    const w = s.id === world.scene.id ? world : lyingOf(s).world;
+    const o = offsetOf(w);
+    // While editing nothing is carried, so the seen items are the scene's own, in the same order.
+    w.viewItems().forEach((v, k) => {
+      const item = w.scene.items[k];
+      if (!item || !LINKING.includes(item.item)) return;
+      const g = toScreen(v.vi, v.vj, standingHeight(w.map, v.vi, v.vj));
+      out.push({ scene: s, w, item, vi: v.vi, vj: v.vj, at: { x: g.x + w.ground.origin.x + o.x, y: g.y + w.ground.origin.y + o.y } });
+    });
+  }
+  return out;
+}
+const wayName = (s: Scene, id: string | undefined) => `${slug(s.name)}:${id}`;
+const leadsTo = (a: Way, b: Way) => a.item.to?.scene === slug(b.scene.name) && a.item.to.id === b.item.id;
+
+/** The lines between ways whose both ends are open: one per pair that leads both ways, dashed where only one end leads. */
+function linkLines(ways: Way[]): Line[] {
+  const byName = new Map(ways.map((w) => [wayName(w.scene, w.item.id), w]));
+  const out: Line[] = [];
+  for (const a of ways) {
+    const b = a.item.to && byName.get(`${a.item.to.scene}:${a.item.to.id}`);
+    if (!b || b === a) continue;
+    const back = leadsTo(b, a);
+    if (back && wayName(a.scene, a.item.id) > wayName(b.scene, b.item.id)) continue;
+    out.push({ from: a.at, to: b.at, color: STUB_LINE, dashed: !back });
+  }
+  return out;
+}
 
 /** A way leading off the desk: where it is and where its label goes (desk pixels), its scene's file name and name. */
 interface Stub { key: string; way: { x: number; y: number }; out: { x: number; y: number }; to: string; name: string; seen: { i: number; j: number }; dir: { i: number; j: number } }
@@ -473,32 +540,26 @@ function nameOfScene(file: string): string | null {
   return p.title;
 }
 
-function stubs(): Stub[] {
+function stubs(ways = waysOnDesk()): Stub[] {
   const open = new Set(openScenes().map((s) => slug(s.name)));
   const out: Stub[] = [];
-  for (const s of openScenes()) {
-    const w = s.id === world.scene.id ? world : lyingOf(s).world;
-    const o = offsetOf(w);
+  for (const { scene: s, w, item: it, vi, vj, at: way } of ways) {
+    if (!it.to || open.has(it.to.scene)) continue;
+    const name = nameOfScene(it.to.scene);
+    if (!name) continue;
     const corner = seenCorner(s, w.rot);
     const [sw, sh] = w.rot % 2 ? [s.h, s.w] : [s.w, s.h];
-    for (const it of w.viewItems()) {
-      if (!it.to || open.has(it.to.scene)) continue;
-      const name = nameOfScene(it.to.scene);
-      if (!name) continue;
-      const g = toScreen(it.vi, it.vj, standingHeight(w.map, it.vi, it.vj));
-      const way = { x: g.x + w.ground.origin.x + o.x, y: g.y + w.ground.origin.y + o.y };
-      // Out from the scene's middle through the way, as seen; a way in the very middle points east on the screen.
-      let di = it.vi - sw / 2, dj = it.vj - sh / 2;
-      const len = Math.hypot(di, dj);
-      [di, dj] = len > 0.5 ? [di / len, dj / len] : [Math.SQRT1_2, -Math.SQRT1_2];
-      const sx = (di - dj) * (TILE_W / 2), sy = (di + dj) * (TILE_H / 2);
-      const sl = Math.hypot(sx, sy) || 1;
-      out.push({
-        key: `${s.id}:${it.to.scene}:${it.to.id}:${Math.floor(it.vi)},${Math.floor(it.vj)}`, way,
-        out: { x: (sx / sl) * STUB_REACH, y: (sy / sl) * STUB_REACH },
-        to: it.to.scene, name, seen: { i: corner.i + it.vi, j: corner.j + it.vj }, dir: { i: di, j: dj },
-      });
-    }
+    // Out from the scene's middle through the way, as seen; a way in the very middle points east on the screen.
+    let di = vi - sw / 2, dj = vj - sh / 2;
+    const len = Math.hypot(di, dj);
+    [di, dj] = len > 0.5 ? [di / len, dj / len] : [Math.SQRT1_2, -Math.SQRT1_2];
+    const sx = (di - dj) * (TILE_W / 2), sy = (di + dj) * (TILE_H / 2);
+    const sl = Math.hypot(sx, sy) || 1;
+    out.push({
+      key: `${s.id}:${it.to.scene}:${it.to.id}:${Math.floor(vi)},${Math.floor(vj)}`, way,
+      out: { x: (sx / sl) * STUB_REACH, y: (sy / sl) * STUB_REACH },
+      to: it.to.scene, name, seen: { i: corner.i + vi, j: corner.j + vj }, dir: { i: di, j: dj },
+    });
   }
   return out;
 }
@@ -528,6 +589,105 @@ function stubPin(st: Stub): Pin {
       return b;
     },
   };
+}
+
+/**
+ * Linking by drag: from a way's handle to another way (any open scene, this one too), which links the two both ways;
+ * or onto open ground of an open scene, which makes the other end there (a ladder for a hole, a hole for a ladder).
+ */
+let linkDrag: { pointer: number; from: Way; at: { x: number; y: number }; to: LinkEnd | null } | null = null;
+type LinkEnd = { way: Way } | { scene: Scene; w: World; tile: { i: number; j: number } };
+
+/** Where a link let go at the pointer would end: a way near it, else open ground (above the water) of an open scene. */
+function linkEnd(e: { clientX: number; clientY: number }, from: Way): LinkEnd | null {
+  const p = groundPixel(e);
+  const here = offsetOf(world);
+  const at = { x: p.x + here.x, y: p.y + here.y };
+  let best: Way | null = null;
+  let near = 14 / zoom + 6;
+  for (const w of waysOnDesk()) {
+    const d = Math.hypot(w.at.x - at.x, w.at.y - at.y);
+    if (w.item !== from.item && d < near) [best, near] = [w, d];
+  }
+  if (best) return { way: best };
+  const tile = world.tileAt(p.x, p.y);
+  const ground = tile ? { scene: world.scene, w: world, tile } : (() => {
+    const away = awayUnder(e);
+    return away && { scene: away.scene, w: lyingOf(away.scene).world, tile: away.tile };
+  })();
+  return ground && levelAt(ground.w.map, ground.tile.i, ground.tile.j) >= SEA_LEVEL ? ground : null;
+}
+
+/** The line of a link being dragged: to where it would end, or loose and dashed to the pointer. */
+function linkDragLine(): Line[] {
+  const d = linkDrag;
+  if (!d) return [];
+  return [{ from: d.from.at, to: d.to && 'way' in d.to ? d.to.way.at : d.at, color: d.to ? STUB_LINE : '#ffffff', dashed: !d.to }];
+}
+
+/** A way's handle as a pin, just below the way: dragged, it links the way. */
+function handlePin(way: Way): Pin {
+  return {
+    key: `handle:${way.scene.id}:${way.item.id ?? `${Math.floor(way.vi)},${Math.floor(way.vj)}`}`, at: way.at, out: { x: 0, y: 10 }, align: { x: 0.5, y: 0 },
+    make: () => {
+      const b = pixelButton(t('desk.link'), { icon: 'link' }, () => {});
+      b.classList.add('desk-handle');
+      b.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || linkDrag) return;
+        // The way as it is now (the pin is kept while its key stays, and the way may have moved since).
+        const from = waysOnDesk().find((w) => w.item === way.item || (w.scene.id === way.scene.id && !!w.item.id && w.item.id === way.item.id));
+        if (!from) return;
+        e.stopPropagation();
+        b.setPointerCapture(e.pointerId);
+        document.body.classList.add('desk-dragging');
+        linkDrag = { pointer: e.pointerId, from, at: from.at, to: null };
+      });
+      b.addEventListener('pointermove', (e) => {
+        const d = linkDrag;
+        if (!d || e.pointerId !== d.pointer) return;
+        const p = groundPixel(e);
+        const here = offsetOf(world);
+        d.at = { x: p.x + here.x, y: p.y + here.y };
+        d.to = linkEnd(e, d.from);
+        version++;
+      });
+      const drop = (e: PointerEvent) => {
+        const d = linkDrag;
+        if (!d || e.pointerId !== d.pointer) return;
+        linkDrag = null;
+        document.body.classList.remove('desk-dragging');
+        version++;
+        if (e.type === 'pointerup' && d.to) linkWays(d.from, d.to);
+      };
+      b.addEventListener('pointerup', drop);
+      b.addEventListener('pointercancel', drop);
+      return b;
+    },
+  };
+}
+
+/** Links a way to the end it was dragged to, both ways, making the way there first if it was dropped on open ground. */
+function linkWays(from: Way, to: LinkEnd): void {
+  remember(from.scene);
+  let there: { scene: Scene; item: PlacedItem };
+  if ('way' in to) {
+    remember(to.way.scene, true);
+    there = { scene: to.way.scene, item: to.way.item };
+  } else {
+    remember(to.scene, true);
+    const item: PlacedItem = { item: from.item.item === 'hole' ? 'ladder' : 'hole', ...to.w.toData({ i: to.tile.i + 0.5, j: to.tile.j + 0.5 }) };
+    nameLink(to.scene.items, item);
+    to.scene.items.push(item);
+    there = { scene: to.scene, item };
+  }
+  nameLink(from.scene.items, from.item);
+  nameLink(there.scene.items, there.item);
+  from.item.to = { scene: slug(there.scene.name), id: there.item.id! };
+  there.item.to = { scene: slug(from.scene.name), id: from.item.id! };
+  // A scene lying on the desk is drawn again with its new way.
+  if (there.scene.id !== world.scene.id) dropLying(there.scene.id);
+  sceneChanged();
+  showOptions();
 }
 
 /** The open scene other than the edited one whose ground is under the pointer, the front-most, and its tile there. */
@@ -593,14 +753,16 @@ function tabPin(scene: Scene): Pin {
     make: () => tabOf(scene, here, closes),
   };
 }
-function tabOf(scene: Scene, here: boolean, closes: boolean): HTMLElement {
-  const name = pixelButton(scene.name, { icon: scene.cave ? 'rock' : 'palm', words: scene.name, lit: here }, () => {});
-  const close = pixelButton(t('desk.close'), { icon: 'close' }, () => closeScene(scene.id));
+function tabOf(shown: Scene, here: boolean, closes: boolean): HTMLElement {
+  const name = pixelButton(shown.name, { icon: shown.cave ? 'rock' : 'palm', words: shown.name, lit: here }, () => {});
+  const close = pixelButton(t('desk.close'), { icon: 'close' }, () => closeScene(shown.id));
   close.hidden = !closes;
   close.addEventListener('pointerdown', (e) => e.stopPropagation());
   const tab = h('div', { class: 'desk-tab' }, name, close);
   tab.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || tabDrag) return;
+    // The scene as it is now: the tab is kept while it looks the same, and an undo may have put back the scene since.
+    const scene = library.scenes.find((s) => s.id === shown.id);
+    if (e.button !== 0 || tabDrag || !scene) return;
     tab.setPointerCapture(e.pointerId);
     tabDrag = { pointer: e.pointerId, scene, tab, x: e.clientX, y: e.clientY, from: deskOf(scene), moved: false, ok: true };
   });
@@ -1094,6 +1256,46 @@ function duplicate(sel: Selected): Selected | null {
   return { kind: sel.kind, obj: copy };
 }
 
+/** The list of a scene that holds things of a kind (the flag is no list). */
+function listOf(s: Scene, kind: Exclude<Selected['kind'], 'spawn'>): object[] {
+  return { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: (s.props ??= []) }[kind];
+}
+
+/**
+ * Carries a thing being moved into another open scene, which is then the one edited, so the drag goes on there. Both
+ * scenes are one undo step. What the thing needs comes along: an object of the scene's own its parts, a way its name
+ * (a new one if the scene has a way of that name) with every way that led to it now leading to it there.
+ */
+function carryInto(g: Extract<Gesture, { kind: 'move' }>, into: Scene): void {
+  if (g.sel.kind === 'spawn') return;
+  const from = world.scene;
+  const obj = g.sel.obj;
+  removeObject(obj);
+  switchTo(into, true);
+  remember(world.scene, true);
+  listOf(world.scene, g.sel.kind).push(obj);
+  if (g.sel.kind === 'item') bringItem(obj as PlacedItem, from, world.scene);
+  g.crossed = true;
+  selected = g.sel;
+  showOptions();
+}
+function bringItem(it: PlacedItem, from: Scene, to: Scene): void {
+  const own = it.item.startsWith(OWN) ? from.objects?.[it.item] : undefined;
+  if (own) to.objects = { ...to.objects, [it.item]: own };
+  if (!LINKING.includes(it.item)) return;
+  const was = { scene: slug(from.name), id: it.id };
+  if (!it.id || to.items.some((o) => o !== it && o.id === it.id)) {
+    delete it.id;
+    nameLink(to.items, it);
+  }
+  for (const sc of library.scenes) {
+    const leading = sc.items.filter((o) => o.to?.scene === was.scene && o.to.id === was.id);
+    if (!leading.length) continue;
+    remember(sc, true);
+    for (const o of leading) o.to = { scene: slug(to.name), id: it.id! };
+  }
+}
+
 /** The placed thing under a ground-image pixel, the front-most; decorations lie flat, so they come last. */
 function objectAt(x: number, y: number): Selected | null {
   const s = world.toView(world.scene.spawn);
@@ -1438,7 +1640,7 @@ type Gesture =
   | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number }
   | { kind: 'walk' }
   | { kind: 'edge'; base: World; orig: Scene; a0: number; a1: number; b0: number; b1: number; changed: boolean }
-  | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true }
+  | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true; crossed?: true }
   | { kind: 'pan'; x: number; y: number; cam: { x: number; y: number } }
   | { kind: 'pinch'; dist: number; zoom: number; mid: { x: number; y: number }; cam: { x: number; y: number } };
 let gesture: Gesture | null = null;
@@ -1557,10 +1759,18 @@ canvas.addEventListener('pointermove', (e) => {
     cam.x = gesture.cam.x - (e.clientX - gesture.x) / zoom;
     cam.y = gesture.cam.y - (e.clientY - gesture.y) / zoom;
   } else if (gesture?.kind === 'move') {
+    const g = gesture;
     const p = groundPixel(e);
-    const at = pointAt(p.x - gesture.grab.x, p.y - gesture.grab.y);
+    let at = pointAt(p.x - g.grab.x, p.y - g.grab.y);
+    // Off this scene and over another, the thing goes along into that one, which is then the one edited.
+    const other = !at && g.sel.kind !== 'spawn' ? awayUnder(e) : null;
+    if (other) {
+      carryInto(g, other.scene);
+      const q = groundPixel(e);
+      at = pointAt(q.x - g.grab.x, q.y - g.grab.y) ?? { i: other.tile.i + 0.5, j: other.tile.j + 0.5 };
+    }
     if (at) {
-      Object.assign(gesture.sel.obj, world.toData(at));
+      Object.assign(g.sel.obj, world.toData(at));
       sceneChanged();
     }
   } else if (gesture?.kind === 'edge' && edgeSide) dragEdge(gesture, edgeSide, e);
@@ -1573,7 +1783,12 @@ canvas.addEventListener('pointermove', (e) => {
 });
 const release = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
-  if (gesture?.kind === 'move' && gesture.copy && (gesture.sel.obj.i === gesture.from.i && gesture.sel.obj.j === gesture.from.j || !canStand(gesture.sel, world.toView(gesture.sel.obj)))) {
+  if (gesture?.kind === 'move' && gesture.crossed && !canStand(gesture.sel, world.toView(gesture.sel.obj))) {
+    // Carried into another scene and let go where it cannot stand: the whole move is taken back, in both scenes.
+    step(undoStack, redoStack);
+    redoStack.pop();
+    syncUndo();
+  } else if (gesture?.kind === 'move' && gesture.copy && !gesture.crossed && (gesture.sel.obj.i === gesture.from.i && gesture.sel.obj.j === gesture.from.j || !canStand(gesture.sel, world.toView(gesture.sel.obj)))) {
     // A copy that was not dragged anywhere, or dropped where it cannot stand, is not made.
     removeObject(gesture.sel.obj);
     selected = null;
