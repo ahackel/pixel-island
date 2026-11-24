@@ -36,6 +36,7 @@ import { h, nameTag, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
 import { crowds, DESK_GAP, deskOf, freePlace, nearestFree, offsetOf, outline as deskOutline, placeFor, seenAt, seenCorner, tilesOf } from './desk.ts';
+import { Overlay, type Pin } from './overlay.ts';
 
 // The scene editor: build a scene's ground and plants in Edit, walk around it with a saved
 // character in Play. Scenes, and the editor's own settings, are kept in this browser.
@@ -393,6 +394,8 @@ function drawLying(l: Lying): void {
 
 /** The edited scene's picture, as composed, ready to be drawn over what lies behind it. */
 const layer = h('canvas', {});
+/** What is shown over the desk at the screen's own size: the scenes' tabs, the stubs of ways. */
+const overlay = new Overlay();
 /** Paints the desk: the scenes on it back to front, the edited one (its picture just composed) among them; in Play only that one. */
 function paintDesk(image: { data: Uint8ClampedArray; width: number; height: number }, view: Rect): void {
   if (layer.width !== image.width || layer.height !== image.height) {
@@ -417,8 +420,6 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     if (away?.scene === s && toolIn(s) !== 'move') paintBrushAway(l, away.tile, at);
   }
   const toCanvas = (p: { x: number; y: number }) => ({ x: Math.round(p.x - here.x - view.x), y: Math.round(p.y - here.y - view.y) });
-  const ways = prefs.mode === 'edit' ? stubs() : [];
-  for (const st of ways) pixelLine(toCanvas(st.way), toCanvas(st.label), STUB_LINE);
   if (ghost) {
     // Where a scene dragged from the list lands: white where it was let go, orange when moved aside to a free place.
     const corners = deskOutline({ ...ghost.scene, desk: ghost.at }, prefs.rot).map(toCanvas);
@@ -428,8 +429,9 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     ctx.fill();
     corners.forEach((c, k) => pixelLine(c, corners[(k + 1) % 4], ghost!.moved ? '#f0b35a' : '#ffffff'));
   }
-  placeTabs(view);
-  placeStubs(view, ways);
+  // The scenes' names and the ways to scenes not open, over the desk at the screen's own size.
+  const pins = prefs.mode === 'edit' ? [...stubs().map(stubPin), ...openScenes().map(tabPin)] : [];
+  overlay.show(pins, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }));
 }
 
 /** A line of whole pixels on the desk canvas, as the pixel art is drawn; thicker when zoomed out, so it still shows. */
@@ -456,10 +458,10 @@ function landing(scene: Scene, e: { clientX: number; clientY: number }): { at: {
 // click on the label opens it beside the way. Once it is open the stub goes (lines between open scenes come later).
 
 /** A way leading off the desk: where it is and where its label goes (desk pixels), its scene's file name and name. */
-interface Stub { key: string; way: { x: number; y: number }; label: { x: number; y: number }; to: string; name: string; seen: { i: number; j: number }; dir: { i: number; j: number } }
+interface Stub { key: string; way: { x: number; y: number }; out: { x: number; y: number }; to: string; name: string; seen: { i: number; j: number }; dir: { i: number; j: number } }
 const STUB_LINE = '#f0b35a';
-/** How far a label stands from its way, in desk pixels: a little further when zoomed out, so the line shows on the screen. */
-const stubReach = () => Math.max(24, 40 / zoom);
+/** How far a label stands from its way, in screen pixels, at any zoom. */
+const STUB_REACH = 72;
 
 /** The scene a way leads to by file name, if there is one, without opening it: the editor's own of that name, else the project's file. */
 function nameOfScene(file: string): string | null {
@@ -493,7 +495,7 @@ function stubs(): Stub[] {
       const sl = Math.hypot(sx, sy) || 1;
       out.push({
         key: `${s.id}:${it.to.scene}:${it.to.id}:${Math.floor(it.vi)},${Math.floor(it.vj)}`, way,
-        label: { x: way.x + (sx / sl) * stubReach(), y: way.y + (sy / sl) * stubReach() },
+        out: { x: (sx / sl) * STUB_REACH, y: (sy / sl) * STUB_REACH },
         to: it.to.scene, name, seen: { i: corner.i + it.vi, j: corner.j + it.vj }, dir: { i: di, j: dj },
       });
     }
@@ -512,35 +514,20 @@ function openStub(st: Stub): void {
   openAt(target, nearestFree(target, want, others));
 }
 
-const deskStubs = h('div', { class: 'desk-tabs' });
-let stubsShown = '';
-/** Puts a label at the end of each stub's line, made again when the stubs change. */
-function placeStubs(view: Rect, all: Stub[]): void {
-  const key = all.map((st) => st.key).join('|');
-  if (key !== stubsShown) {
-    stubsShown = key;
-    deskStubs.replaceChildren(...all.map((st) => {
+/** A stub as a pin over the desk: a line from the way out to a label naming the scene, which opens it. */
+function stubPin(st: Stub): Pin {
+  return {
+    key: `stub:${st.key}:${st.name}`, at: st.way, out: st.out, line: STUB_LINE,
+    make: () => {
       // The stub as it is when clicked (the view may have turned since the label was made).
       const b = pixelButton(t('desk.stub', { name: st.name }), { icon: 'right', words: st.name }, () => {
         const now = stubs().find((x) => x.key === st.key);
         if (now) openStub(now);
       });
       b.classList.add('desk-stub');
-      b.dataset.key = st.key;
       return b;
-    }));
-  }
-  const here = offsetOf(world);
-  const byKey = new Map(all.map((st) => [st.key, st]));
-  for (const b of deskStubs.children as HTMLCollectionOf<HTMLElement>) {
-    const st = byKey.get(b.dataset.key!);
-    if (!st) continue;
-    b.style.left = `${(st.label.x - here.x - view.x) * zoom}px`;
-    b.style.top = `${(st.label.y - here.y - view.y) * zoom}px`;
-    // The label hangs off the end of its line on the side away from the way, so the line shows.
-    const ux = st.label.x - st.way.x, uy = st.label.y - st.way.y, m = Math.max(Math.abs(ux), Math.abs(uy)) || 1;
-    b.style.transform = `translate(${-50 + (50 * ux) / m}%, ${-50 + (50 * uy) / m}%)`;
-  }
+    },
+  };
 }
 
 /** The open scene other than the edited one whose ground is under the pointer, the front-most, and its tile there. */
@@ -594,42 +581,45 @@ function paintBrushAway(l: Lying, tile: { i: number; j: number }, at: { x: numbe
 }
 
 // Each open scene has a tab above its north corner: its name, to pick it or drag it about the desk, and a button to close it.
-const deskTabs = h('div', { class: 'desk-tabs' });
 let tabDrag: { pointer: number; scene: Scene; tab: HTMLElement; x: number; y: number; from: { i: number; j: number }; moved: boolean; ok: boolean } | null = null;
 
-function syncTabs(): void {
-  const editing = prefs.mode === 'edit';
-  deskTabs.hidden = !editing;
-  deskTabs.replaceChildren(...(editing ? openScenes().map(tabOf) : []));
-  version++;
-}
-function tabOf(scene: Scene): HTMLElement {
+/** A scene's tab as a pin over the desk, just above its north corner as seen. */
+function tabPin(scene: Scene): Pin {
   const here = scene.id === library.current;
+  const closes = library.open.length > 1;
+  return {
+    key: `tab:${scene.id}:${scene.name}:${scene.cave ? 'cave' : 'island'}:${here}:${closes}`,
+    at: deskOutline(scene, prefs.rot)[0], out: { x: 0, y: -6 }, align: { x: 0.5, y: 1 },
+    make: () => tabOf(scene, here, closes),
+  };
+}
+function tabOf(scene: Scene, here: boolean, closes: boolean): HTMLElement {
   const name = pixelButton(scene.name, { icon: scene.cave ? 'rock' : 'palm', words: scene.name, lit: here }, () => {});
   const close = pixelButton(t('desk.close'), { icon: 'close' }, () => closeScene(scene.id));
-  close.hidden = library.open.length < 2;
+  close.hidden = !closes;
   close.addEventListener('pointerdown', (e) => e.stopPropagation());
   const tab = h('div', { class: 'desk-tab' }, name, close);
-  tab.dataset.scene = scene.id;
   tab.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || tabDrag) return;
     tab.setPointerCapture(e.pointerId);
     tabDrag = { pointer: e.pointerId, scene, tab, x: e.clientX, y: e.clientY, from: deskOf(scene), moved: false, ok: true };
   });
+  tab.addEventListener('pointermove', (e) => {
+    const d = tabDrag;
+    if (!d || e.pointerId !== d.pointer) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+    d.moved = true;
+    const step = tilesOf((e.clientX - d.x) / zoom, (e.clientY - d.y) / zoom, prefs.rot);
+    moveOnDesk(d.scene, { i: d.from.i + step.i, j: d.from.j + step.j });
+    // Let go too near another scene, it goes back to where it was.
+    d.ok = !openScenes().some((o) => o.id !== d.scene.id && crowds(deskOf(d.scene), d.scene, o));
+    d.tab.classList.toggle('desk-tab--crowded', !d.ok);
+  });
+  tab.addEventListener('pointerup', dropTab);
+  tab.addEventListener('pointercancel', dropTab);
   return tab;
 }
-deskTabs.addEventListener('pointermove', (e) => {
-  const d = tabDrag;
-  if (!d || e.pointerId !== d.pointer) return;
-  if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
-  d.moved = true;
-  const step = tilesOf((e.clientX - d.x) / zoom, (e.clientY - d.y) / zoom, prefs.rot);
-  moveOnDesk(d.scene, { i: d.from.i + step.i, j: d.from.j + step.j });
-  // Let go too near another scene, it goes back to where it was.
-  d.ok = !openScenes().some((o) => o.id !== d.scene.id && crowds(deskOf(d.scene), d.scene, o));
-  d.tab.classList.toggle('desk-tab--crowded', !d.ok);
-});
-const dropTab = (e: PointerEvent) => {
+function dropTab(e: PointerEvent): void {
   const d = tabDrag;
   if (!d || e.pointerId !== d.pointer) return;
   tabDrag = null;
@@ -641,20 +631,6 @@ const dropTab = (e: PointerEvent) => {
   if (!d.ok) moveOnDesk(d.scene, d.from);
   store();
   render();
-};
-deskTabs.addEventListener('pointerup', dropTab);
-deskTabs.addEventListener('pointercancel', dropTab);
-
-/** Puts each tab above its scene's north corner. */
-function placeTabs(view: Rect): void {
-  const here = offsetOf(world);
-  for (const tab of deskTabs.children as HTMLCollectionOf<HTMLElement>) {
-    const scene = library.scenes.find((s) => s.id === tab.dataset.scene);
-    if (!scene) continue;
-    const n = deskOutline(scene, prefs.rot)[0];
-    tab.style.left = `${(n.x - here.x - view.x) * zoom}px`;
-    tab.style.top = `${(n.y - here.y - view.y) * zoom - 6}px`;
-  }
 }
 
 // ------------------------------------------------------------------ page helpers
@@ -2187,7 +2163,7 @@ function render(): void {
   // While editing, the scene lies on the desk; in Play it is seen as in the game, with open sea (or a cave's dark) round it.
   world.alone = editing;
   viewport.style.background = editing ? DESK : sceneNow().cave ? '#000' : ocean.deep;
-  syncTabs();
+  version++;
   fpsLine.hidden = !prefs.fps;
 }
 
@@ -2377,8 +2353,7 @@ function mount(): void {
   brightToggle = toggle(t('bright'), { icon: 'sun' }, prefs.bright, (bright) => set({ bright }));
   viewport.replaceChildren(
     canvas,
-    deskStubs,
-    deskTabs,
+    overlay.el,
     dockBox,
     h('div', { class: 'zoom' },
       pixelButton(t('scene.settings'), { icon: 'cog' }, () => sceneDialog('settings')),
