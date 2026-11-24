@@ -110,3 +110,38 @@ body {
 @media (max-width: 699px) { .editor .uside { width: 40vw !important; } }
 .editor .uside__grip { display: block; }
 .editor .uside__body, .editor .uside__list { overflow-y: auto; }
+
+/* What is pinned over the desk at the screen's own size (overlay.ts): lines on a canvas, then the pins. */
+.desk-overlay, .desk-overlay__lines, .desk-overlay__pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.desk-overlay__lines {
+  width: 100%;
+  height: 100%;
+}
+.desk-pin {
+  position: absolute;
+  pointer-events: auto;
+}
+/* The tabs over the scenes on the desk: each scene's name (to pick or drag it) and a button to close it. */
+.desk-tab {
+  display: flex;
+  gap: 2px;
+  touch-action: none;
+  cursor: grab;
+}
+.desk-tab:active {
+  cursor: grabbing;
+}
+.desk-tab--crowded {
+  outline: 3px solid #d9412b;
+}
+
+/* The scene list's tiles can be dragged sideways onto the desk with a finger; up and down still scrolls the list. */
+.editor .uside--left .utile { touch-action: pan-y; }
+body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
+/* A way's link handle (drag it onto another way): half the size of a button, as each way of the scene has one. */
+.desk-handle canvas { width: 26px !important; height: 28px !important; }
+.desk-handle { cursor: grab; touch-action: none; }

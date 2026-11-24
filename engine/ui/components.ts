@@ -875,6 +875,7 @@ export function tileGrid(tiles: Tile[], selected: string | null, pick: (id: stri
   grid.append(...tiles.map((t) => {
     const b = el('button', `utile${t.id === selected ? ' utile--on' : ''}`);
     b.title = b.ariaLabel = t.words ?? t.id;
+    b.dataset.id = t.id;
     b.setAttribute('aria-pressed', String(t.id === selected));
     const inner = el('span', 'utile__in');
     inner.append(t.picture ?? (t.icon ? iconPicture(t.icon) : document.createTextNode('')));
