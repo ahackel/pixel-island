@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FADE_MS, FRONT, RockFade, rockView, STANDS } from '../engine/engine/world/front-rock.ts';
-import { ROCK_LEVEL, type HeightMap } from '../engine/engine/world/terrain.ts';
+import { BRICK, ROCK_LEVEL, type HeightMap } from '../engine/engine/world/terrain.ts';
 
 /** A cave of rows: `#` rock, `.` floor at level 3. */
 const cave = (...rows: string[]): HeightMap => ({
@@ -57,4 +57,18 @@ test('without a survivor every rock that hides floor is down to its stub; a fade
   fade.aim({ i: 2, j: 6 });
   fade.settle();
   assert.equal(fade.fadeOf(c), 0);
+});
+
+test('a dissolving mass stops where the rock it is built of changes', () => {
+  // Two long rooms with rock between them, brick from the ninth column on.
+  const long = cave('############', '#..........#', '#..........#', '############', '############', '#..........#', '#..........#', '############');
+  const m = { ...long, paint: Uint8Array.from({ length: long.w * long.h }, (_, c) => ((c % long.w) >= 8 && Math.floor(c / long.w) >= 3 && Math.floor(c / long.w) <= 4 ? BRICK : 0)) };
+  const v = rockView(m, TOP);
+  const fade = new RockFade(v);
+  // At the back room's left end, near floor the stone hides only; the stone it joins goes as far as the brick.
+  fade.aim({ i: 1, j: 2 });
+  const going = [...v.hides.keys()].filter((c) => fade.target[c]);
+  assert.ok(going.length > 0 && going.every((c) => v.material[c] === 0));
+  assert.ok(going.includes(at(long, 7, 3)));
+  assert.ok([...v.hides.keys()].some((c) => v.material[c] === BRICK) && [...v.hides.keys()].every((c) => v.material[c] !== BRICK || !fade.target[c]));
 });

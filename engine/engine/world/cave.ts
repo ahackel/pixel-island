@@ -14,7 +14,7 @@ import { particleSystem, tileHalo } from './particles.ts';
 import { footOf, type Thing } from './island.ts';
 import { LONE, RockFade, rockView, STANDS, type RockView } from './front-rock.ts';
 import { CAVE_FLOOR, settingsOf, type Scene } from './scene.ts';
-import { inside, isRock, LEVEL_PX, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
+import { BRICK, inside, isRock, LEVEL_PX, MINE, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
 import { rasterOf, type TileLamp, type World } from './world.ts';
 
 /** The level of a new cave's floor (scene.ts), and how tall its walls stand in levels unless its headroom says (`SceneSettings.headroom`). */
@@ -69,7 +69,7 @@ const rockTop = (wall: number) => wall * LEVEL_PX + 2;
 /**
  * The rock along the floor, as the old isometric games drew dungeons, seen into from the front (front-rock.ts
  * `rockView`): standing rock that hides some floor behind it on screen is a solid black block, and standing rock along
- * the floor shows it its faces (the walls); rock at the cave's front is not drawn at all. A lone cell of rock with floor
+ * the floor shows it its faces (the walls), of stone, brick or mine as it is built; rock at the cave's front is not drawn at all. A lone cell of rock with floor
  * all round stands as a stalagmite. Gives the walls, with the rock cell each stands for, the cells that stand as
  * blocks, and the stalagmites.
  */
@@ -84,9 +84,11 @@ export function caveRock(map: HeightMap, view: RockView, wall = CAVE_WALL): { wa
     if (view.kind[c] === LONE) pillars.push(c);
     if (view.kind[c] !== STANDS) continue;
     if (view.hides.has(c)) blocks.push(c);
+    // Its walls are of what it is built of (front-rock.ts `material`).
+    const kind = view.material[c] === BRICK ? 'brick' : view.material[c] === MINE ? 'mine' : 'rock';
     for (const edge of [isOpen(map, i + 1, j) && { axis: 'V' as const, i: i + 1, j }, isOpen(map, i, j + 1) && { axis: 'H' as const, i, j: j + 1 }]) {
       if (!edge) continue;
-      const piece = { kind: 'rock', edge };
+      const piece = { kind, edge };
       walls.edges.set(edgeKey(edge), piece);
       of.set(piece, c);
     }
@@ -157,7 +159,9 @@ function h01(a: number, b: number, c: number): number {
 // shortcut: seeded by view position, so it lies differently when the editor turns the view; seed by scene position if that bothers.
 export function caveRubble(walls: Building, amount: number, seed = { i: 0, j: 0 }): { plant: string; i: number; j: number; seed: number; size: number; turn: number }[] {
   const out: ReturnType<typeof caveRubble> = [];
-  for (const { edge } of walls.edges.values()) {
+  for (const { edge, kind } of walls.edges.values()) {
+    // Brick is laid: no rubble falls from it.
+    if (kind === 'brick') continue;
     const ax = edge.axis === 'H' ? 0 : 1;
     const r = (k: number) => h01((edge.i - seed.i) * 2 + ax, edge.j - seed.j, k);
     if (r(0) >= amount) continue;
@@ -208,7 +212,11 @@ const cellAt = (key: string) => (key ? { i: Number(key.split(',')[0]), j: Number
 export function setUpCave(world: World, at?: { i: number; j: number }): void {
   world.trackSpots = true;
   world.shadowDepth = 2.4;
-  if (!world.pieceKinds.rock) world.pieceKinds = { ...world.pieceKinds, rock: rockWall({ tones: PALETTE.cave }) };
+  if (!world.pieceKinds.rock || !world.pieceKinds.mine) {
+    world.pieceKinds = {
+      ...world.pieceKinds, rock: rockWall({ tones: PALETTE.cave }), brick: rockWall({ tones: PALETTE.cave, material: 'brick' }), mine: rockWall({ tones: PALETTE.cave, material: 'mine' }),
+    };
+  }
   const wall = wallOf(world.scene);
   const view = rockView(world.map, world.flatLevel + rockTop(wall) / LEVEL_PX);
   const { walls, of, blocks, pillars } = caveRock(world.map, view, wall);

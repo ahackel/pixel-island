@@ -2350,7 +2350,7 @@ function editOptions(): Node[] {
   const rows: Node[] = [];
   if (tool === 'paint') {
     // Ground follows the height by default; in a cave, where the height is flat, the default is the cave's own stone.
-    const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5] : [0, 1, 2, 3, 5];
+    const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5, 6, 7] : [0, 1, 2, 3, 5, 6, 7];
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }

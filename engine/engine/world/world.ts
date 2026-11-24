@@ -9,7 +9,7 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, standingHeight, surfaceAt, underwater, waterOf,
+  BRICK, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
@@ -584,7 +584,9 @@ export class World {
     this.floor = seaFloor(this.map);
     setWater(WATER_COLORS.map((k) => ocean[k]));
     this.shown = withLoneRockFloored(this.map);
-    if (!this.void && !this.shown.levels.some(isRock)) return renderTerrain(this.shown);
+    // In the dark, stone faces are painted in the cave's tones.
+    const dark = settingsOf(this.scene).light === 'dark';
+    if (!this.void && !this.shown.levels.some(isRock)) return renderTerrain(dark ? { ...this.shown, dark } : this.shown);
     // Rock is drawn black on the floor's own plane (cave.ts stands its blocks and walls on it), so nothing slopes off at
     // the edge of the hollow and the editor's grid lies flat across it.
     let flat = Infinity;
@@ -597,6 +599,7 @@ export class World {
       levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
       shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
       solid: Uint8Array.from(this.shown.levels, (l) => (isRock(l) ? 1 : 0)),
+      dark,
       ...(this.void && { outside: ROCK_LEVEL }),
     });
   }
@@ -610,8 +613,8 @@ export class World {
       const level = this.map.levels[at], paint = this.map.paint[at];
       this.scene.levels[c] = level;
       shape[c] = turnShape(this.map.shape[at], -this.rot);
-      // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock has no paint.
-      this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || isRock(level)) ? 0 : paint;
+      // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock is stone but where it is built of brick or mine.
+      this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || (isRock(level) && paint !== BRICK && paint !== MINE)) ? 0 : paint;
     }
   }
 

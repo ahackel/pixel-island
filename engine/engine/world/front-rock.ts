@@ -4,7 +4,7 @@
 // hides floor near them dissolves down to a stub, a whole joined mass of it at a time, and stays so until none of that
 // mass is needed any more. What each cell of rock hides is found along its own screen column, once per ground; the
 // survivor stepping onto another cell only picks from that.
-import { inside, isRock, LEVEL_PX, TILE_H, type HeightMap } from './terrain.ts';
+import { BRICK, inside, isRock, LEVEL_PX, MINE, TILE_H, type HeightMap } from './terrain.ts';
 
 /** What a cell is to the view: floor, rock never drawn (front rock), rock standing, and a lone cell of rock (a stalagmite). */
 export const FLOOR = 0, FRONT = 1, STANDS = 2, LONE = 3;
@@ -21,6 +21,8 @@ export interface RockView {
   h: number;
   /** Per cell: FLOOR, FRONT, STANDS or LONE. */
   kind: Uint8Array;
+  /** Per cell of rock, what it is built of: 0 stone, else `BRICK` or `MINE` (its paint). A mass fades only as far as its material goes. */
+  material: Uint8Array;
   /** Per cell of standing rock that hides some floor behind it on screen, the floor cells it hides. Only this rock fades. */
   hides: Map<number, number[]>;
 }
@@ -39,6 +41,7 @@ const column = (d: number): [number, number][] => {
 export function rockView(map: HeightMap, top: number): RockView {
   const { w, h } = map;
   const kind = new Uint8Array(w * h);
+  const material = new Uint8Array(w * h);
   const hides = new Map<number, number[]>();
   const open = (i: number, j: number) => inside(map, i, j) && !isRock(map.levels[j * w + i]);
   let lowest = top;
@@ -48,6 +51,8 @@ export function rockView(map: HeightMap, top: number): RockView {
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const c = j * w + i;
     if (open(i, j)) continue;
+    const paint = map.paint?.[c] ?? 0;
+    material[c] = paint === BRICK || paint === MINE ? paint : 0;
     if (open(i + 1, j) && open(i - 1, j) && open(i, j + 1) && open(i, j - 1)) {
       kind[c] = LONE;
       continue;
@@ -63,7 +68,7 @@ export function rockView(map: HeightMap, top: number): RockView {
     }
     if (hidden.length) hides.set(c, hidden);
   }
-  return { w, h, kind, hides };
+  return { w, h, kind, material, hides };
 }
 
 /** Which rock dissolves for where the survivor stands, and how far it has got. */
@@ -84,14 +89,14 @@ export class RockFade {
 
   /**
    * Aims at the survivor standing on the cell at `at`: rock in front of them (further down the screen) that hides floor
-   * within `NEAR` of them goes, and with it all the rock joined to it that hides floor, the whole mass at once (were
+   * within `NEAR` of them goes, and with it all the rock of its material joined to it that hides floor, the whole mass at once (were
    * only the rock in front of them to go, the mass would go a cell at a time as they walk along it); a mass that went
    * stays gone while any of it hides floor near them and is not behind them (rock beside them on screen holds it too, so
    * it does not flicker as they walk along it). Without a survivor (an editor's view), every rock that hides floor is
    * down to its stub.
    */
   aim(at: { i: number; j: number } | null): void {
-    const { w, h, hides } = this.view;
+    const { w, h, hides, material } = this.view;
     if (!at) {
       this.groups = [];
       this.target.fill(0);
@@ -118,7 +123,7 @@ export class RockFade {
         const i = g[q] % w, j = Math.floor(g[q] / w);
         for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
           const a = i + di, b = j + dj, n = b * w + a;
-          if (a < 0 || b < 0 || a >= w || b >= h || taken[n] || !hides.has(n)) continue;
+          if (a < 0 || b < 0 || a >= w || b >= h || taken[n] || !hides.has(n) || material[n] !== material[g[q]]) continue;
           taken[n] = 1;
           g.push(n);
         }
