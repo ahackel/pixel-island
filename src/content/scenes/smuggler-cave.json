@@ -787,7 +787,7 @@
     "j": 10.300542244215134,
     "id": "ladder1",
     "to": {
-     "scene": "smuggler-cave",
+     "scene": "rocky-island",
      "id": "hole1"
     }
    },

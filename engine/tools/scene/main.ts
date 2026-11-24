@@ -241,8 +241,10 @@ async function saveScene(): Promise<boolean> {
 /** Saves the scene to the project, then opens it as the island of the game (`?scene=`), which reads the saved file. */
 async function openInGame(): Promise<void> {
   // Opened before the save finishes, or the browser takes it for a pop-up.
+  // Without the dev server the game would not find the scene, and would quietly show another island.
+  if (!canSaveToProject()) return say(t('scene.projectFail'));
   const tab = window.open('about:blank', '_blank');
-  if (canSaveToProject() && !(await saveScene())) return void tab?.close();
+  if (!(await saveScene())) return void tab?.close();
   const url = new URL(`../../../?scene=${encodeURIComponent(slug(sceneNow().name))}`, location.href).href;
   if (tab) tab.location.href = url;
   else window.open(url, '_blank');
@@ -1519,7 +1521,8 @@ function linkFields(it: PlacedItem): Node {
   const scenes: Option[] = [{ id: '', words: t('link.none') }, ...[...targets.keys()].filter((n) => n !== here || (targets.get(n)?.length ?? 0) > 1).map((n) => ({ id: n, words: n }))];
   const label = (o: PlacedItem) => `${t(`link.${o.item}` as Key)} ${o.id} (${Math.floor(o.i)}, ${Math.floor(o.j)})`;
   const ways: Option[] = (target ?? []).filter((o) => o !== it).map((o) => ({ id: o.id!, words: label(o) }));
-  const note = !it.to ? '' : !target ? t('link.gone') : !there ? t('link.nowhere') : there.to?.scene === here && there.to.id === it.id ? '' : t('link.noreturn');
+  // The game reads only the scenes saved in the project, not those kept on this device.
+  const note = !it.to ? '' : !target || !projectCanon.has(it.to.scene) ? t('link.gone') : !there ? t('link.nowhere') : there.to?.scene === here && there.to.id === it.id ? '' : t('link.noreturn');
   return h('div', {},
     fields(
       field({ words: t('link.scene') }, choice(t('link.scene'), scenes, () => it.to?.scene ?? '', (n) => set(n ? { scene: n, id: targets.get(n)?.find((o) => o !== it)?.id ?? '' } : undefined), 'list')),
