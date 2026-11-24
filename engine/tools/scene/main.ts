@@ -1,6 +1,6 @@
 import './style.css';
 import { frameDone, part } from '../../shared/stats.ts';
-import { box, choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
 import { canSaveToProject, saveToProject } from '../../shared/project.ts';
@@ -17,7 +17,7 @@ import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
 import { findPath } from '../../engine/world/path.ts';
 import {
-  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, sceneFile, SEEDS, TURNS, type PlacedPerson, type PlacedPlant, type Scene,
+  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, sceneFile, SEEDS, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene,
 } from '../../engine/world/scene.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
@@ -1576,7 +1576,7 @@ function moveTo(sel: Selected, i: number, j: number): void {
 function selectionOptions(sel: Selected): Node[] {
   const o = sel.obj as any;
   const title = {
-    plant: () => plantName(o.plant, FLORA.find((e) => e.id === o.plant)?.label),
+    plant: () => plantName(o.plant, FLORA.find((e) => e.id === o.plant)?.label ?? o.plant),
     decor: () => t(`decor.${o.decor}` as Key),
     animal: () => o.name as string,
     person: () => o.name as string,
