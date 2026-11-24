@@ -110,3 +110,25 @@ body {
 @media (max-width: 699px) { .editor .uside { width: 40vw !important; } }
 .editor .uside__grip { display: block; }
 .editor .uside__body, .editor .uside__list { overflow-y: auto; }
+
+/* The tabs over the scenes on the desk: each scene's name (to pick or drag it) and a button to close it. */
+.desk-tabs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.desk-tab {
+  position: absolute;
+  display: flex;
+  gap: 2px;
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+.desk-tab:active {
+  cursor: grabbing;
+}
+.desk-tab--crowded {
+  outline: 3px solid #d9412b;
+}

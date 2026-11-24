@@ -35,6 +35,7 @@ import { roundBrush } from '../../shared/brush.ts';
 import { h, nameTag, topBar, word } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { t, type Key } from './i18n.ts';
+import { crowds, deskOf, freePlace, offsetOf, outline as deskOutline, tilesOf } from './desk.ts';
 
 // The scene editor: build a scene's ground and plants in Edit, walk around it with a saved
 // character in Play. Scenes, and the editor's own settings, are kept in this browser.
@@ -51,7 +52,7 @@ const CAVE_ONLY: Tool[] = ['carve', 'exit'];
 const ISLAND_ONLY: Tool[] = ['raise', 'lower', 'smooth', 'level'];
 const toolsHere = () => TOOLS.filter((tool) => !(sceneNow().cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
 const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'paint', 'carve', 'erase'];
-const ZOOM = { min: 1, max: 8 };
+const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Tool, string> = {
@@ -138,7 +139,13 @@ function savePrefs(): void {
 
 const library = loadLibrary(t('scene.first'));
 const sceneNow = () => library.scenes.find((s) => s.id === library.current)!;
-let world = new World(sceneNow(), prefs.rot);
+/** A scene's world in the editor: drawn alone while editing, so the other scenes on the desk show round it. */
+function worldFor(scene: Scene): World {
+  const w = new World(scene, prefs.rot);
+  w.alone = prefs.mode === 'edit';
+  return w;
+}
+let world = worldFor(sceneNow());
 let groundDirty = false;
 let version = 0;
 
@@ -191,7 +198,7 @@ function remember(): void {
 /** Shows `scene` in place of the current one (the same scene as it was before or after an edit). */
 function show(scene: Scene): void {
   library.scenes[library.scenes.findIndex((s) => s.id === scene.id)] = scene;
-  world = new World(scene, prefs.rot);
+  world = worldFor(scene);
   selected = null;
   sceneChanged();
   showOptions();
@@ -211,19 +218,270 @@ function redo(): void {
   show(after);
 }
 
-function switchTo(scene: Scene): void {
+/**
+ * Edits another scene: it is opened on the desk if it is not there yet, and the one edited so far stays on the desk
+ * beside it. `keepView` keeps the desk where it is on the screen (a scene picked on the desk); otherwise the view goes
+ * to the new scene's start.
+ */
+function switchTo(scene: Scene, keepView = false): void {
   if (saveTimer) store();
   undoStack.length = 0;
   redoStack.length = 0;
   if (!library.scenes.includes(scene)) library.scenes.push(scene);
+  placeOnDesk(scene);
+  const before = offsetOf(world);
+  // The scene edited so far lies on the desk as it is now (its world is kept, so it need not be worked out again).
+  if (world.scene.id !== scene.id && library.open.includes(world.scene.id)) lay(world);
   library.current = scene.id;
   selected = null;
-  world = new World(scene, prefs.rot);
+  const kept = lying.get(scene.id);
+  world = kept?.world.scene === scene ? kept.world : worldFor(scene);
+  dropLying(scene.id);
+  world.alone = prefs.mode === 'edit';
+  if (world.rot !== prefs.rot) world.setRotation(prefs.rot);
   store();
-  centerOn(world.toView(scene.spawn));
+  if (keepView) {
+    const after = offsetOf(world);
+    cam.x += before.x - after.x;
+    cam.y += before.y - after.y;
+  } else centerOn(world.toView(scene.spawn));
   if (prefs.mode === 'play') startPlay();
   version++;
   render();
+}
+
+// ------------------------------------------------------------------ the desk
+
+// While editing, the scenes open on the desk lie side by side (desk.ts), the one being edited among them. The others
+// are drawn once into pictures and kept until the view turns; a click on one edits it. In Play only the scene played shows.
+
+/** An open scene other than the one edited: its world (kept, so going back to it is quick), its picture and what that was drawn for. */
+interface Lying { world: World; picture: HTMLCanvasElement; drawn: string }
+const lying = new Map<string, Lying>();
+/** How far a lying scene's picture reaches past its ground image: up for what stands on its back rows, aside and down for wide things. */
+const PAD = { x: 16, y: 48 };
+/** The desk round the scenes. */
+const DESK = '#2b2936';
+
+const openScenes = () => library.open.map((id) => library.scenes.find((s) => s.id === id)).filter((s): s is Scene => !!s);
+
+/** Opens a scene on the desk; one with no place there yet, or one too near another open scene, gets a free place. */
+function placeOnDesk(scene: Scene): void {
+  if (!library.open.includes(scene.id)) library.open.push(scene.id);
+  const others = openScenes().filter((s) => s.id !== scene.id);
+  if (!scene.desk || others.some((o) => crowds(deskOf(scene), scene, o))) scene.desk = freePlace(scene, others, prefs.rot);
+  version++;
+}
+/** Leaves a world lying on the desk, as the scene is when not played. */
+function lay(w: World): void {
+  w.loose = null;
+  w.alone = true;
+  lying.set(w.scene.id, { world: w, picture: h('canvas', {}), drawn: '' });
+}
+function dropLying(id: string): void {
+  lying.delete(id);
+}
+function lyingOf(scene: Scene): Lying {
+  let l = lying.get(scene.id);
+  if (l?.world.scene !== scene) {
+    lay(worldFor(scene));
+    l = lying.get(scene.id)!;
+  }
+  return l;
+}
+
+/** The scene a way leads to, by file name: the editor's own of that name, else the project's file, kept in the editor from now on. */
+function sceneNamed(name: string): Scene | null {
+  const own = library.scenes.find((s) => slug(s.name) === name);
+  if (own) return own;
+  const file = projectScenes.find((p) => p.name === name);
+  if (!file) return null;
+  try {
+    const scene = readSceneFile(file.text);
+    library.scenes.push(scene);
+    return scene;
+  } catch {
+    return null;
+  }
+}
+/** Opens a scene on the desk with the scenes its holes and ladders lead to, and theirs in turn (an island and its caves). */
+function openWithLinks(scene: Scene): void {
+  if (!library.scenes.includes(scene)) library.scenes.push(scene);
+  const todo = [scene];
+  const seen = new Set<Scene>();
+  while (todo.length && seen.size < 12) {
+    const s = todo.shift()!;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    placeOnDesk(s);
+    for (const it of s.items) {
+      const there = it.to && sceneNamed(it.to.scene);
+      if (there && !seen.has(there)) todo.push(there);
+    }
+  }
+}
+/** Takes a scene off the desk (it stays in the list); the last one stays. */
+function closeScene(id: string): void {
+  if (library.open.length < 2) return;
+  library.open = library.open.filter((o) => o !== id);
+  dropLying(id);
+  if (id === library.current) return switchTo(openScenes()[openScenes().length - 1], true);
+  store();
+  version++;
+  render();
+}
+
+/**
+ * Moves a scene on the desk. The one being edited moves on the screen while the others stay; its earlier states (to
+ * undo to) move with it, so undoing an edit does not move it back.
+ */
+function moveOnDesk(scene: Scene, at: { i: number; j: number }): void {
+  const here = scene.id === world.scene.id;
+  const before = offsetOf(world);
+  const was = deskOf(scene);
+  scene.desk = at;
+  if (here) {
+    const after = offsetOf(world);
+    cam.x -= after.x - before.x;
+    cam.y -= after.y - before.y;
+    for (const s of [...undoStack, ...redoStack]) {
+      const d = deskOf(s);
+      s.desk = { i: d.i + at.i - was.i, j: d.j + at.j - was.j };
+    }
+  }
+  version++;
+}
+
+/** The start point, shown while editing: a small flag. */
+function flagOf(w: World): Thing {
+  const s = w.toView(w.scene.spawn);
+  return { spot: { i: s.i, j: s.j, level: Math.max(SEA_LEVEL, levelAt(w.map, Math.floor(s.i), Math.floor(s.j))) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
+}
+
+/** Draws a lying scene's picture again if the view turned (or the cave's light was switched) since it was last drawn. */
+function drawLying(l: Lying): void {
+  const key = `${l.world.rot}|${prefs.bright}`;
+  if (l.drawn === key) return;
+  l.drawn = key;
+  const w = l.world;
+  const g = w.ground;
+  const things: Thing[] = [
+    ...w.plantThings(0), ...w.decorThings(0), ...w.animalThings(0), ...w.itemThings(), ...w.propThings(0),
+    ...w.scene.people.map((p) => personThing(p, 0, w)),
+    ...(w.scene.cave ? caveThings(w) : []),
+    flagOf(w),
+  ];
+  const view = { x: -PAD.x, y: -PAD.y, w: g.w + 2 * PAD.x, h: g.h + PAD.y + PAD.x };
+  const image = w.compose(view, things, undefined, false, 0, false);
+  if (w.scene.cave && !prefs.bright) lightByTile(image, caveTint(w.scene), 0, w.spots!, w.lightField(caveLamps(w, 0)));
+  l.picture.width = view.w;
+  l.picture.height = view.h;
+  l.picture.getContext('2d')!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, view.w, view.h), 0, 0);
+}
+
+/** The edited scene's picture, as composed, ready to be drawn over what lies behind it. */
+const layer = h('canvas', {});
+/** Paints the desk: the scenes on it back to front, the edited one (its picture just composed) among them; in Play only that one. */
+function paintDesk(image: { data: Uint8ClampedArray; width: number; height: number }, view: Rect): void {
+  if (layer.width !== image.width || layer.height !== image.height) {
+    layer.width = image.width;
+    layer.height = image.height;
+  }
+  layer.getContext('2d')!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const here = offsetOf(world);
+  const scenes = prefs.mode === 'edit' ? openScenes() : [world.scene];
+  const bottom = (s: Scene) => deskOutline(s, prefs.rot)[2].y;
+  for (const s of scenes.sort((a, b) => bottom(a) - bottom(b))) {
+    if (s.id === world.scene.id) {
+      ctx.drawImage(layer, 0, 0);
+      continue;
+    }
+    const l = lyingOf(s);
+    drawLying(l);
+    const o = offsetOf(l.world);
+    ctx.drawImage(l.picture, Math.round(o.x - here.x - PAD.x - view.x), Math.round(o.y - here.y - PAD.y - view.y));
+  }
+  placeTabs(view);
+}
+
+/** The open scene other than the edited one whose ground is under the pointer, the front-most. */
+function sceneUnder(e: { clientX: number; clientY: number }): Scene | null {
+  const p = groundPixel(e);
+  if (world.tileAt(p.x, p.y)) return null;
+  const here = offsetOf(world);
+  const bottom = (s: Scene) => deskOutline(s, prefs.rot)[2].y;
+  for (const s of openScenes().sort((a, b) => bottom(b) - bottom(a))) {
+    if (s.id === world.scene.id) continue;
+    const l = lyingOf(s);
+    const o = offsetOf(l.world);
+    if (l.world.tileAt(p.x + here.x - o.x, p.y + here.y - o.y)) return s;
+  }
+  return null;
+}
+
+// Each open scene has a tab above its north corner: its name, to pick it or drag it about the desk, and a button to close it.
+const deskTabs = h('div', { class: 'desk-tabs' });
+let tabDrag: { pointer: number; scene: Scene; tab: HTMLElement; x: number; y: number; from: { i: number; j: number }; moved: boolean; ok: boolean } | null = null;
+
+function syncTabs(): void {
+  const editing = prefs.mode === 'edit';
+  deskTabs.hidden = !editing;
+  deskTabs.replaceChildren(...(editing ? openScenes().map(tabOf) : []));
+  version++;
+}
+function tabOf(scene: Scene): HTMLElement {
+  const here = scene.id === library.current;
+  const name = pixelButton(scene.name, { icon: scene.cave ? 'rock' : 'palm', words: scene.name, lit: here }, () => {});
+  const close = pixelButton(t('desk.close'), { icon: 'close' }, () => closeScene(scene.id));
+  close.hidden = library.open.length < 2;
+  close.addEventListener('pointerdown', (e) => e.stopPropagation());
+  const tab = h('div', { class: 'desk-tab' }, name, close);
+  tab.dataset.scene = scene.id;
+  tab.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || tabDrag) return;
+    tab.setPointerCapture(e.pointerId);
+    tabDrag = { pointer: e.pointerId, scene, tab, x: e.clientX, y: e.clientY, from: deskOf(scene), moved: false, ok: true };
+  });
+  return tab;
+}
+deskTabs.addEventListener('pointermove', (e) => {
+  const d = tabDrag;
+  if (!d || e.pointerId !== d.pointer) return;
+  if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+  d.moved = true;
+  const step = tilesOf((e.clientX - d.x) / zoom, (e.clientY - d.y) / zoom, prefs.rot);
+  moveOnDesk(d.scene, { i: d.from.i + step.i, j: d.from.j + step.j });
+  // Let go too near another scene, it goes back to where it was.
+  d.ok = !openScenes().some((o) => o.id !== d.scene.id && crowds(deskOf(d.scene), d.scene, o));
+  d.tab.classList.toggle('desk-tab--crowded', !d.ok);
+});
+const dropTab = (e: PointerEvent) => {
+  const d = tabDrag;
+  if (!d || e.pointerId !== d.pointer) return;
+  tabDrag = null;
+  d.tab.classList.remove('desk-tab--crowded');
+  if (!d.moved) {
+    if (d.scene.id !== world.scene.id) switchTo(d.scene, true);
+    return;
+  }
+  if (!d.ok) moveOnDesk(d.scene, d.from);
+  store();
+  render();
+};
+deskTabs.addEventListener('pointerup', dropTab);
+deskTabs.addEventListener('pointercancel', dropTab);
+
+/** Puts each tab above its scene's north corner. */
+function placeTabs(view: Rect): void {
+  const here = offsetOf(world);
+  for (const tab of deskTabs.children as HTMLCollectionOf<HTMLElement>) {
+    const scene = library.scenes.find((s) => s.id === tab.dataset.scene);
+    if (!scene) continue;
+    const n = deskOutline(scene, prefs.rot)[0];
+    tab.style.left = `${(n.x - here.x - view.x) * zoom}px`;
+    tab.style.top = `${(n.y - here.y - view.y) * zoom - 6}px`;
+  }
 }
 
 // ------------------------------------------------------------------ page helpers
@@ -333,6 +591,8 @@ const FLAG: Picture = {
 // ------------------------------------------------------------------ editing
 
 let hover: { i: number; j: number } | null = null;
+/** Whether the pointer is over another open scene, which a click there edits. */
+let overOther = false;
 
 function brushCells(at: { i: number; j: number }, tool = prefs.tool): number[] {
   const size = BRUSHED.includes(tool) ? prefs.brush : 1;
@@ -463,17 +723,17 @@ function personActor(p: PlacedPerson): Actor {
   else if (e.state !== p.state) { e.actor.setLook(lookOf(p.state)); e.state = p.state; }
   return e.actor;
 }
-/** Puts a character's actor back where and as it was placed. */
-function standAtHome(p: PlacedPerson): Actor {
+/** Puts a character's actor back where and as it was placed (in the edited world, or another scene's on the desk). */
+function standAtHome(p: PlacedPerson, w = world): Actor {
   const a = personActor(p);
   a.frozen = p.pose ?? null;
-  Object.assign(a, world.toView(p));
+  Object.assign(a, w.toView(p));
   a.facing = turnFacing(0, 2 * (p.turn + prefs.rot));
   a.heading = (p.turn + prefs.rot) * (Math.PI / 2);
   return a;
 }
-function personThing(p: PlacedPerson, ms: number): Thing {
-  return (prefs.mode === 'play' ? personActor(p) : standAtHome(p)).thing(world, ms);
+function personThing(p: PlacedPerson, ms: number, w = world): Thing {
+  return (prefs.mode === 'play' && w === world ? personActor(p) : standAtHome(p, w)).thing(w, ms);
 }
 
 /**
@@ -777,6 +1037,8 @@ function dragEdge(g: Extract<Gesture, { kind: 'edge' }>, side: 'n' | 'e' | 's' |
   const p0 = g.base.toData({ i: a0, j: b0 }), p1 = g.base.toData({ i: a1, j: b1 });
   const i0 = Math.min(p0.i, p1.i), j0 = Math.min(p0.j, p1.j);
   const next = resized(g.orig, Math.abs(p1.i - p0.i), Math.abs(p1.j - p0.j), -i0, -j0);
+  // It grows no nearer to another scene on the desk than the gap between scenes.
+  if (openScenes().some((o) => o.id !== next.id && crowds(deskOf(next), next, o))) return;
   // The middle of the old ground stays where it is on the screen.
   const mid = { i: Math.floor(g.base.map.w / 2), j: Math.floor(g.base.map.h / 2) };
   const here = (ox: number, oy: number) => world.screenOf(mid.i - ox, mid.j - oy);
@@ -817,7 +1079,7 @@ function startPlay(): void {
   actor = new Actor(characterLook(), at);
   herd = new Herd(world, performance.now());
   world.loose = structuredClone(world.scene.items);
-  world.scene.people.forEach(standAtHome);
+  world.scene.people.forEach((p) => standAtHome(p));
   roaming.clear();
   target = null;
   held = null;
@@ -835,6 +1097,7 @@ function rotate(step: number): void {
   prefs.rot = (prefs.rot + step + 4) % 4;
   savePrefs();
   world.setRotation(prefs.rot);
+  for (const l of lying.values()) l.world.setRotation(prefs.rot);
   world.scene.people.forEach((p, k) => Object.assign(personActor(p), world.toView(people[k])));
   const v = world.toView(focus);
   if (actor) {
@@ -1089,6 +1352,12 @@ canvas.addEventListener('pointerdown', (e) => {
   } else if (pointers.size === 1) {
     if (e.button === 1 || e.button === 2 || keys.has('Space')) gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
     else if (prefs.mode === 'edit' && (gesture = edgeGesture(e))) { /* dragging an edge of the level */ }
+    else if (prefs.mode === 'edit' && sceneUnder(e)) {
+      // A click on another scene on the desk edits that one; held, it pans.
+      switchTo(sceneUnder(e)!, true);
+      overOther = false;
+      gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
+    }
     else if (prefs.mode === 'edit' && prefs.tool === 'move') {
       const p = groundPixel(e);
       selected = objectAt(p.x, p.y);
@@ -1145,6 +1414,7 @@ canvas.addEventListener('pointermove', (e) => {
   else if (gesture?.kind === 'stroke') strokeAt(e);
   else if (gesture?.kind === 'walk') walkTo(e);
   if (prefs.mode === 'edit' && e.pointerType === 'mouse') hover = tileUnder(e);
+  overOther = prefs.mode === 'edit' && !gesture && !hover && !!sceneUnder(e);
   hotEdge = prefs.mode === 'edit' && e.pointerType === 'mouse' ? (gesture?.kind === 'edge' ? edgeSide : gesture ? null : edgeAt(e)) : null;
 });
 const release = (e: PointerEvent) => {
@@ -1166,7 +1436,7 @@ const release = (e: PointerEvent) => {
 };
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
-canvas.addEventListener('pointerleave', () => { hover = null; if (gesture?.kind !== 'edge') hotEdge = null; });
+canvas.addEventListener('pointerleave', () => { hover = null; overOther = false; if (gesture?.kind !== 'edge') hotEdge = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // A trackpad sends a two-finger move as scrolling, which pans, and a pinch as scrolling with Ctrl
 // held, which zooms, smoothly and around the pointer.
@@ -1247,7 +1517,7 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${overOther}`;
   if (prefs.mode === 'play' || key !== shown) {
     const begun = performance.now();
     const cave = world.scene.cave;
@@ -1258,8 +1528,7 @@ function frame(ms: number): void {
     ];
     if (prefs.mode === 'play' && actor) things.push(actor.thing(world, ms), ...actor.dropThings());
     else {
-      const s = world.toView(world.scene.spawn);
-      things.push({ spot: { i: s.i, j: s.j, level: Math.max(SEA_LEVEL, levelAt(world.map, Math.floor(s.i), Math.floor(s.j))) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } });
+      things.push(flagOf(world));
       for (const e of cave?.exits ?? []) {
         const v = world.toView(e);
         things.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: EXIT_MARK, w: 7, h: 7, foot: { x: 3, y: 3 }, shadow: [] });
@@ -1279,7 +1548,7 @@ function frame(ms: number): void {
       highlight = v && !canStand(selected!, v) ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: '#e0332e99' } : undefined;
     }
     world.hotEdge = prefs.mode === 'edit' ? hotEdge : null;
-    canvas.style.cursor = hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
+    canvas.style.cursor = overOther && !gesture && prefs.mode === 'edit' ? 'pointer' : hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && prefs.tool === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
     let t0 = part('things', begun);
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
     t0 = performance.now();
@@ -1293,7 +1562,7 @@ function frame(ms: number): void {
     if (chosen) outline(image, view, chosen, OUTLINE);
     if (prefs.colliders) world.drawColliders(image, view);
     t0 = part('light', t0);
-    ctx.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), 0, 0);
+    paintDesk(image, view);
     part('show', t0);
     part('whole frame', begun);
     frameDone();
@@ -1738,7 +2007,10 @@ function render(): void {
   inspect();
   showActions();
   if (brightToggle) brightToggle.hidden = !editing || !sceneNow().cave;
-  viewport.style.background = sceneNow().cave ? '#000' : ocean.deep;
+  // While editing, the scene lies on the desk; in Play it is seen as in the game, with open sea (or a cave's dark) round it.
+  world.alone = editing;
+  viewport.style.background = editing ? DESK : sceneNow().cave ? '#000' : ocean.deep;
+  syncTabs();
   fpsLine.hidden = !prefs.fps;
 }
 
@@ -1797,7 +2069,9 @@ async function deleteScene(): Promise<void> {
   const scene = sceneNow();
   if (!(await confirmDialog(t('scene.confirmDelete', { name: scene.name })))) return;
   library.scenes = library.scenes.filter((s) => s !== scene);
-  switchTo(library.scenes[0] ?? createScene(t('scene.first'), 28, 28, true));
+  library.open = library.open.filter((id) => id !== scene.id);
+  dropLying(scene.id);
+  switchTo(openScenes()[0] ?? library.scenes[0] ?? createScene(t('scene.first'), 28, 28, true));
 }
 
 async function importScene(): Promise<void> {
@@ -1808,6 +2082,7 @@ async function importScene(): Promise<void> {
     say(t('scene.badFile'));
     return;
   }
+  openWithLinks(scene);
   switchTo(scene);
   say(t('scene.imported', { name: scene.name }));
 }
@@ -1848,9 +2123,15 @@ current = canon(sceneNow());
 const sceneList = tileLibrary({
   key: 'pixel-scenes', label: t('scene.search'), empty: t('scene.none'), items: sceneTiles, selected: () => library.current,
   pick: (id) => {
+    // A scene picked opens on the desk with the scenes its ways lead to.
     const file = projectScenes.find((p) => `file:${p.name}` === id);
-    if (!file) return switchTo(library.scenes.find((s) => s.id === id)!);
-    try { switchTo(readSceneFile(file.text)); } catch { say(t('scene.badFile')); }
+    let scene = library.scenes.find((s) => s.id === id);
+    if (file) {
+      try { scene = readSceneFile(file.text); } catch { return say(t('scene.badFile')); }
+    }
+    if (!scene) return;
+    openWithLinks(scene);
+    switchTo(scene);
   },
 });
 const side = sidePanel('left', 'pixel-scene-list', 200);
@@ -1865,6 +2146,7 @@ function mount(): void {
   brightToggle = toggle(t('bright'), { icon: 'sun' }, prefs.bright, (bright) => set({ bright }));
   viewport.replaceChildren(
     canvas,
+    deskTabs,
     dockBox,
     h('div', { class: 'zoom' },
       pixelButton(t('scene.settings'), { icon: 'cog' }, () => sceneDialog('settings')),
@@ -1889,6 +2171,8 @@ function mount(): void {
   render();
 }
 
+// Every open scene has its place on the desk (scenes from before the desk get one).
+for (const s of openScenes()) placeOnDesk(s);
 mount();
 // Characters saved in the wardrobe in another tab show up when coming back.
 document.addEventListener('visibilitychange', () => {

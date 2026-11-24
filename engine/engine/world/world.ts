@@ -444,6 +444,12 @@ export class World {
 
   /** Beyond the map, open sea; or, for an inside such as a cave, nothing: black, and the cells under the water line too, so a cave's floor can have any outline. */
   void = false;
+  /**
+   * Drawn on its own, as one of several scenes laid side by side (the scene editor's desk): beyond the map's outline at
+   * the water line nothing is drawn, no sea and no dark, so what lies behind shows; only ground rising above the water
+   * line and what stands there reach past it. Those pixels are left fully transparent.
+   */
+  alone = false;
   /** The map the ground is drawn from: `map`, but in a `void` world a lone cell of nothing is drawn as floor, for what stands there (a cave's stalagmite) to stand on. */
   private shown!: HeightMap & { paint: Uint8Array };
   /** How much darker than outside shadows fall: more in a cave, where little else lights the ground. */
@@ -889,6 +895,10 @@ export class World {
       for (let x = 0; x < w; x++) {
         const gx = x + view.x;
         const o = (y * w + x) * 4;
+        if (this.alone && this.beyond(gx, gy)) {
+          d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
+          continue;
+        }
         // In a void world, nothing but the open cells: not their slopes down to the cells below the water line either.
         if (this.void && (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w || g.cell[gy * g.w + gx] < 0 || g.depth[gy * g.w + gx] > 0 || this.shown.levels[g.cell[gy * g.w + gx]] < SEA_LEVEL)) {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
@@ -928,6 +938,17 @@ export class World {
     }
   }
 
+  /** For an `alone` world: whether a pixel of the ground image lies beyond the map, neither inside its outline at the water line nor on ground higher than it. */
+  private beyond(gx: number, gy: number): boolean {
+    const g = this.ground;
+    const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2), b = (gy + 0.5 - g.origin.y) / (TILE_H / 2);
+    const i = (a + b) / 2, j = (b - a) / 2;
+    if (i >= 0 && j >= 0 && i < this.map.w && j < this.map.h) return false;
+    if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) return true;
+    const p = gy * g.w + gx;
+    return g.cell[p] < 0 || g.height[p] <= SEA_LEVEL;
+  }
+
   /**
    * Paints the camera window: the ground, every shadow at once, then things back to front with
    * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
@@ -947,7 +968,7 @@ export class World {
       // The ground and water are kept from frame to frame: moved along when the view moves, drawing only the strips it
       // uncovers, and refreshed for the waves a band of rows at a time, each band every WATER_MS, so no frame redraws it all.
       const bandOf = (k: number) => Math.floor((ms + (k * WATER_MS) / BANDS) / WATER_MS);
-      const old = this.base?.ground === g && this.base.grid === grid ? this.base : null;
+      const old = this.base?.ground === g && this.base.grid === grid && this.base.alone === this.alone ? this.base : null;
       // The part of the window last drawn that is still in view.
       const x0 = old ? Math.max(view.x, old.x) : 0, x1 = old ? Math.min(view.x + w, old.x + old.w) : 0;
       const y0 = old ? Math.max(view.y, old.y) : 0, y1 = old ? Math.min(view.y + h, old.y + old.h) : 0;
@@ -956,7 +977,7 @@ export class World {
       let b: NonNullable<World['base']>;
       if (!old || x1 <= x0 || y1 <= y0) {
         const was = this.base;
-        b = this.base = { ground: g, grid, x: view.x, y: view.y, w, h, data: sized(was?.data), spare: sized(was?.spare), lit: sized(was?.lit), bands: new Float64Array(BANDS) };
+        b = this.base = { ground: g, grid, alone: this.alone, x: view.x, y: view.y, w, h, data: sized(was?.data), spare: sized(was?.spare), lit: sized(was?.lit), bands: new Float64Array(BANDS) };
         this.drawBase({ data: b.data, width: w, height: h }, view, ms, grid, false);
         for (let k = 0; k < BANDS; k++) b.bands[k] = bandOf(k);
         horizon(b.data, b.lit, w, h, 0, 0, w, h);
@@ -1167,7 +1188,7 @@ export class World {
    * The ground and water of the last window composed without a highlight, where it is, the wave time each band of rows
    * was last drawn at, `lit`, the same with the water shaded toward the horizon, and a `spare` buffer to move it into.
    */
-  private base: { ground: TerrainImage; grid: boolean; x: number; y: number; w: number; h: number; data: Uint8ClampedArray; spare: Uint8ClampedArray; lit: Uint8ClampedArray; bands: Float64Array } | null = null;
+  private base: { ground: TerrainImage; grid: boolean; alone: boolean; x: number; y: number; w: number; h: number; data: Uint8ClampedArray; spare: Uint8ClampedArray; lit: Uint8ClampedArray; bands: Float64Array } | null = null;
   /** Room to draw a strip of the base in. */
   private strip = new Uint8ClampedArray(0);
   private wind = -1;

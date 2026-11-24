@@ -88,6 +88,8 @@ export interface Scene {
   origin?: { w: number; h: number };
   /** Set for a cave: all rock but what is carved open, seen into from the front (see cave.ts). */
   cave?: CaveSettings;
+  /** Where the scene lies on the scene editor's desk, beside the other scenes open there: its north corner, in tiles. Only the editor uses it. */
+  desk?: { i: number; j: number };
 }
 
 export interface CaveSettings {
@@ -102,6 +104,8 @@ export interface CaveSettings {
 export const CAVE_DEFAULTS: Omit<CaveSettings, 'exits'> = { tint: '#080e50', dark: 0.9, rubble: 0.45 };
 
 export const MIN_SIZE = 8;
+/** How far from the middle of the editor's desk a scene may lie, in tiles. */
+const DESK_REACH = 100000;
 export const MAX_SIZE = 64;
 export const SEEDS = 4;
 export { TURNS };
@@ -181,6 +185,8 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
     ...((scene.origin || w !== scene.w || h !== scene.h) && { origin: scene.origin ?? { w: scene.w, h: scene.h } }),
     ...((scene.shift || dx || dy) && { shift: { i: (scene.shift?.i ?? 0) + dx, j: (scene.shift?.j ?? 0) + dy } }),
     ...(scene.cave && { cave: { ...scene.cave, exits: kept(scene.cave.exits) } }),
+    // Grown or shrunk at the north or west border, it moves on the desk by as much, so its ground stays where it lay.
+    ...(scene.desk && { desk: { i: scene.desk.i - dx, j: scene.desk.j - dy } }),
   };
 }
 
@@ -272,6 +278,7 @@ export function cleanScene(input: unknown): Scene {
     spawn: { i: num(s.spawn?.i, 0, w, w / 2), j: num(s.spawn?.j, 0, h, h / 2) },
     ...(s.origin && typeof s.origin === 'object' && Number.isInteger(s.origin.w) && Number.isInteger(s.origin.h) && { origin: { w: clamp(s.origin.w, MIN_SIZE, MAX_SIZE), h: clamp(s.origin.h, MIN_SIZE, MAX_SIZE) } }),
     ...(s.shift && typeof s.shift === 'object' && (Number(s.shift.i) || Number(s.shift.j)) && { shift: { i: Math.round(num(s.shift.i, -MAX_SIZE * 8, MAX_SIZE * 8, 0)), j: Math.round(num(s.shift.j, -MAX_SIZE * 8, MAX_SIZE * 8, 0)) } }),
+    ...(s.desk && typeof s.desk === 'object' && { desk: { i: Math.round(num(s.desk.i, -DESK_REACH, DESK_REACH, 0)), j: Math.round(num(s.desk.j, -DESK_REACH, DESK_REACH, 0)) } }),
   };
   const c = s.cave;
   if (c && typeof c === 'object') {
@@ -336,12 +343,14 @@ export function refreshLinks(scene: Scene, sources = linkSources()): boolean {
 
 const STORAGE_KEY = 'pixel-scenes';
 
-export interface Library { current: string; scenes: Scene[] }
+/** The editor's scenes: the one being edited, those open on its desk beside it (by id, the current one among them), and all of them. */
+export interface Library { current: string; open: string[]; scenes: Scene[] }
 
 /** The scenes saved here; the first visit gets one island to start with. Broken scenes are skipped. */
 export function loadLibrary(firstName: string): Library {
   let scenes: Scene[] = [];
   let current = '';
+  let open: string[] = [];
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
     if (saved && Array.isArray(saved.scenes)) {
@@ -353,13 +362,16 @@ export function loadLibrary(firstName: string): Library {
         }
       }
       current = typeof saved.current === 'string' ? saved.current : '';
+      if (Array.isArray(saved.open)) open = saved.open.filter((id: unknown) => typeof id === 'string');
     }
   } catch {
     // Without storage the page starts with a fresh island.
   }
   if (!scenes.length) scenes = [createScene(firstName, 28, 28, true, 7)];
   if (!scenes.some((s) => s.id === current)) current = scenes[0].id;
-  return { current, scenes };
+  open = [...new Set(open)].filter((id) => scenes.some((s) => s.id === id));
+  if (!open.includes(current)) open.push(current);
+  return { current, open, scenes };
 }
 
 /** The ids of every prop kind a scene draws: its plants, items and props. */
