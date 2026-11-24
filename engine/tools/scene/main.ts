@@ -3,7 +3,7 @@ import { frameDone, part } from '../../shared/stats.ts';
 import { choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
 import { C } from '../../ui/theme.ts';
-import { canSaveToProject, saveToProject } from '../../shared/project.ts';
+import { canSaveToProject, removeFromProject, saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
@@ -157,15 +157,38 @@ let world = worldFor(sceneNow());
 let groundDirty = false;
 let version = 0;
 
-/** A scene as text to compare, without its id (a new one on every import). */
+/**
+ * A scene as text to compare, without its id (a new one on every import) or its place on the desk (opening a scene
+ * or moving it about is no change to save; the place is saved along with one).
+ */
 const canon = (scene: Scene): string => {
   const file = JSON.parse(sceneFile(scene));
   delete file.scene.id;
+  delete file.scene.desk;
   return JSON.stringify(file);
 };
 /** The scene shown as it was last stored, and each project scene file (by name) as it reads back: they differ when there is something to save. */
 let current = '';
 const projectCanon = new Map<string, string>();
+/** The scenes changed since the page opened, by id: Save writes these (and the edited one) where they differ from the project. */
+const changedHere = new Set<string>();
+/**
+ * The project file a renamed scene was read from or last saved as (its name then), by scene id: once the scene is
+ * saved under its new name, that file is removed, so the game does not see the scene twice.
+ */
+const fileOf = new Map<string, string>();
+/** A scene as text to compare with its project file: the edited one as last stored, the others worked out after each change. */
+const canonMemo = new WeakMap<Scene, { version: number; text: string }>();
+function textOf(s: Scene): string {
+  if (s === sceneNow()) return current;
+  const m = canonMemo.get(s);
+  if (m?.version === version) return m.text;
+  const text = canon(s);
+  canonMemo.set(s, { version, text });
+  return text;
+}
+/** What Save writes: the edited scene and every one changed here, each where it differs from its project file. */
+const scenesToSave = () => library.scenes.filter((s) => (s.id === library.current || changedHere.has(s.id)) && textOf(s) !== projectCanon.get(slug(s.name)));
 let saveTimer = 0;
 function store(): void {
   clearTimeout(saveTimer);
@@ -207,6 +230,7 @@ const syncUndo = () => {
 function remember(scene = world.scene, join = false): void {
   world.commit();
   redoStack.length = 0;
+  changedHere.add(scene.id);
   const last = undoStack[undoStack.length - 1];
   if (join && last) {
     if (!last.some((s) => s.id === scene.id)) last.push(structuredClone(scene));
@@ -797,14 +821,39 @@ function dropTab(e: PointerEvent): void {
 
 // ------------------------------------------------------------------ page helpers
 
-/** Saves the scene as a file of the project (the game's content/scenes), for committing. */
-async function saveScene(): Promise<boolean> {
+/**
+ * Saves the scenes changed here as files of the project (the game's content/scenes), for committing: every one that
+ * differs from its file, so a change that reached into other scenes (a thing carried over, a link, a rename) is saved
+ * whole. A renamed scene's old file goes once it is saved under its new name.
+ */
+async function saveScenes(): Promise<boolean> {
   store();
-  const name = slug(sceneNow().name);
-  const ok = await saveToProject(`scenes/${name}.json`, JSON.parse(sceneFile(sceneNow())));
-  if (ok) projectCanon.set(name, current);
-  say(ok ? t('scene.projectDone').replace('{0}', name) : t('scene.projectFail'));
-  return ok;
+  const done: string[] = [];
+  for (const s of scenesToSave()) {
+    const name = slug(s.name);
+    const data = JSON.parse(sceneFile(s));
+    if (!(await saveToProject(`scenes/${name}.json`, data))) {
+      say(t('scene.projectFail'));
+      return false;
+    }
+    done.push(`scenes/${name}.json`);
+    projectCanon.set(name, textOf(s));
+    const text = JSON.stringify(data);
+    const known = projectScenes.find((p) => p.name === name);
+    if (known) Object.assign(known, { text, title: s.name });
+    else projectScenes.push({ name, text, title: s.name });
+    changedHere.delete(s.id);
+    const old = fileOf.get(s.id);
+    fileOf.delete(s.id);
+    if (old && old !== name && !library.scenes.some((o) => slug(o.name) === old) && (await removeFromProject(`scenes/${old}.json`))) {
+      projectCanon.delete(old);
+      projectScenes.splice(projectScenes.findIndex((p) => p.name === old), 1);
+      done.push(t('scene.projectRemoved', { file: `scenes/${old}.json` }));
+    }
+  }
+  say(done.length ? t('scene.projectDone').replace('{0}', done.join(', ')) : t('scene.projectNothing'));
+  sceneList.redraw();
+  return true;
 }
 
 /** Saves the scene to the project, then opens it as the island of the game (`?scene=`), which reads the saved file. */
@@ -813,7 +862,7 @@ async function openInGame(): Promise<void> {
   // Without the dev server the game would not find the scene, and would quietly show another island.
   if (!canSaveToProject()) return say(t('scene.projectFail'));
   const tab = window.open('about:blank', '_blank');
-  if (!(await saveScene())) return void tab?.close();
+  if (!(await saveScenes())) return void tab?.close();
   const url = new URL(`../../../?scene=${encodeURIComponent(slug(sceneNow().name))}`, location.href).href;
   if (tab) tab.location.href = url;
   else window.open(url, '_blank');
@@ -2350,7 +2399,7 @@ function render(): void {
     more: [
       { label: t('scene.new'), icon: 'plus', run: () => sceneDialog('new') },
       { label: t('scene.export'), icon: 'download', run: () => download(`${sceneNow().name}.json`, sceneFile(sceneNow())) },
-      { label: t('scene.project'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveScene(), track: { unsaved: () => current !== projectCanon.get(slug(sceneNow().name)), saveNow: saveScene } },
+      { label: t('scene.project'), icon: 'download', main: true, disabled: !canSaveToProject(), run: () => void saveScenes(), track: { unsaved: () => scenesToSave().length > 0, saveNow: saveScenes } },
       { label: t('scene.import'), icon: 'upload', run: () => void importScene() },
       { label: t('scene.delete'), icon: 'trash', run: deleteScene, danger: true },
     ],
@@ -2425,14 +2474,43 @@ function sceneDialog(kind: 'new' | 'settings'): void {
       savePrefs();
       actor?.setLook(characterLook());
     }
+    // A name another scene has (as its file name) would leave ways not knowing which they lead to: it is kept.
+    const was = slug(scene.name), now = slug(label);
+    const taken = now !== was && (library.scenes.some((o) => o.id !== scene.id && slug(o.name) === now) || (projectScenes.some((p) => p.name === now) && fileOf.get(scene.id) !== now));
+    if (taken) say(t('scene.nameTaken', { name: label }));
+    const same = w === scene.w && hh === scene.h && (taken || label === scene.name)
+      && (!scene.cave || (scene.cave.tint === tint && scene.cave.dark === dark && scene.cave.rubble === rubble));
+    if (same) return;
+    // One step back undoes the whole change: the scene's size and name, and the ways elsewhere that now lead to the new name.
+    remember(scene);
     const next = w !== scene.w || hh !== scene.h ? resized(scene, w, hh) : scene;
-    next.name = label;
+    if (!taken) next.name = label;
     if (next.cave) Object.assign(next.cave, { tint, dark, rubble });
     library.scenes[library.scenes.indexOf(scene)] = next;
-    // Its steps back were of the scene before the change (another size, say), so they go.
-    forget(scene.id);
+    if (!taken && now !== was) renamed(next, was);
     switchTo(next);
   });
+}
+
+/**
+ * After a scene's name changed from `was` (a file name): every way that led to it leads to its new name, in the
+ * editor's scenes and the project's (read into the editor to be changed, and saved with the next Save).
+ */
+function renamed(scene: Scene, was: string): void {
+  if (!fileOf.has(scene.id) && projectScenes.some((p) => p.name === was)) fileOf.set(scene.id, was);
+  for (const p of projectScenes) {
+    if (library.scenes.some((o) => slug(o.name) === p.name) || p.name === was) continue;
+    try {
+      const file = readSceneFile(p.text);
+      if (file.items.some((o) => o.to?.scene === was)) library.scenes.push(file);
+    } catch { /* a broken file leads nowhere */ }
+  }
+  for (const other of library.scenes) {
+    const leading = other.items.filter((o) => o.to?.scene === was);
+    if (!leading.length) continue;
+    remember(other, true);
+    for (const o of leading) o.to = { scene: slug(scene.name), id: o.to!.id };
+  }
 }
 
 async function deleteScene(): Promise<void> {

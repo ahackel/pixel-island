@@ -15,6 +15,17 @@ export async function saveToProject(name: string, data: unknown): Promise<boolea
   }
 }
 
+/** Removes `<name>.json` from the game's content folder (one saved under a name it no longer has). Resolves to whether it is gone. */
+export async function removeFromProject(name: string): Promise<boolean> {
+  if (!canSaveToProject()) return false;
+  try {
+    const response = await fetch(`/__save/${name}`, { method: 'DELETE' });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Saves what editors keep on this device under these store keys into the project (`store/<key>.json`); a key with nothing kept yet is skipped. True when at least one was written and none failed. */
 export async function saveStores(keys: string[]): Promise<boolean> {
   let wrote = false;
