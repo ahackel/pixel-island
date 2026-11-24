@@ -9,7 +9,7 @@ import { tint } from '@pixel/engine/world/actor.ts';
 import { ocean, rgb } from '@pixel/engine/world/ocean.ts';
 import type { Pixel } from '@pixel/engine/world/fish.ts';
 import type { Picture } from '@pixel/engine/world/island.ts';
-import { heightAt, inside, LEVEL_PX, SEA_LEVEL, type HeightMap } from '@pixel/engine/world/terrain.ts';
+import { heightAt, inside, LEVEL_PX, SEA_LEVEL, waterOf, type HeightMap } from '@pixel/engine/world/terrain.ts';
 import type { Thing } from '@pixel/engine/world/world.ts';
 
 export interface Shark {
@@ -34,7 +34,7 @@ const AHEAD = 1.6;
 
 /** Whether a shark may be at a map point. */
 export const sharky = (map: HeightMap, i: number, j: number) =>
-  inside(map, Math.floor(i), Math.floor(j)) && SEA_LEVEL - heightAt(map, i, j) >= SHARK_DEPTH;
+  inside(map, Math.floor(i), Math.floor(j)) && waterOf(map) - heightAt(map, i, j) >= SHARK_DEPTH;
 
 /** Up to `count` sharks at random spots deep enough for them. */
 export function spawnSharks(map: HeightMap, count: number, random: () => number): Shark[] {
@@ -212,11 +212,11 @@ function sunk(s: Shark, ms: number): number {
 /** Whether enough of a shark's fin is above the water at `ms` to be seen, and tapped. */
 export const finShows = (s: Shark, ms: number) => sunk(s, ms) < FIN.high - 2;
 
-/** A shark's fin to draw: cutting the water where it swims, the line moving up and down its blade. */
-export function finThing(s: Shark, ms: number): Thing {
+/** A shark's fin to draw: cutting the water (at the water line `water`) where it swims, the line moving up and down its blade. */
+export function finThing(s: Shark, ms: number, water = SEA_LEVEL): Thing {
   const dir = ((Math.round(s.a / (Math.PI / 4)) % 8) + 8) % 8;
   const art = artOf(dir);
   const line = sunk(s, ms);
-  // The fin's foot sinks with it (a pixel up the blade is cos DOWN of one on screen), so the water stays at sea level.
-  return { picture: wetFin(dir, line), w: art.w, h: art.h, foot: art.foot, spot: { i: s.i, j: s.j, level: SEA_LEVEL - (line * Math.cos(DOWN)) / LEVEL_PX } };
+  // The fin's foot sinks with it (a pixel up the blade is cos DOWN of one on screen), so the water stays at the water line.
+  return { picture: wetFin(dir, line), w: art.w, h: art.h, foot: art.foot, spot: { i: s.i, j: s.j, level: water - (line * Math.cos(DOWN)) / LEVEL_PX } };
 }

@@ -5,7 +5,7 @@ import { darker, PALETTE } from '../core/palette.ts';
 import { wading } from './actor.ts';
 import type { Pixel } from './fish.ts';
 import { footOf, type Picture } from './island.ts';
-import { heightAt, inside, LEVEL_PX, SEA_LEVEL, standingHeight, surfaceAt } from './terrain.ts';
+import { heightAt, inside, LEVEL_PX, standingHeight, surfaceAt, waterOf } from './terrain.ts';
 import type { Thing, World } from './world.ts';
 
 export interface Crab {
@@ -36,7 +36,7 @@ const DEPTH = 1.5;
 export function crabby(world: World, i: number, j: number): boolean {
   if (!inside(world.map, Math.floor(i), Math.floor(j))) return false;
   const s = surfaceAt(world.map, Math.floor(i), Math.floor(j));
-  return (s === 'beach' || s === 'sand' || s === 'shallow') && SEA_LEVEL - heightAt(world.floor, i, j) <= DEPTH;
+  return (s === 'beach' || s === 'sand' || s === 'shallow') && waterOf(world.floor) - heightAt(world.floor, i, j) <= DEPTH;
 }
 
 /** How deep, in levels, the water is where a crab starts its walk up the beach: deep enough to hide it all but faintly. */
@@ -55,8 +55,8 @@ export function spawnCrab(world: World, random: () => number): Crab | null {
     const out = random() * Math.PI * 2;
     for (let r = 0.5; r <= FROM_FAR; r += 0.25) {
       const si = i + Math.cos(out) * r, sj = j + Math.sin(out) * r;
-      if (!inside(world.floor, Math.floor(si), Math.floor(sj)) || heightAt(world.floor, si, sj) >= SEA_LEVEL) break;
-      if (SEA_LEVEL - heightAt(world.floor, si, sj) < FROM_DEEP) continue;
+      if (!inside(world.floor, Math.floor(si), Math.floor(sj)) || heightAt(world.floor, si, sj) >= waterOf(world.floor)) break;
+      if (waterOf(world.floor) - heightAt(world.floor, si, sj) < FROM_DEEP) continue;
       // Walking to its left toward the shore: its eyes look 90 degrees right of the way in.
       return { i: si, j: sj, a: out + Math.PI / 2, walk: 1, until: 0, fleeing: false, ashore: { i, j } };
     }
@@ -212,7 +212,7 @@ function artOf(dir: number, step: number): Art {
 }
 
 /** How deep, in levels, the water a crab stands in is. */
-const depthOf = (world: World, c: Crab) => Math.max(0, SEA_LEVEL - heightAt(world.floor, c.i, c.j));
+const depthOf = (world: World, c: Crab) => Math.max(0, waterOf(world.floor) - heightAt(world.floor, c.i, c.j));
 
 /** A crab to draw: on land on the ground, in the water on the sea floor and covered as deep as it is. */
 export function crabThing(world: World, c: Crab, ms: number): Thing {
@@ -225,7 +225,7 @@ export function crabThing(world: World, c: Crab, ms: number): Thing {
   const key = `${dir}|${step}|${rows}`;
   let picture = wet.get(key);
   if (!picture) wet.set(key, (picture = wading(art.picture, rows, art.foot.y)));
-  return { ...art, picture, spot: { i: c.i, j: c.j, level: SEA_LEVEL - depth } };
+  return { ...art, picture, spot: { i: c.i, j: c.j, level: waterOf(world.floor) - depth } };
 }
 
 /** The crab nearest a pixel of the ground image, within `r` pixels of the middle of its picture, if any. */

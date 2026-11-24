@@ -88,6 +88,8 @@ export interface Scene {
   origin?: { w: number; h: number };
   /** Set for a cave: all rock but what is carved open, seen into from the front (see cave.ts). */
   cave?: CaveSettings;
+  /** What lies beyond it, its light, its water line and the room over its floor. Missing, the preset its kind has (`settingsOf`). */
+  settings?: SceneSettings;
   /** Where the scene lies on the scene editor's desk, beside the other scenes open there: its north corner, in tiles. Only the editor uses it. */
   desk?: { i: number; j: number };
 }
@@ -102,6 +104,34 @@ export interface CaveSettings {
   exits: { i: number; j: number }[];
 }
 export const CAVE_DEFAULTS: Omit<CaveSettings, 'exits'> = { tint: '#080e50', dark: 0.9, rubble: 0.45 };
+
+/** How a scene is set, whatever its ground. */
+export interface SceneSettings {
+  /** Beyond the map's edge: open sea, or nothing at all (black, for an inside such as a cave). */
+  outside: 'sea' | 'void';
+  /** Daylight with the time of day and the weather, or dark but where lamps and the daylight at its open sides reach. */
+  light: 'day' | 'dark';
+  /** The level water fills up to (terrain.ts `HeightMap.water`), or null for none. */
+  water: number | null;
+  /** How far a cave's rock stands over its floor, in levels; 0 under open sky. */
+  headroom: number;
+}
+/** The tallest a cave's rock stands over its floor, in levels. */
+export const MAX_HEADROOM = 10;
+/** The kinds of scene, as settings: an island in the sea, a dry cave with nothing round it, a cave the sea comes into. */
+export const SCENE_PRESETS = {
+  island: { outside: 'sea', light: 'day', water: SEA_LEVEL, headroom: 0 },
+  cave: { outside: 'void', light: 'dark', water: null, headroom: 5 },
+  seaCave: { outside: 'sea', light: 'dark', water: SEA_LEVEL, headroom: 5 },
+} as const satisfies Record<string, SceneSettings>;
+/** A scene's settings: its own, or the preset of its kind (a cave's, or an island's). */
+export const settingsOf = (scene: Scene): SceneSettings => scene.settings ?? (scene.cave ? SCENE_PRESETS.cave : SCENE_PRESETS.island);
+/** Gives a scene settings, keeping none where they are what its kind has anyway. */
+export function setSettings(scene: Scene, settings: SceneSettings): void {
+  const preset = scene.cave ? SCENE_PRESETS.cave : SCENE_PRESETS.island;
+  if ((Object.keys(preset) as (keyof SceneSettings)[]).every((k) => preset[k] === settings[k])) delete scene.settings;
+  else scene.settings = { ...settings };
+}
 
 export const MIN_SIZE = 8;
 /** How far from the middle of the editor's desk a scene may lie, in tiles. */
@@ -137,20 +167,25 @@ export function createScene(name: string, w: number, h: number, island: boolean,
 export const CAVE_OPEN = PAINTS.indexOf('cave') + 1;
 export const CAVE_FLOOR = SEA_LEVEL + 3;
 
-/** A new cave: solid rock all through, to be carved open (cave.ts `carve`). */
-export function createCave(name: string, w: number, h: number): Scene {
-  const scene = createScene(name, w, h, false);
+/** A new cave: solid rock all through, to be carved open (cave.ts `carve`); with `settings`, a sea cave say. */
+export function createCave(name: string, w: number, h: number, settings?: SceneSettings): Scene {
+  const scene: Scene = { ...createScene(name, w, h, false), cave: { ...CAVE_DEFAULTS, exits: [] } };
   scene.levels.fill(ROCK_LEVEL);
   scene.paint.fill(0);
-  return { ...scene, cave: { ...CAVE_DEFAULTS, exits: [] } };
+  if (settings) setSettings(scene, settings);
+  return scene;
 }
 
-/** The scene's ground as the terrain code reads it. In a cave, beyond the map is rock, and unpainted floor its own stone. */
+/**
+ * The scene's ground as the terrain code reads it, with its water line. In a cave unpainted floor is its own stone, and
+ * with nothing beyond it, beyond the map is rock; with the sea beyond, it is the open sea.
+ */
 export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
   w: scene.w, h: scene.h,
   paint: scene.cave ? Uint8Array.from(scene.paint, (p) => p || CAVE_OPEN) : Uint8Array.from(scene.paint),
   levels: Int8Array.from(scene.levels),
-  ...(scene.cave && { outside: ROCK_LEVEL }),
+  water: settingsOf(scene).water,
+  ...(scene.cave && settingsOf(scene).outside === 'void' && { outside: ROCK_LEVEL }),
 });
 
 /**
@@ -312,6 +347,15 @@ export function cleanScene(input: unknown): Scene {
     // The cave's own stone is unpainted floor, and rock has no paint.
     scene.levels = levels;
     scene.paint = paint.map((p, c) => (p === CAVE_OPEN || isRock(levels[c]) ? 0 : p));
+  }
+  const set = s.settings;
+  if (set && typeof set === 'object') {
+    setSettings(scene, {
+      outside: set.outside === 'void' ? 'void' : 'sea',
+      light: set.light === 'dark' ? 'dark' : 'day',
+      water: set.water === null ? null : Math.round(num(set.water, MIN_LEVEL, MAX_LEVEL, SEA_LEVEL)),
+      headroom: Math.round(num(set.headroom, 0, MAX_HEADROOM, 0)),
+    });
   }
   refreshLinks(scene, sources);
   return scene;

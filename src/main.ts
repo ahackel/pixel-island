@@ -12,14 +12,14 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
-import type { PlacedPerson } from '@pixel/engine/world/scene.ts';
+import { settingsOf, type PlacedPerson } from '@pixel/engine/world/scene.ts';
 import { turnFacing } from '@pixel/engine/core/puppet.ts';
 import { along, light, lightByTile, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
 import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
 import { emittersOf, halos, particleSystem, Particles, tileHalo } from '@pixel/engine/world/particles.ts';
-import { heightAt, isLand, SEA_LEVEL, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
+import { heightAt, isLand, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { caveLamps as caveOwnLamps, caveThings, caveTint, setUpCave } from '@pixel/engine/world/cave.ts';
@@ -113,6 +113,8 @@ let scene = islandScene;
 let world = island;
 /** Whether the survivor is in a cave (the rocky island's, one a way led to, or a cave tried on its own): drawn and lit as one. */
 const inCave = () => !!world.scene.cave;
+/** Whether the scene the survivor is in is dark but where its lights reach (a cave's settings, see `SceneSettings.light`). */
+const inDark = () => settingsOf(world.scene).light === 'dark';
 /** Whether the survivor is on the island's open ground, where the island's own things (hut, fires, crabs, palms, bag drops) are. */
 const onIsland = () => world === island && !inCave();
 const fishRandom = rng(Date.now());
@@ -205,7 +207,7 @@ const isle: Shore = {
   beach,
   palms,
   dry: (p) => isLand(island.map, Math.floor(p.i), Math.floor(p.j)),
-  aboveWater: (p) => heightAt(island.map, p.i, p.j) > SEA_LEVEL + 0.1,
+  aboveWater: (p) => heightAt(island.map, p.i, p.j) > island.water + 0.1,
   surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
   random: Math.random,
 };
@@ -1442,7 +1444,7 @@ function fadeAt(ms: number): number {
  * mushrooms and torches), and the torch or lantern in hand, which flickers a little. Reaches are in tiles.
  */
 function caveLamps(me: Thing | null, ms: number): TileLamp[] {
-  if (!inCave()) return [];
+  if (!inDark()) return [];
   // The halo of what is in hand (its particle system's), in tiles.
   const held = me?.fx ? tileHalo(particleSystem(me.fx.system), actor, ms) : null;
   return [...caveOwnLamps(world, ms), ...(held ? [held] : [])];
@@ -1650,7 +1652,7 @@ function frame(ms: number): void {
     ...scenery,
     still(BLANKET, blanketThing), ...game.lying.map((l) => still(l, LYING[l.item])), ...(game.hat ? [still(game.hat, hatThing(game.who))] : []),
     ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, groundSpot(b))),
-    ...campfires, ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms)),
+    ...campfires, ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms, island.water)),
   ];
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
   const rect = view.rect();
@@ -1660,7 +1662,7 @@ function frame(ms: number): void {
   // The particle systems of what is drawn (fires, wall torches, what is in hand): their sparks, and their halos in the dark.
   const emitters = emittersOf(things, world.ground);
   particles.emit(emitters, ms, paused ? 0 : dt);
-  if (inCave()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(me, ms)));
+  if (inDark()) lightByTile(image, caveTint(scene), fade, world.spots!, world.lightField(caveLamps(me, ms)));
   else {
     light(image, weatherLight(weather, night));
     // A flash lights the world as bright as day for a moment, at night too, then shows it stark.

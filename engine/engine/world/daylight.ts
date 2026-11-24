@@ -122,7 +122,8 @@ function inReach(lamps: TileLight['lamps'], si: number, sj: number): boolean {
 /**
  * Lights a picture like `light`, but the lamps' light comes from a light field (`World.lightField`): each pixel is
  * lifted by the light at its spot on the map (`World.spots`), by its distance to each lamp plus the detour round walls,
- * so light stops at walls and a thing is lit as one by the light where it stands. Pixels with no spot take the tint.
+ * so light stops at walls and a thing is lit as one by the light where it stands. Pixels with no spot take the tint, but
+ * with `field.outside` (daylight beyond the map) those and the ones off the map keep their colour.
  */
 export function lightByTile(
   image: { data: Uint8ClampedArray; width?: number },
@@ -136,7 +137,7 @@ export function lightByTile(
   const fg = (1 - t.amount + (t.amount * t.g) / 255) * keep;
   const fb = (1 - t.amount + (t.amount * t.b) / 255) * keep;
   const d = image.data;
-  const { w, h, open, lamps } = field;
+  const { w, h, open, lamps, outside } = field;
   const cells = [0, 0, 0, 0], weights = [0, 0, 0, 0];
   // A thing's pixels all take its spot: the light worked out for one serves the run of them after it.
   let lastI = NaN, lastJ = NaN, lastR = fr, lastG = fg, lastB = fb;
@@ -149,6 +150,11 @@ export function lightByTile(
     const o = p * 4;
     let r = fr, g = fg, b = fb;
     const si = spots.i[p], sj = spots.j[p];
+    // With daylight beyond the map, what lies off it (the open sea) is only faded.
+    if (outside && !(si >= 0 && sj >= 0 && si < w && sj < h)) {
+      d[o] *= keep; d[o + 1] *= keep; d[o + 2] *= keep;
+      continue;
+    }
     if (si === lastI && sj === lastJ) {
       r = lastR; g = lastG; b = lastB;
     } else if (si === si && inReach(lamps, si, sj)) {

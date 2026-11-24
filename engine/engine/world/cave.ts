@@ -1,7 +1,8 @@
 // Caves: scenes of solid rock with rooms carved open (scene.ts `createCave`). What stands in them follows from the
 // carved ground: solid rock round the floor, with walls on the faces the camera looks at and rubble at their feet,
-// cut away in front of the room the player is in (see `caveRock`). The world draws all else as nothing
-// (`World.void`), dark but where lamps, glowing decorations and the daylight at the ways out light it.
+// cut away in front of the room the player is in (see `caveRock`). The world draws all else as nothing (`World.void`),
+// or the open sea where that lies beyond it (a sea cave, `SceneSettings.outside`), dark but where lamps, glowing
+// decorations and the daylight coming in light it.
 import { PALETTE } from '../core/palette.ts';
 import { edgeKey, emptyBuilding, type Building } from './building/building.ts';
 import { rockWall } from './building/pieces/rock-wall.ts';
@@ -10,13 +11,15 @@ import { decorById } from './decor.ts';
 import { flicker } from './flame.ts';
 import { particleSystem, tileHalo } from './particles.ts';
 import type { Thing } from './island.ts';
-import { CAVE_FLOOR, type Scene } from './scene.ts';
+import { CAVE_FLOOR, settingsOf, type Scene } from './scene.ts';
 import { inside, isRock, LEVEL_PX, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
 import { rasterOf, type TileLamp, type World } from './world.ts';
 
-/** The level of a new cave's floor (scene.ts), and how tall its walls stand in levels. */
+/** The level of a new cave's floor (scene.ts), and how tall its walls stand in levels unless its headroom says (`SceneSettings.headroom`). */
 export { CAVE_FLOOR };
 export const CAVE_WALL = 5;
+/** How tall a cave's rock stands over its floor, in levels: its headroom. */
+const wallOf = (scene: Scene) => settingsOf(scene).headroom || CAVE_WALL;
 /** The daylight coming in at a way out: cool, and how far it reaches into the dark, in tiles. */
 export const CAVE_DAY = '#c8d4e8';
 const DAY_REACH = 2.6;
@@ -105,10 +108,10 @@ export function caveRooms(map: HeightMap): Int16Array {
   return room;
 }
 
-/** The black top of solid rock stands this many pixels over the floor: just over the walls' highest peaks. */
-const ROCK_TOP = CAVE_WALL * LEVEL_PX + 2;
+/** The black top of solid rock stands this many pixels over the floor: just over the peaks of walls `wall` levels tall. */
+const rockTop = (wall: number) => wall * LEVEL_PX + 2;
 /** How many rows of cells behind it (by i + j) a block of rock that tall hides on screen. */
-const HIDES = Math.ceil(ROCK_TOP / (TILE_H / 2));
+const hidesOf = (wall: number) => Math.ceil(rockTop(wall) / (TILE_H / 2));
 
 /** Rock that hides floor this near the player (in cells) is always cut, so nothing stands over them or their step. */
 const CLEAR = 2.5;
@@ -122,9 +125,10 @@ const CLEAR = 2.5;
  * round them. Without a player, the rock in front of every room is cut, all but what is some room's own back wall.
  * Gives the walls, the rock cells that stand as blocks, and the lone ones that stand as stalagmites.
  */
-export function caveRock(map: HeightMap, rooms: Int16Array, at: { i: number; j: number } | null): { walls: Building; blocks: number[]; pillars: number[] } {
+export function caveRock(map: HeightMap, rooms: Int16Array, at: { i: number; j: number } | null, wall = CAVE_WALL): { walls: Building; blocks: number[]; pillars: number[] } {
   const { w, h } = map;
-  const walls = emptyBuilding(CAVE_WALL);
+  const walls = emptyBuilding(wall);
+  const behind = hidesOf(wall);
   const blocks: number[] = [];
   const pillars: number[] = [];
   const roomAt = (i: number, j: number) => (inside(map, i, j) ? rooms[j * w + i] : -1);
@@ -146,7 +150,7 @@ export function caveRock(map: HeightMap, rooms: Int16Array, at: { i: number; j: 
     // The rooms this rock hides some floor of, how near to the player that floor comes, and the rooms it is the back wall of.
     const hides = new Set<number>();
     let nearest = Infinity;
-    for (let d = 1; d <= HIDES; d++) for (const di of new Set([Math.floor(d / 2), Math.ceil(d / 2)])) {
+    for (let d = 1; d <= behind; d++) for (const di of new Set([Math.floor(d / 2), Math.ceil(d / 2)])) {
       const fi = i - di, fj = j - (d - di);
       const r = roomAt(fi, fj);
       if (r < 0) continue;
@@ -169,7 +173,8 @@ export function caveRock(map: HeightMap, rooms: Int16Array, at: { i: number; j: 
 function blockThing(world: World, c: number): Thing {
   const i = c % world.map.w, j = Math.floor(c / world.map.w);
   const hw = TILE_W / 2, hh = TILE_H / 2;
-  const height = 2 * hh + ROCK_TOP;
+  const top = rockTop(wallOf(world.scene));
+  const height = 2 * hh + top;
   const picture = {
     get: (x: number, y: number) => {
       const dx = Math.abs(x + 0.5 - hw) / 2;
@@ -178,7 +183,7 @@ function blockThing(world: World, c: number): Thing {
   };
   // Sorted just behind the walls on its front edges, which reach a little into it.
   return {
-    spot: { i: i + 0.5, j: j + 0.5, level: world.flatLevel }, picture, w: TILE_W, h: height, foot: { x: hw, y: hh + ROCK_TOP }, shadow: [],
+    spot: { i: i + 0.5, j: j + 0.5, level: world.flatLevel }, picture, w: TILE_W, h: height, foot: { x: hw, y: hh + top }, shadow: [],
     box: { x0: i, x1: i + 0.8, y0: j, y1: j + 0.8, key: i + j + 1 },
   };
 }
@@ -239,15 +244,13 @@ const cellOf = (world: World, at?: { i: number; j: number }) => {
  * changed (or the view turned), so they follow; `caveThings` does when it has to.
  */
 export function setUpCave(world: World, at?: { i: number; j: number }): void {
-  // Drawn again once as a void: nothing but black beyond its rock (see `World.void`).
-  if (!world.void) { world.void = true; world.redraw(); }
   world.trackSpots = true;
   world.shadowDepth = 2.4;
   if (!world.pieceKinds.rock) world.pieceKinds = { ...world.pieceKinds, rock: rockWall({ tones: PALETTE.cave }) };
   const known = derived.get(world);
   const rooms = known?.ground === world.ground ? known.rooms : caveRooms(world.map);
   const key = cellOf(world, at);
-  const { walls, blocks, pillars } = caveRock(world.map, rooms, key && at ? { i: Math.floor(at.i) + 0.5, j: Math.floor(at.j) + 0.5 } : null);
+  const { walls, blocks, pillars } = caveRock(world.map, rooms, key && at ? { i: Math.floor(at.i) + 0.5, j: Math.floor(at.j) + 0.5 } : null, wallOf(world.scene));
   world.buildings = [walls];
   const rubble = caveRubble(walls, world.scene.cave?.rubble ?? 0, world.map.seed).flatMap((p) => {
     const raster = rasterOf(p, 0);
@@ -278,11 +281,30 @@ export function caveTint(scene: Scene): Tint {
 export { flicker };
 
 /**
- * The cave's own lights, in view coordinates: the daylight at its ways out, its glowing decorations, and the halos of
- * the particle systems decorations carry (the wall torches').
+ * Where daylight comes in at the map's edge, with the sea beyond it: a lamp on each open cell along the edge, at the
+ * side it opens to, in view coordinates.
+ */
+function edgeLamps(world: World): TileLamp[] {
+  const { w, h } = world.map;
+  const out: TileLamp[] = [];
+  const IN = 0.15;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    if ((i > 0 && j > 0 && i < w - 1 && j < h - 1) || !isOpen(world.map, i, j)) continue;
+    const li = i === 0 ? IN : i === w - 1 ? w - IN : i + 0.5;
+    const lj = j === 0 ? IN : j === h - 1 ? h - IN : j + 0.5;
+    out.push({ i: li, j: lj, r: DAY_REACH, color: CAVE_DAY, amount: 0.8 });
+  }
+  return out;
+}
+
+/**
+ * The cave's own lights, in view coordinates: the daylight coming in (along the map's edge where the sea lies beyond
+ * it, else at its ways out), its glowing decorations, and the halos of the particle systems decorations carry (the
+ * wall torches').
  */
 export function caveLamps(world: World, ms: number): TileLamp[] {
-  const exits = (world.scene.cave?.exits ?? []).map((e) => ({ ...world.toView(e), r: DAY_REACH, color: CAVE_DAY, amount: 0.8 }));
+  const exits = settingsOf(world.scene).outside === 'sea' ? edgeLamps(world)
+    : (world.scene.cave?.exits ?? []).map((e) => ({ ...world.toView(e), r: DAY_REACH, color: CAVE_DAY, amount: 0.8 }));
   const glows = world.viewDecor().flatMap((d) => {
     const glow = decorById(d.decor)?.glow;
     if (!glow) return [];

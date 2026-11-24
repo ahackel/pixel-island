@@ -4,7 +4,7 @@ import { AUTHORED, STAND, type Clip } from '../core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, FACING_RING, handsOn, SPRITE_H, SPRITE_W, turnFacing, type Facing, type Look, type Lying, type Sprite } from '../core/puppet.ts';
 import { SHADOW } from '../core/palette.ts';
 import type { Picture } from './island.ts';
-import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt } from './terrain.ts';
+import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt, waterOf } from './terrain.ts';
 import { ocean, rgb } from './ocean.ts';
 import type { Thing, World } from './world.ts';
 import { drew, slots } from '../../shared/stats.ts';
@@ -133,6 +133,8 @@ export class Actor {
   /** Wading pictures of each drawn picture, by rows under water. */
   private wet = new WeakMap<Picture, Map<number, Picture>>();
   private drops: Drop[] = [];
+  /** The water line where the character last stood, which the splash drops fall back to. */
+  private waterLine = SEA_LEVEL;
   private splashClock = 0;
   /** Distance walked since the last footprint, and which foot is next. */
   private stride = 0;
@@ -315,7 +317,8 @@ export class Actor {
 
   /** How deep the character stands in water, in levels; 0 on land. */
   private depth(world: World): number {
-    return Math.max(0, SEA_LEVEL - heightAt(world.floor, this.i, this.j));
+    this.waterLine = waterOf(world.floor);
+    return Math.max(0, this.waterLine - heightAt(world.floor, this.i, this.j));
   }
 
   private splash(dt: number, run: boolean): void {
@@ -350,7 +353,7 @@ export class Actor {
     const white = ocean.wave;
     const pale = ocean.shore;
     return this.drops.map((d) => ({
-      spot: { i: d.i, j: d.j, level: SEA_LEVEL + d.z },
+      spot: { i: d.i, j: d.j, level: this.waterLine + d.z },
       picture: d.pale ? dot(pale) : dot(white),
       w: 1, h: 1, foot: { x: 0, y: 0 },
     }));
@@ -397,7 +400,7 @@ export class Actor {
     if (!wet) this.wet.set(sprite, (wet = new Map()));
     let picture = wet.get(rows);
     if (!picture) wet.set(rows, (picture = drew('wading', () => wading(sprite, rows), () => slots(SPRITE_W, SPRITE_H))));
-    return { spot: { i: this.i, j: this.j, level: SEA_LEVEL - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, fx };
+    return { spot: { i: this.i, j: this.j, level: waterOf(world.floor) - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, fx };
   }
 }
 

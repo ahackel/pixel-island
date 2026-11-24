@@ -9,7 +9,7 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
+  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater, waterOf,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
@@ -23,7 +23,7 @@ import { CLEAR, drawWeather, flashAt, plantWind, shadowLight, weatherSea, type W
 import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
-import { CAVE_FLOOR, CAVE_OPEN, mapOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
+import { CAVE_FLOOR, CAVE_OPEN, mapOf, settingsOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
 import { blocked, BuildingView, crosses, type Building, type Part, type PieceKind } from './building/building.ts';
 
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -31,8 +31,8 @@ export interface Rect { x: number; y: number; w: number; h: number }
 export interface TileLamp { i: number; j: number; r: number; color?: string; amount?: number }
 /** A lamp of a light field, with how far round walls its light must go to reach each cell (`World.lightField`). */
 export interface LitLamp { i: number; j: number; r: number; rgb: number[]; amount: number; detour: Float32Array }
-/** The lamps' light over the map, and which cells can hold light at all. */
-export interface TileLight { w: number; h: number; open: Uint8Array; lamps: LitLamp[] }
+/** The lamps' light over the map, which cells can hold light at all, and whether beyond the map lies in daylight (the open sea round a dark scene). */
+export interface TileLight { w: number; h: number; open: Uint8Array; lamps: LitLamp[]; outside?: boolean }
 const rgb3 = (hex: string) => [1, 3, 5].map((n) => parseInt(hex.slice(n, n + 2), 16));
 export type { Thing };
 
@@ -230,10 +230,10 @@ function waveletAt(x: number, row: number, ms: number): number {
 }
 
 /**
- * The deepest a walker wades: floor two levels under the water line, which with the floor sloping
- * between tiles is up to about half a character's height. Deeper water blocks.
+ * The deepest a walker wades, in levels under the water line, by the sea floor as drawn (per tile): which with the floor
+ * sloping between tiles is up to about half a character's height. Deeper water blocks.
  */
-export const WADE = SEA_LEVEL - 2;
+export const WADE = 2;
 
 /** How close, in metres, a walker comes to a wall: enough to keep clear of its planks poking out. */
 const WALL_ROOM = 0.15;
@@ -439,11 +439,13 @@ export class World {
       }
       out.push({ i: lamp.i, j: lamp.j, r: lamp.r, rgb: rgb3(lamp.color ?? '#ffb060'), amount: lamp.amount ?? 1, detour });
     }
-    return { w, h, open, lamps: out };
+    return { w, h, open, lamps: out, outside: !this.void };
   }
 
-  /** Beyond the map, open sea; or, for an inside such as a cave, nothing: black. */
+  /** Beyond the map, open sea; or, for an inside such as a cave, nothing: black (`SceneSettings.outside`). */
   void = false;
+  /** The water line of the ground in view (terrain.ts `waterOf`): `DRY` where there is no water. */
+  water = SEA_LEVEL;
   /**
    * Drawn on its own, as one of several scenes laid side by side (the scene editor's desk): beyond the map's outline at
    * the water line nothing is drawn, no sea and no dark, so what lies behind shows; only ground rising above the water
@@ -490,6 +492,7 @@ export class World {
   constructor(scene: Scene, rot = 0) {
     this.scene = scene;
     this.rot = ((rot % 4) + 4) % 4;
+    this.void = settingsOf(scene).outside === 'void';
     this.map = this.viewMap();
     this.ground = this.draw();
   }
@@ -537,7 +540,7 @@ export class World {
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
     }
-    return { w, h, levels, paint, seed, ...(map.outside !== undefined && { outside: map.outside }) };
+    return { ...map, w, h, levels, paint };
   }
 
   /** Turns the view; the scene itself does not change. */
@@ -563,6 +566,7 @@ export class World {
 
   /** Draws the ground with the sea's current water colours. */
   private draw(): TerrainImage {
+    this.water = waterOf(this.map);
     this.floor = seaFloor(this.map);
     setWater(WATER_COLORS.map((k) => ocean[k]));
     this.shown = withLoneRockFloored(this.map);
@@ -570,7 +574,7 @@ export class World {
     // Rock is drawn black on the floor's own plane (cave.ts stands its blocks and walls on it), so nothing slopes off at
     // the edge of the hollow and the editor's grid lies flat across it.
     let flat = Infinity;
-    for (const l of this.shown.levels) if (l >= SEA_LEVEL && !isRock(l) && l < flat) flat = l;
+    for (const l of this.shown.levels) if (l >= this.water && !isRock(l) && l < flat) flat = l;
     if (flat === Infinity) flat = this.scene.cave ? CAVE_FLOOR : SEA_LEVEL;
     this.flatLevel = flat;
     return renderTerrain({ ...this.shown, levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)), ...(this.void && { outside: flat }) });
@@ -639,7 +643,7 @@ export class World {
       const level = heightAt(this.floor, item.vi, item.vj);
       const at = footOf(g, { i: item.vi, j: item.vj, level });
       if (at.x < view.x - 8 || at.y < view.y - 8 || at.x > view.x + view.w + 8 || at.y > view.y + view.h + 8) continue;
-      const wet = underwater(SEA_LEVEL - level);
+      const wet = underwater(this.water - level);
       if (wet <= 0) continue;
       for (const px of decorPixels(kind)) {
         const gx = at.x + px.x;
@@ -660,9 +664,9 @@ export class World {
     const g = this.ground;
     const d = image.data;
     this.fish.forEach((f, n) => {
-      const at = footOf(g, { i: f.i, j: f.j, level: SEA_LEVEL });
+      const at = footOf(g, { i: f.i, j: f.j, level: this.water });
       // Out in deep water a fish is lost in the blue.
-      if (underwater(SEA_LEVEL - heightAt(this.floor, f.i, f.j)) <= 0) return;
+      if (underwater(this.water - heightAt(this.floor, f.i, f.j)) <= 0) return;
       if (at.x < view.x - 8 || at.y < view.y - 8 || at.x > view.x + view.w + 8 || at.y > view.y + view.h + 8) return;
       const dir = Math.round(f.a / (Math.PI / 4));
       for (const px of fishPixels(Math.floor(ms / 150 + n * 0.37), dir, f.kind)) {
@@ -684,7 +688,7 @@ export class World {
     let best: Fish | null = null;
     let bestD = r;
     for (const f of this.fish) {
-      const at = footOf(this.ground, { i: f.i, j: f.j, level: SEA_LEVEL });
+      const at = footOf(this.ground, { i: f.i, j: f.j, level: this.water });
       const dist = Math.hypot(p.x - at.x, p.y - at.y);
       if (dist <= bestD) [best, bestD] = [f, dist];
     }
@@ -899,9 +903,9 @@ export class World {
           d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
           continue;
         }
-        // Rock is black, and in a void world so is everything beyond the open cells.
+        // Rock is black, and in a void world so is everything beyond the map.
         const on = gy >= 0 && gx >= 0 && gy < g.h && gx < g.w, cell = on ? g.cell[gy * g.w + gx] : -1;
-        if ((cell >= 0 && isRock(this.shown.levels[cell])) || (this.void && (cell < 0 || g.depth[gy * g.w + gx] > 0))) {
+        if ((cell >= 0 && isRock(this.shown.levels[cell])) || (this.void && cell < 0)) {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
           // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
           if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
@@ -945,7 +949,7 @@ export class World {
    */
   private beyond(gx: number, gy: number): boolean {
     const g = this.ground;
-    const base = this.void ? this.flatLevel : SEA_LEVEL;
+    const base = this.void ? this.flatLevel : this.water;
     const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2), b = (gy + 0.5 + base * LEVEL_PX - g.origin.y) / (TILE_H / 2);
     const i = (a + b) / 2, j = (b - a) / 2;
     if (i >= 0 && j >= 0 && i < this.map.w && j < this.map.h) return false;
@@ -1047,6 +1051,7 @@ export class World {
     this.prints = this.prints.filter((f) => ms - f.ms < PRINT_MS);
     // Overlapping prints do not add up: each pixel takes the darkest print on it.
     const pressed = new Map<number, number>();
+    const water = this.water;
     for (const f of this.prints) {
       const at = footOf(g, f);
       const strength = PRINT_DEPTH * (1 - (ms - f.ms) / PRINT_MS);
@@ -1055,7 +1060,7 @@ export class World {
         const x = gx - view.x, y = gy - view.y;
         if (x < 0 || y < 0 || x >= w || y >= h || gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) continue;
         // Nearer, higher ground drawn over the spot hides the print, as with shadows.
-        if (Math.abs(Math.max(SEA_LEVEL, g.height[gy * g.w + gx]) - f.level) > 0.5) continue;
+        if (Math.abs(Math.max(water, g.height[gy * g.w + gx]) - f.level) > 0.5) continue;
         const o = (y * w + x) * 4;
         pressed.set(o, Math.max(pressed.get(o) ?? 0, strength));
       }
@@ -1103,14 +1108,14 @@ export class World {
     for (const t of paintOrder(placed)) {
       // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
       // A wall's pixels stand at heights of their own: none can be hidden if its lowest cannot.
-      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
+      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(this.water, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
       const hides = this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
       if (!spots && !t.bases) {
         stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => behind(x, y, diag, limit) : undefined);
         continue;
       }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
-        const hidden = hides && behind(x, y, diag, t.bases ? Math.max(SEA_LEVEL, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
+        const hidden = hides && behind(x, y, diag, t.bases ? Math.max(this.water, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
         if (!hidden && spots) {
           const b = t.box;
           if (b) {
@@ -1178,9 +1183,10 @@ export class World {
     if (this.shore?.ground === g) return this.shore.dist;
     const dist = new Uint8Array(g.w * g.h).fill(255);
     for (let p = 0; p < dist.length; p++) if (g.depth[p] > 0) dist[p] = 0;
+    const wet = this.water + 0.5;
     for (let k = 1; k <= WASH_RUN; k++) {
       for (let p = 0; p < dist.length; p++) {
-        if (dist[p] !== 255 || !g.tops[p] || g.height[p] > SEA_LEVEL + 0.5) continue;
+        if (dist[p] !== 255 || !g.tops[p] || g.height[p] > wet) continue;
         const x = p % g.w;
         if ((x > 0 && dist[p - 1] === k - 1) || (x < g.w - 1 && dist[p + 1] === k - 1) || (p >= g.w && dist[p - g.w] === k - 1) || (p + g.w < dist.length && dist[p + g.w] === k - 1)) dist[p] = k;
       }
@@ -1234,7 +1240,7 @@ export class World {
         if (c < 0) continue;
         const block = blocks[Math.floor(p / g.w / 16) * bw + Math.floor((p % g.w) / 16)];
         const d = (c % this.map.w) + Math.floor(c / this.map.w);
-        const high = Math.max(SEA_LEVEL, g.height[p]);
+        const high = Math.max(this.water, g.height[p]);
         let k = 0;
         while (k < block.length && block[k] !== d) k += 2;
         if (k === block.length) block.push(d, high);
@@ -1300,14 +1306,14 @@ export class World {
       // No shadows off the map, nor on water too deep for them to show.
       if (!inside(this.map, Math.floor(i), Math.floor(j))) continue;
       const ground = height(i, j);
-      if (SEA_LEVEL - ground >= SHADOW_DEPTH) continue;
-      const level = Math.max(SEA_LEVEL, ground);
+      if (this.water - ground >= SHADOW_DEPTH) continue;
+      const level = Math.max(this.water, ground);
       // footOf, without making a point per pixel.
       const ax = Math.round(g.origin.x + ((i - j) * TILE_W) / 2), ay = Math.round(g.origin.y + (((i + j) * TILE_H) / 2 - level * LEVEL_PX));
       if (ax < 0 || ay < 0 || ax >= g.w || ay >= g.h) continue;
       const p = ay * g.w + ax;
       // Nearer, higher ground drawn over that point hides the shadow there.
-      if (Math.abs(Math.max(SEA_LEVEL, g.height[p]) - level) > 0.5) continue;
+      if (Math.abs(Math.max(this.water, g.height[p]) - level) > 0.5) continue;
       if (!marked[p]) marked[p] = 1, hit.push(p);
     }
     const pixels = Int32Array.from(hit);
@@ -1375,7 +1381,7 @@ export class World {
   canWalk(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
     const a: [number, number] = [Math.floor(from.i), Math.floor(from.j)];
     const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)];
-    if (!inside(this.floor, ...b) || levelAt(this.floor, ...b) < WADE) return false;
+    if (!inside(this.floor, ...b) || this.water - levelAt(this.floor, ...b) > WADE) return false;
     if (isRock(levelAt(this.map, ...b))) return false;
     // A step of more than a slope is a cliff, on land or under the water.
     if ((a[0] !== b[0] || a[1] !== b[1]) && Math.abs(levelAt(this.floor, ...a) - levelAt(this.floor, ...b)) > SLOPE_LEVELS) return false;

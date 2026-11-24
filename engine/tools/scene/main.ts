@@ -8,7 +8,7 @@ import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
 import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
-import { heightAt, inside, isLand, isRock, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, SEA_LEVEL, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
+import { heightAt, inside, isLand, isRock, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
@@ -17,7 +17,7 @@ import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
 import { findPath } from '../../engine/world/path.ts';
 import {
-  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, sceneFile, SEEDS, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene,
+  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
 } from '../../engine/world/scene.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
@@ -413,11 +413,14 @@ function moveOnDesk(scene: Scene, at: { i: number; j: number }): void {
   version++;
 }
 
+/** Whether a scene is dark but where its lights reach (`SceneSettings.light`). */
+const isDark = (s: Scene) => settingsOf(s).light === 'dark';
+
 /** The start point, shown while editing: a small flag. */
 function flagOf(w: World): Thing {
   const s = w.toView(w.scene.spawn);
   const level = levelAt(w.map, Math.floor(s.i), Math.floor(s.j));
-  return { spot: { i: s.i, j: s.j, level: isRock(level) ? w.flatLevel : Math.max(SEA_LEVEL, level) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
+  return { spot: { i: s.i, j: s.j, level: isRock(level) ? w.flatLevel : Math.max(w.water, level) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
 }
 
 /** Draws a lying scene's picture again if the view turned (or the cave's light was switched) since it was last drawn. */
@@ -435,7 +438,7 @@ function drawLying(l: Lying): void {
   ];
   const view = { x: -PAD.x, y: -PAD.y, w: g.w + 2 * PAD.x, h: g.h + PAD.y + PAD.x };
   const image = w.compose(view, things, undefined, false, 0, false);
-  if (w.scene.cave && !prefs.bright) lightByTile(image, caveTint(w.scene), 0, w.spots!, w.lightField(caveLamps(w, 0)));
+  if (isDark(w.scene) && !prefs.bright) lightByTile(image, caveTint(w.scene), 0, w.spots!, w.lightField(caveLamps(w, 0)));
   l.picture.width = view.w;
   l.picture.height = view.h;
   l.picture.getContext('2d')!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, view.w, view.h), 0, 0);
@@ -1015,8 +1018,8 @@ function placePlant(at: { i: number; j: number }, placed: Set<PlacedPlant>): voi
   placed.add(plant);
 }
 
-/** Decorations lie on land and on the sea floor down to this level, where the water still shows them. */
-const DECOR_DEPTH = SEA_LEVEL - 2;
+/** Decorations lie on land and on the sea floor down to this many levels under the water line, where the water still shows them. */
+const DECOR_DEPTH = 2;
 
 /** Where on a tile a thing hung on a wall goes: just in front of the wall at its back, if it has one. */
 function onWall(at: { i: number; j: number }): { i: number; j: number } | null {
@@ -1028,7 +1031,7 @@ function onWall(at: { i: number; j: number }): { i: number; j: number } | null {
 
 /** Decorations lie on land and the sea floor near it; in a cave only on its floor, not in the rock. */
 const decorFits = (at: { i: number; j: number }, w = world) =>
-  w.scene.cave ? isLand(w.map, at.i, at.j) : levelAt(w.floor, at.i, at.j) >= DECOR_DEPTH;
+  w.scene.cave ? isLand(w.map, at.i, at.j) : levelAt(w.floor, at.i, at.j) >= w.water - DECOR_DEPTH;
 
 function placeDecor(at: { i: number; j: number }): void {
   if (!decorFits(at)) return;
@@ -1972,7 +1975,7 @@ function frame(ms: number): void {
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
     t0 = performance.now();
     // A cave is as dark as in the game, but where its lights and the character's lantern reach; while editing it can be seen into.
-    if (cave && !(prefs.mode === 'edit' && prefs.bright)) {
+    if (isDark(world.scene) && !(prefs.mode === 'edit' && prefs.bright)) {
       const lantern = prefs.mode === 'play' && actor ? [{ i: actor.i, j: actor.j, r: 4.2 * flicker(ms), amount: 1 }] : [];
       lightByTile(image, caveTint(world.scene), 0, world.spots!, world.lightField([...caveLamps(world, ms), ...lantern]));
     }
@@ -2424,10 +2427,10 @@ function render(): void {
   inspector.panel.style.display = editing ? '' : 'none';
   inspect();
   showActions();
-  if (brightToggle) brightToggle.hidden = !editing || !sceneNow().cave;
+  if (brightToggle) brightToggle.hidden = !editing || !isDark(sceneNow());
   // While editing, the scene lies on the desk; in Play it is seen as in the game, with open sea (or a cave's dark) round it.
   world.alone = editing;
-  viewport.style.background = editing ? DESK : sceneNow().cave ? '#000' : ocean.deep;
+  viewport.style.background = editing ? DESK : settingsOf(sceneNow()).outside === 'void' ? '#000' : ocean.deep;
   version++;
   fpsLine.hidden = !prefs.fps;
 }
@@ -2439,8 +2442,25 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   let name = kind === 'new' ? t('scene.first') : scene.name;
   let w = kind === 'new' ? 28 : scene.w;
   let hh = kind === 'new' ? 28 : scene.h;
-  const kinds = [{ id: 'island', icon: 'palm' }, { id: 'sea', icon: 'flat' }, { id: 'cave', icon: 'rock' }] as const;
+  const kinds = [{ id: 'island', icon: 'palm' }, { id: 'sea', icon: 'flat' }, { id: 'cave', icon: 'rock' }, { id: 'seaCave', icon: 'shell' }] as const;
   let startWith: (typeof kinds)[number]['id'] = 'island';
+  // The scene's settings: what lies beyond it, its light, its water line and, in a cave, the room over the floor.
+  const set = settingsOf(scene);
+  let { outside, light, water, headroom } = set;
+  const waterRow = h('div', { class: 'urow' });
+  const drawWater = () => waterRow.replaceChildren(
+    // Below the lowest level there is no water at all.
+    pixelButton(t('dialog.waterDown'), { icon: 'down' }, () => { water = water === null ? null : water <= MIN_LEVEL ? null : water - 1; drawWater(); }),
+    pixelButton(t('dialog.water'), { words: water === null ? t('dialog.noWater') : String(water), flat: true }, () => {}),
+    pixelButton(t('dialog.waterUp'), { icon: 'up' }, () => { water = water === null ? MIN_LEVEL : Math.min(MAX_LEVEL, water + 1); drawWater(); }),
+  );
+  drawWater();
+  const settingRows = kind === 'new' ? [] : [
+    field({ icon: 'flat', tip: t('dialog.outside') }, choice(t('dialog.outside'), [{ id: 'sea', icon: 'flat', words: t('dialog.outside.sea') }, { id: 'void', icon: 'close', words: t('dialog.outside.void') }], () => outside, (id) => (outside = id as SceneSettings['outside']), 'buttons')),
+    field({ icon: 'sun', tip: t('dialog.light') }, choice(t('dialog.light'), [{ id: 'day', icon: 'sun', words: t('dialog.light.day') }, { id: 'dark', icon: 'moon', words: t('dialog.light.dark') }], () => light, (id) => (light = id as SceneSettings['light']), 'buttons')),
+    field({ icon: 'height', tip: t('dialog.water') }, waterRow),
+    ...(scene.cave ? [field({ icon: 'rock', tip: t('dialog.headroom') }, numberField({ icon: 'up', tip: t('dialog.headroom') }, headroom || 5, (n) => (headroom = n), { min: 1, max: MAX_HEADROOM, width: 44 }))] : []),
+  ];
   // A cave's own settings: how its dark looks and how much rubble lies about.
   const caveNow = kind === 'settings' ? scene.cave : undefined;
   let tint = caveNow?.tint ?? CAVE_DEFAULTS.tint;
@@ -2461,6 +2481,7 @@ function sceneDialog(kind: 'new' | 'settings'): void {
         numberField({ words: 'W', tip: t('dialog.width') }, w, (n) => (w = n), size),
         numberField({ words: 'H', tip: t('dialog.height') }, hh, (n) => (hh = n), size))),
       ...(kind === 'new' ? [field({ icon: 'home', tip: t('dialog.kind') }, choice(t('dialog.kind'), kinds.map((k) => ({ id: k.id, icon: k.icon, words: t(`dialog.kind.${k.id}`) })), () => startWith, (id) => (startWith = id as typeof startWith), 'buttons'))] : []),
+      ...settingRows,
       ...(caveNow ? [field({ icon: 'palette', tip: t('dialog.tint') }, color), level(t('dialog.dark'), 'moon', dark, (n) => (dark = n)), level(t('dialog.rubble'), 'rock', rubble, (n) => (rubble = n))] : []),
       ...(kind === 'settings' ? [field({ icon: 'person', tip: t('character') }, choice(t('character'), who, () => character, (id) => (character = id), 'list'))] : []),
     ),
@@ -2468,7 +2489,7 @@ function sceneDialog(kind: 'new' | 'settings'): void {
   ], () => {
     const label = name.trim().slice(0, 40) || t('scene.first');
     if (kind === 'new') {
-      return switchTo(startWith === 'cave' ? createCave(label, w, hh) : createScene(label, w, hh, startWith === 'island'));
+      return switchTo(startWith === 'cave' ? createCave(label, w, hh) : startWith === 'seaCave' ? createCave(label, w, hh, SCENE_PRESETS.seaCave) : createScene(label, w, hh, startWith === 'island'));
     }
     if (character !== prefs.character) {
       prefs.character = character;
@@ -2480,13 +2501,15 @@ function sceneDialog(kind: 'new' | 'settings'): void {
     const taken = now !== was && (library.scenes.some((o) => o.id !== scene.id && slug(o.name) === now) || (projectScenes.some((p) => p.name === now) && fileOf.get(scene.id) !== now));
     if (taken) say(t('scene.nameTaken', { name: label }));
     const same = w === scene.w && hh === scene.h && (taken || label === scene.name)
-      && (!scene.cave || (scene.cave.tint === tint && scene.cave.dark === dark && scene.cave.rubble === rubble));
+      && (!scene.cave || (scene.cave.tint === tint && scene.cave.dark === dark && scene.cave.rubble === rubble))
+      && outside === set.outside && light === set.light && water === set.water && headroom === set.headroom;
     if (same) return;
     // One step back undoes the whole change: the scene's size and name, and the ways elsewhere that now lead to the new name.
     remember(scene);
     const next = w !== scene.w || hh !== scene.h ? resized(scene, w, hh) : scene;
     if (!taken) next.name = label;
     if (next.cave) Object.assign(next.cave, { tint, dark, rubble });
+    setSettings(next, { outside, light, water, headroom });
     library.scenes[library.scenes.indexOf(scene)] = next;
     if (!taken && now !== was) renamed(next, was);
     switchTo(next);
@@ -2556,7 +2579,9 @@ function sceneThumb(s: Scene): HTMLCanvasElement {
   const g = c.getContext('2d')!;
   const im = g.createImageData(s.w, s.h);
   const put = (i: number, rgb: number[]) => { im.data.set([...rgb, 255], i * 4); };
-  s.levels.forEach((l, i) => put(i, isRock(l) ? [0, 0, 0] : s.cave ? [226, 204, 140] : l <= 0 ? [58, 124, 170] : l === 1 ? [226, 204, 140] : l === 2 ? [110, 160, 80] : [120, 116, 108]));
+  // Heights count from the water line; a cave's floor is all one colour, but where water lies on it.
+  const water = settingsOf(s).water ?? -Infinity;
+  s.levels.forEach((l, i) => put(i, isRock(l) ? [0, 0, 0] : l < water || (l === water && !s.cave) ? [58, 124, 170] : s.cave || l === water + 1 ? [226, 204, 140] : l === water + 2 ? [110, 160, 80] : [120, 116, 108]));
   for (const p of s.plants) { const i = Math.floor(p.j) * s.w + Math.floor(p.i); if (i >= 0 && i < s.w * s.h) put(i, [40, 90, 50]); }
   g.putImageData(im, 0, 0);
   const k = 52 / Math.max(s.w, s.h);

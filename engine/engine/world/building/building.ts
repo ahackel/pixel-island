@@ -9,7 +9,7 @@
 //  - neighbouring cell pieces of one kind make a patch, drawn as one piece over its bounding rectangle;
 //  - a covering patch (a roof) rests on the wall tops: the walls under it stop below its eaves and
 //    lie in its shade, and standing in it hides it and cuts its front walls to half height.
-import { cornersOf, isRock, LEVEL_M, levelAt, LEVEL_PX, SEA_LEVEL, SHADOW_RUN, TILE_H, TILE_W, type HeightMap, type TerrainImage } from '../terrain.ts';
+import { cornersOf, isRock, LEVEL_M, levelAt, LEVEL_PX, SHADOW_RUN, TILE_H, TILE_W, waterOf, type HeightMap, type TerrainImage } from '../terrain.ts';
 
 export const HALF_W = TILE_W / 2; // screen columns along one cell edge
 export const HALF_H = TILE_H / 2; // rows down along one cell edge
@@ -81,12 +81,14 @@ export function endHeights(map: HeightMap, e: Edge): [number, number] {
   const k = e.axis === 'H' ? [behind[3], behind[2]] : [behind[1], behind[2]];
   const rockFront = isRock(levelAt(map, e.i, e.j)), rockBehind = isRock(levelAt(map, bi, bj));
   const end = (n: 0 | 1) => (rockBehind && !rockFront ? f[n] : rockFront && !rockBehind ? k[n] : Math.max(f[n], k[n]));
-  return [Math.max(SEA_LEVEL, end(0)), Math.max(SEA_LEVEL, end(1))];
+  // Over water, it stands on the water line.
+  const water = waterOf(map);
+  return [Math.max(water, end(0)), Math.max(water, end(1))];
 }
 
-/** The highest ground under a patch. */
+/** The highest ground under a patch, at least the water line. */
 export function floorOf(map: HeightMap, p: Patch): number {
-  let floor = SEA_LEVEL;
+  let floor = waterOf(map);
   for (let j = p.j0; j <= p.j1; j++) for (let i = p.i0; i <= p.i1; i++) floor = Math.max(floor, ...cornersOf(map, i, j));
   return floor;
 }

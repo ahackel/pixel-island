@@ -11,8 +11,10 @@ export const TILE_W = 32;
 export const TILE_H = 16;
 /** Screen pixels per height level. One level is about a third of a metre. */
 export const LEVEL_PX = 8;
-/** The water line. Cells below it are sea; cells at it are beach. */
+/** The water line of the open sea, where a map does not set its own (`HeightMap.water`). Cells below it are sea; cells at it are beach. */
 export const SEA_LEVEL = 0;
+/** The water line of a map with no water at all: far under any ground, so nothing is wet and every depth is less than none. */
+export const DRY = -100;
 export const MIN_LEVEL = -4;
 export const MAX_LEVEL = 12;
 /**
@@ -32,6 +34,8 @@ export interface HeightMap {
   readonly paint?: Uint8Array;
   /** The level beyond the map's edge, which the border cells slope toward: open sea (`MIN_LEVEL`) unless set. */
   readonly outside?: number;
+  /** The level water fills up to: cells below it are under water, cells at it are beach. `SEA_LEVEL` unless set; null for none at all (a dry cave). */
+  readonly water?: number | null;
   /** How far the ground has moved in tiles (see `Scene.shift`), in this view: what is drawn by position is seeded from the position without it. */
   readonly seed?: { i: number; j: number; /** Where the map's left corner was on the picture when its speckle was first seeded, so it keeps its pattern. */ x?: number };
 }
@@ -39,6 +43,9 @@ export interface HeightMap {
 export function createHeightMap(w: number, h: number, fill = MIN_LEVEL): HeightMap {
   return { w, h, levels: new Int8Array(w * h).fill(fill) };
 }
+
+/** A map's water line: the level its water fills to, or `DRY` where it has none. Depths and wet ground count from it. */
+export const waterOf = (map: HeightMap): number => (map.water === null ? DRY : (map.water ?? SEA_LEVEL));
 
 const clampLevel = (n: number) => (isRock(n) ? ROCK_LEVEL : Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, Math.round(n))));
 
@@ -54,7 +61,7 @@ export function setLevel(map: HeightMap, i: number, j: number, level: number): v
 }
 
 /** The height that shows: the ground, or the water surface over it. */
-export const surfaceLevel = (map: HeightMap, i: number, j: number) => Math.max(SEA_LEVEL, levelAt(map, i, j));
+export const surfaceLevel = (map: HeightMap, i: number, j: number) => Math.max(waterOf(map), levelAt(map, i, j));
 
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
@@ -71,23 +78,27 @@ export const PAINTS = ['sand', 'grass', 'rock', 'cave', 'dirt'] as const;
 
 const paintAt = (map: HeightMap, i: number, j: number) => (map.paint && inside(map, i, j) ? map.paint[j * map.w + i] : 0);
 
-/** What a cell is, by rule from its height and its neighbours. */
+/**
+ * What a cell is, by rule from its height and its neighbours, counted from the water line: a level under it shallow,
+ * deeper deep, at it beach, one over it sand. High ground is rock six levels over the water (over level 0 without any).
+ */
 export function surfaceAt(map: HeightMap, i: number, j: number): Surface {
   const level = levelAt(map, i, j);
-  if (level < -1) return 'deep';
-  if (level < SEA_LEVEL) return 'shallow';
+  const water = waterOf(map);
+  if (level < water - 1) return 'deep';
+  if (level < water) return 'shallow';
   const painted = paintAt(map, i, j);
   if (painted) return PAINTS[painted - 1];
-  if (level === SEA_LEVEL) return 'beach';
-  if (level >= 6 || steepness(map, i, j) >= 3) return 'rock';
-  if (level === 1) return 'sand';
+  if (level === water) return 'beach';
+  if (level >= (map.water ?? SEA_LEVEL) + 6 || steepness(map, i, j) >= 3) return 'rock';
+  if (level === water + 1) return 'sand';
   return 'grass';
 }
 
 /** Ground at or above the water line that one can stand on: not sea, not rock. */
 export const isLand = (map: HeightMap, i: number, j: number) => {
   const level = levelAt(map, i, j);
-  return level >= SEA_LEVEL && !isRock(level);
+  return level >= waterOf(map) && !isRock(level);
 };
 
 /** The largest difference between neighbouring cells that is drawn as a slope rather than a cliff. */
@@ -185,7 +196,7 @@ export function heightAt(map: HeightMap, i: number, j: number): number {
 }
 
 /** Where things stand: on the ground, or on the water where the ground is under it. */
-export const standingHeight = (map: HeightMap, i: number, j: number) => Math.max(SEA_LEVEL, heightAt(map, i, j));
+export const standingHeight = (map: HeightMap, i: number, j: number) => Math.max(waterOf(map), heightAt(map, i, j));
 
 // ------------------------------------------------------------------ drawing
 
@@ -306,7 +317,7 @@ function clutterColor(kind: Ground, role: string, ground: string): string {
   if (kind === 'rock' || kind === 'cave' || kind === 'dirt') return role === 'l' ? mixHex(ground, LIT, 0.4) : mixHex(ground, '#000000', role === 'd' ? 0.3 : 0.14);
   return mixHex(PEBBLE[role as keyof typeof PEBBLE], ground, 0.25);
 }
-/** What the ground is at a height, inside a cell of some surface: low ground is sand whatever the cell. */
+/** What the ground is at a height `h` over the water line, inside a cell of some surface: low ground is sand whatever the cell. */
 function groundAt(surface: Surface, h: number, painted = false, dry = false): Ground {
   // A cave's floor is stone to its edge, never wet sand; dirt is dirt wherever it is painted.
   if (surface === 'cave' || surface === 'dirt') return surface;
@@ -364,7 +375,7 @@ export function groundOf(map: HeightMap): (i: number, j: number) => number {
  * ground rises over the ray towards the light, less the light's rise along it.
  */
 function horizons(map: HeightMap): { at(i: number, j: number): number } {
-  let top = SEA_LEVEL;
+  let top = waterOf(map);
   for (const l of map.levels) top = Math.max(top, l);
   const ground = groundOf(map);
   const toward = [-SHADOW_RUN[0], -SHADOW_RUN[1]];
@@ -412,14 +423,15 @@ const rgbOf = (hex: string) => {
  */
 export function seaFloor(map: HeightMap): HeightMap {
   const levels = Float32Array.from(map.levels);
-  for (let pass = SEA_LEVEL; pass > MIN_LEVEL; pass--) {
+  const water = waterOf(map);
+  for (let pass = water; pass > MIN_LEVEL; pass--) {
     const before = Float32Array.from(levels);
     for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) {
       const k = j * map.w + i;
-      if (before[k] >= SEA_LEVEL) continue;
+      if (before[k] >= water) continue;
       let floor = before[k];
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-        if (inside(map, i + di, j + dj)) floor = Math.max(floor, Math.min(SEA_LEVEL, before[k + dj * map.w + di]) - 1);
+        if (inside(map, i + di, j + dj)) floor = Math.max(floor, Math.min(water, before[k + dj * map.w + di]) - 1);
       }
       levels[k] = floor;
     }
@@ -430,13 +442,13 @@ export function seaFloor(map: HeightMap): HeightMap {
     const before = Float32Array.from(smooth);
     for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) {
       const k = j * map.w + i;
-      if (levels[k] >= SEA_LEVEL) continue;
+      if (levels[k] >= water) continue;
       let sum = 0;
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-        sum += inside(map, i + di, j + dj) ? Math.min(SEA_LEVEL, before[k + dj * map.w + di]) : before[k];
+        sum += inside(map, i + di, j + dj) ? Math.min(water, before[k + dj * map.w + di]) : before[k];
       }
       // Still sea, however near the shore.
-      smooth[k] = Math.min(SEA_LEVEL - 0.25, sum / 9);
+      smooth[k] = Math.min(water - 0.25, sum / 9);
     }
   }
   return { ...map, levels: smooth };
@@ -447,6 +459,8 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
   const map = seaFloor(shape);
   // A cave's flat ground (see `outside`), where painted ground shows as painted.
   const dry = shape.outside !== undefined;
+  /** The water line: heights below it are under water, and the ground's colours by height count from it. */
+  const water = waterOf(map);
   const w = size?.w ?? (map.w + map.h) * (TILE_W / 2) + 16;
   const h = size?.h ?? (map.w + map.h) * (TILE_H / 2) + MAX_LEVEL * LEVEL_PX + 16;
   const origin = size?.origin ?? { x: map.h * (TILE_W / 2) + 8, y: MAX_LEVEL * LEVEL_PX + 8 };
@@ -550,9 +564,9 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
         const level = w0 * p[0][2] + w1 * p[1][2] + w2 * p[2][2];
         const from = groundCell(i, j, w0 * p[0][0] + w1 * p[1][0] + w2 * p[2][0], w0 * p[0][1] + w1 * p[1][1] + w2 * p[2][1]);
-        let kind = groundAt(surfaces[from], level, paintAt(map, from % map.w, Math.floor(from / map.w)) > 0, dry);
+        let kind = groundAt(surfaces[from], level - water, paintAt(map, from % map.w, Math.floor(from / map.w)) > 0, dry);
         // Rock is the bottom layer: other ground spreads over it, it never spreads over them.
-        if (kind === 'rock' && from !== index) kind = groundAt(surface, level, painted, dry);
+        if (kind === 'rock' && from !== index) kind = groundAt(surface, level - water, painted, dry);
         const sandy = kind === 'sand' || kind === 'wet';
         // The light between the corners, in steps of a fiftieth, dithered so the steps do not band.
         const lit = w0 * l[0] + w1 * l[1] + w2 * l[2];
@@ -593,7 +607,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         const yBottom = ground - bottom * LEVEL_PX;
         for (let y = Math.ceil(yTop - 0.5); y < yBottom; y++) {
           const level = (ground - (y + 0.5)) / LEVEL_PX;
-          const kind = groundAt(surface, level, painted, dry);
+          const kind = groundAt(surface, level - water, painted, dry);
           let color: string = SIDES[kind][face.side];
           if (surface === 'grass' && kind === 'grass' && y - yTop < 2) color = GRASS_LIP;
           else if (hash(x, y) < 0.06) color = mixHex(color, '#000000', 0.08);
@@ -629,7 +643,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
       const ax = Math.round(at.x), ay = Math.round(at.y);
       if (ax < 0 || ay < 0 || ax >= w || ay >= h) continue;
       const a = ay * w + ax;
-      if (cell[a] !== index || !tops[a] || height[a] < SEA_LEVEL - PEBBLE_DEPTH) continue;
+      if (cell[a] !== index || !tops[a] || height[a] < water - PEBBLE_DEPTH) continue;
       const kind = GROUNDS[tops[a] - 1];
       const { chance, tries, stamps } = CLUTTER[kind];
       if (k >= tries || cellHash(i, j, 30 + k) >= chance) continue;
@@ -640,9 +654,9 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         if (role === ' ' || x < 0 || y < 0 || x >= w || y >= h) return;
         const p = y * w + x;
         const c = cell[p];
-        if (c < 0 || (c % map.w) + Math.floor(c / map.w) > i + j || height[p] < SEA_LEVEL - PEBBLE_DEPTH) return;
+        if (c < 0 || (c % map.w) + Math.floor(c / map.w) > i + j || height[p] < water - PEBBLE_DEPTH) return;
         if (role === 's' && !tops[p]) return;
-        if (height[p] < SEA_LEVEL) underwater[p] = role;
+        if (height[p] < water) underwater[p] = role;
         else colors[p] = clutterColor(kind, role, role === 's' ? colors[p] : base);
       }));
     }
@@ -662,19 +676,20 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
   // The floor is flat per tile triangle, so its depth bends at every tile edge and the colour would
   // show the tiles as bands; the water's colour goes by the depth smoothed over a few tiles instead.
   const soft = new Float32Array(w * h);
-  for (let p = 0; p < w * h; p++) soft[p] = Math.max(0, SEA_LEVEL - height[p]);
+  for (let p = 0; p < w * h; p++) soft[p] = Math.max(0, water - height[p]);
   smooth(soft, w, h, WATER_BLUR);
   for (let p = 0; p < w * h; p++) {
-    const depth = SEA_LEVEL - height[p];
+    const depth = water - height[p];
     let color = colors[p];
     if (depth > 0) {
+      // The point of the water surface seen here, which lies at the water line.
       const sx = (p % w) + 0.5 - origin.x;
-      const sy = Math.floor(p / w) + 0.5 - origin.y;
+      const sy = Math.floor(p / w) + 0.5 - origin.y + water * LEVEL_PX;
       // Open sea off the map is as deep as it gets; elsewhere the floor is looked up under the surface.
-      surfaceDepth[p] = cell[p] < 0 ? depth : Math.max(0.01, SEA_LEVEL - floor((sx / (TILE_W / 2) + sy / (TILE_H / 2)) / 2, (sy / (TILE_H / 2) - sx / (TILE_W / 2)) / 2));
-      const water = waterAt(soft[p]);
+      surfaceDepth[p] = cell[p] < 0 ? depth : Math.max(0.01, water - floor((sx / (TILE_W / 2) + sy / (TILE_H / 2)) / 2, (sy / (TILE_H / 2) - sx / (TILE_W / 2)) / 2));
+      const tone = waterAt(soft[p]);
       // The sand floor shows through the first half level; steps of a tenth keep the colour cache small.
-      color = depth < 0.5 ? mixHex(color, water, Math.round((0.5 + depth) * 10) / 10) : water;
+      color = depth < 0.5 ? mixHex(color, tone, Math.round((0.5 + depth) * 10) / 10) : tone;
       const pebble = underwater[p] && UNDERWATER[underwater[p]];
       if (pebble) color = mixHex(color, pebble[0], Math.round(pebble[1] * Math.max(0, 1 - (depth / PEBBLE_DEPTH) ** 2) * 20) / 20);
     }
@@ -746,16 +761,17 @@ export function hiddenBehind(map: HeightMap, image: TerrainImage, x: number, y: 
   const { diags, highs } = frontOf(map, image);
   return diags[p] > diag && highs[p] > limit;
 }
-/** Per pixel of a ground image, its cell's diagonal `i + j` (-Infinity where no cell is) and its height, at least the sea's. */
+/** Per pixel of a ground image, its cell's diagonal `i + j` (-Infinity where no cell is) and its height, at least the water line's. */
 const fronts = new WeakMap<TerrainImage, { map: HeightMap; diags: Float64Array; highs: Float64Array }>();
 export function frontOf(map: HeightMap, image: TerrainImage): { diags: Float64Array; highs: Float64Array } {
   let f = fronts.get(image);
   if (f?.map !== map) {
     const diags = new Float64Array(image.cell.length), highs = new Float64Array(image.cell.length);
+    const water = waterOf(map);
     for (let p = 0; p < diags.length; p++) {
       const c = image.cell[p];
       diags[p] = c < 0 ? -Infinity : (c % map.w) + Math.floor(c / map.w);
-      highs[p] = Math.max(SEA_LEVEL, image.height[p]);
+      highs[p] = Math.max(water, image.height[p]);
     }
     fronts.set(image, (f = { map, diags, highs }));
   }
