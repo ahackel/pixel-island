@@ -10,7 +10,7 @@ import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
   BRICK, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
-  TILE_H, TILE_W, type HeightMap, type TerrainImage,
+  TILE_H, TILE_W, MAX_LEVEL, MIN_LEVEL, toScreen, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
@@ -981,6 +981,49 @@ export class World {
     if (x < 0 || y < 0 || x >= this.ground.w || y >= this.ground.h) return null;
     const c = this.ground.cell[y * this.ground.w + x];
     return c < 0 ? null : { i: c % this.map.w, j: Math.floor(c / this.map.w) };
+  }
+
+  /**
+   * Outlines the top of one tile in a composed window, over everything drawn there (lights included): its own pixels
+   * next to another tile's or to its faces. Under water the floor has no top drawn as such, so there it is the edge of
+   * all of it that shows.
+   */
+  outlineTile(image: Pixels, view: Rect, cell: number, color: string): void {
+    const g = this.ground;
+    const wet = this.map.levels[cell] < this.water;
+    const i = cell % this.map.w, j = Math.floor(cell / this.map.w);
+    // Only the rows and columns the tile can be drawn in: its diamond, from the highest ground down to the lowest.
+    const top = toScreen(i, j, MAX_LEVEL + 1), bottom = toScreen(i + 1, j + 1, MIN_LEVEL - 1);
+    const x0 = Math.max(0, Math.floor(g.origin.x + top.x - TILE_W / 2 - view.x - 1)), x1 = Math.min(view.w, Math.ceil(g.origin.x + top.x + TILE_W / 2 - view.x + 1));
+    const y0 = Math.max(0, Math.floor(g.origin.y + top.y - view.y - 1)), y1 = Math.min(view.h, Math.ceil(g.origin.y + bottom.y - view.y + 1));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const gx = x + view.x, gy = y + view.y;
+      if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) continue;
+      const p = gy * g.w + gx;
+      if (g.cell[p] !== cell || (!wet && g.tops[p] === 0)) continue;
+      const rim = [p - 1, p + 1, p - g.w, p + g.w].some((q) => q < 0 || q >= g.cell.length || g.cell[q] !== cell || (!wet && g.tops[q] === 0));
+      if (rim) blend(image, x, y, color);
+    }
+  }
+
+  /** The height, in levels, of the ground drawn at a pixel of the ground image, or null off it. */
+  heightAtPixel(x: number, y: number): number | null {
+    x = Math.floor(x);
+    y = Math.floor(y);
+    if (x < 0 || y < 0 || x >= this.ground.w || y >= this.ground.h) return null;
+    const p = y * this.ground.w + x;
+    return this.ground.cell[p] < 0 ? null : this.ground.height[p];
+  }
+
+  /**
+   * The map point (view coordinates, in fractions of a tile) seen at a pixel of the ground image on a flat plane at
+   * `level`, whatever ground is drawn there: the editor keeps a stroke on one plane, so ground rising or falling under
+   * the pointer does not move the stroke onto another tile.
+   */
+  planeAt(x: number, y: number, level: number): { i: number; j: number } {
+    const across = (2 * (x - this.ground.origin.x)) / TILE_W; // i - j
+    const down = (2 * (y - this.ground.origin.y + level * LEVEL_PX)) / TILE_H; // i + j
+    return { i: (down + across) / 2, j: (down - across) / 2 };
   }
 
   private plantMemo = new WeakMap<PlacedPlant, {

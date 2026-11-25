@@ -68,6 +68,31 @@ const toolsHere = () => toolsFor(sceneNow());
 const toolIn = (s: Scene): Tool => (toolsFor(s).includes(prefs.tool) ? prefs.tool : 'move');
 const toolNow = () => toolIn(sceneNow());
 const BRUSHED: Tool[] = ['raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'carve', 'erase'];
+/** The tools that shape the ground: their strokes keep to one flat plane, and the tile under the pointer is read out. */
+const SHAPING: Tool[] = ['raise', 'lower', 'smooth', 'level', 'shape', 'carve'];
+const GROUND_TOOLS: Tool[] = [...SHAPING, 'paint'];
+/** The tools that pick something up from the tile under a Ctrl-click (Cmd-click on a Mac) instead of working there. */
+const PICKING: Tool[] = ['level', 'shape', 'paint'];
+
+/** The modifier keys held, as last seen on a key or the pointer. */
+const mods = { alt: false, shift: false, pick: false };
+function readMods(e: { altKey: boolean; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): void {
+  mods.alt = e.altKey;
+  mods.shift = e.shiftKey;
+  mods.pick = e.ctrlKey || e.metaKey;
+}
+/**
+ * The tool a ground stroke works as with modifier keys held: Alt raises for Lower and lowers for Raise (and does the
+ * opposite in Shape and Carve, in `apply`), Shift smooths for Raise, Lower and Level where the scene has smoothing.
+ */
+function withMods(tool: Tool, m: { alt?: boolean; shift?: boolean }, s: Scene): Tool {
+  if (m.shift && (tool === 'raise' || tool === 'lower' || tool === 'level') && toolsFor(s).includes('smooth')) return 'smooth';
+  if (m.alt && tool === 'raise') return 'lower';
+  if (m.alt && tool === 'lower') return 'raise';
+  return tool;
+}
+/** The tool at work in a scene with the modifier keys held now. */
+const toolHeld = (s: Scene) => withMods(toolIn(s), mods, s);
 const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
@@ -80,6 +105,8 @@ interface Prefs {
   tool: Tool;
   /** 0 by height, otherwise `PAINTS[n - 1]`. */
   paint: number;
+  /** The height the Level tool levels to, picked with Ctrl-click; null for the height where a stroke starts. */
+  levelTo: number | null;
   /** What the Shape tool makes of the ground. */
   shape: ShapePick;
   /** The kind of wall the Walls tool builds (building/walls.ts). */
@@ -120,13 +147,14 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, levelTo: null, shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
     if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
+    if (Number.isInteger(saved?.levelTo) && saved.levelTo >= MIN_LEVEL && saved.levelTo <= MAX_LEVEL) prefs.levelTo = saved.levelTo;
     if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
     if (saved?.way === 'ladder' || saved?.way === 'door') prefs.way = saved.way;
     if (Number.isInteger(saved?.brush) && saved.brush >= 1 && saved.brush <= BRUSH_MAX) prefs.brush = saved.brush;
@@ -503,6 +531,7 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
   const editing = prefs.mode === 'edit';
   const ways = editing ? waysOnDesk() : [];
   const pins = editing ? [
+    ...(hover && GROUND_TOOLS.includes(toolNow()) ? [readoutPin(hover, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }))] : []),
     ...stubs(ways).map(stubPin),
     ...ways.filter((w) => w.scene.id === world.scene.id).map(handlePin),
     ...openScenes().map(tabPin),
@@ -987,7 +1016,7 @@ function brushCells(at: { i: number; j: number }, tool = toolNow(), w = world): 
 
 /** Whether the tool would do nothing on a tile, so the brush shows red there. */
 function cannotEdit(at: { i: number; j: number }, w = world): boolean {
-  const tool = toolIn(w.scene);
+  const tool = toolHeld(w.scene);
   switch (tool) {
     case 'plant':
       return !grows(w.map, prefs.plant, at.i + 0.5, at.j + 0.5);
@@ -1231,38 +1260,48 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
  * painting a tile twice; smoothing works again on every tile the drag enters, and levelling
  * keeps to the height of the tile the drag started on.
  */
-function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean }): void {
+function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean; tool?: Tool }): void {
   const map = world.map;
-  const fresh = brushCells(at).filter((c) => !stroke.touched.has(c));
+  // The tool as the modifier keys held at the press made it.
+  const tool = stroke.tool ?? toolNow();
+  const cells = brushCells(at, tool);
+  const fresh = cells.filter((c) => !stroke.touched.has(c));
   fresh.forEach((c) => stroke.touched.add(c));
   const tile = (c: number): [number, number] => [c % map.w, Math.floor(c / map.w)];
-  switch (toolNow()) {
+  switch (tool) {
     case 'smooth':
-      smooth(map, brushCells(at));
+      smooth(map, cells);
       groundDirty = true;
       break;
     case 'level':
-      // Rock is carved, not levelled.
-      stroke.level ??= levelAt(map, at.i, at.j);
+      // To the height picked, else to the height where the stroke started. Rock is carved, not levelled.
+      stroke.level ??= prefs.levelTo ?? levelAt(map, at.i, at.j);
       if (isRock(stroke.level)) break;
-      for (const c of brushCells(at)) if (!isRock(map.levels[c])) setLevel(map, ...tile(c), stroke.level);
+      for (const c of cells) if (!isRock(map.levels[c])) setLevel(map, ...tile(c), stroke.level);
       groundDirty = true;
       break;
     case 'raise':
     case 'lower':
-      for (const c of fresh) if (!isRock(map.levels[c])) setLevel(map, c % map.w, Math.floor(c / map.w), map.levels[c] + (toolNow() === 'raise' ? 1 : -1));
+      for (const c of fresh) if (!isRock(map.levels[c])) setLevel(map, c % map.w, Math.floor(c / map.w), map.levels[c] + (tool === 'raise' ? 1 : -1));
       groundDirty ||= fresh.length > 0;
       break;
     case 'shape':
       for (const c of fresh) {
         if (isRock(map.levels[c])) continue;
+        if (prefs.shape === 'hole' && stroke.alt) {
+          // Alt fills holes back in, as cut ground.
+          if (map.shape[c] === HOLE) { map.shape[c] = CUT; groundDirty = true; }
+          continue;
+        }
         if (prefs.shape !== 'ramp') {
-          const shape = prefs.shape === 'smooth' ? SMOOTH : prefs.shape === 'cut' ? CUT : HOLE;
+          // Alt swaps smooth and cut.
+          const pick = stroke.alt ? (prefs.shape === 'smooth' ? 'cut' : 'smooth') : prefs.shape;
+          const shape = pick === 'smooth' ? SMOOTH : pick === 'cut' ? CUT : HOLE;
           if (map.shape[c] !== shape) { map.shape[c] = shape; groundDirty = true; }
           continue;
         }
-        // A drag that starts on a ramp takes ramps away (cut again); otherwise it lays them, each the way it can rise.
-        stroke.unramp ??= rampDir(map.shape[c]) >= 0;
+        // A drag that starts on a ramp, or with Alt held, takes ramps away (cut again); otherwise it lays them, each the way it can rise.
+        stroke.unramp ??= !!stroke.alt || rampDir(map.shape[c]) >= 0;
         if (stroke.unramp) {
           if (rampDir(map.shape[c]) >= 0) { map.shape[c] = CUT; groundDirty = true; }
           continue;
@@ -1304,8 +1343,8 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
       if (fresh.length) placeProp(at, (stroke.placed ??= new Set()));
       break;
     case 'erase': {
-      const cells = new Set(brushCells(at));
-      const kept = <T>(list: T[], seen: { vi: number; vj: number }[]) => list.filter((_, k) => !cells.has(Math.floor(seen[k].vj) * map.w + Math.floor(seen[k].vi)));
+      const hit = new Set(cells);
+      const kept = <T>(list: T[], seen: { vi: number; vj: number }[]) => list.filter((_, k) => !hit.has(Math.floor(seen[k].vj) * map.w + Math.floor(seen[k].vi)));
       world.scene.plants = kept(world.scene.plants, world.viewPlants());
       world.scene.decor = kept(world.scene.decor, world.viewDecor());
       world.scene.animals = kept(world.scene.animals, world.viewAnimals());
@@ -1320,6 +1359,56 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
       break;
   }
   sceneChanged();
+}
+
+/** What a Ctrl-click picks up from a tile for the tool: the height to level to, the shape, or the material. */
+function pickFrom(at: { i: number; j: number }): void {
+  const map = world.map;
+  const c = at.j * map.w + at.i;
+  const tool = toolNow();
+  if (tool === 'level' && !isRock(map.levels[c])) set({ levelTo: map.levels[c] });
+  if (tool === 'shape' && !isRock(map.levels[c])) set({ shape: map.shape[c] === SMOOTH ? 'smooth' : map.shape[c] === HOLE ? 'hole' : rampDir(map.shape[c]) >= 0 ? 'ramp' : 'cut' });
+  if (tool === 'paint') {
+    const grounds = paintsFor(sceneNow());
+    // Ground by height in a cave is the cave's own stone.
+    const n = map.paint[c] === 0 && sceneNow().cave ? CAVE_OPEN : map.paint[c];
+    if (grounds.includes(n)) set({ paint: n });
+  }
+}
+
+/** The materials the Material tool offers in a scene. Ground follows the height by default; in a cave, where the height is flat, the default is the cave's own stone. */
+const paintsFor = (s: Scene) => (s.cave ? [CAVE_OPEN, 1, 2, 3, 5, 6, 7] : [0, 1, 2, 3, 5, 6, 7]);
+
+/** What the tile under the pointer is, beside the brush while a ground tool is chosen: its height, material and shape. */
+function readoutPin(at: { i: number; j: number }, onScreen: (p: { x: number; y: number }) => { x: number; y: number }): Pin {
+  const map = world.map;
+  const c = at.j * map.w + at.i;
+  const rock = isRock(map.levels[c]);
+  const sh = map.shape[c];
+  const shape = sh === SMOOTH ? 'smooth' : sh === HOLE ? 'hole' : rampDir(sh) >= 0 ? 'ramp' : 'cut';
+  const words = [rock ? t('read.rock') : String(map.levels[c]), t(`paint.${map.paint[c]}` as Key), ...(rock ? [] : [t(`shape.${shape}` as Key)])].join(' · ');
+  const tool = toolHeld(world.scene);
+  // Beside the brush, off the side corner of its outermost tile: the right one, or the left one in the right part of the view.
+  const o = offsetOf(world);
+  const corner = (side: 1 | -1) => {
+    const k = brushCells(at, tool).reduce((best, k) => (side * ((k % map.w) - Math.floor(k / map.w)) > side * ((best % map.w) - Math.floor(best / map.w)) ? k : best), c);
+    const i = k % map.w, j = Math.floor(k / map.w);
+    // Rock is drawn flat, on the floor's plane (World.draw).
+    const level = isRock(map.levels[k]) ? world.flatLevel : standingHeight(map, i + 0.5 + side * 0.49, j + 0.5 - side * 0.49);
+    const g = side > 0 ? toScreen(i + 1, j, level) : toScreen(i, j + 1, level);
+    return { x: g.x + world.ground.origin.x + o.x, y: g.y + world.ground.origin.y + o.y };
+  };
+  const right = corner(1);
+  const left = onScreen(right).x > canvas.clientWidth * 0.6;
+  return {
+    key: `readout:${tool}:${words}:${left}`, at: left ? corner(-1) : right, out: { x: left ? -12 : 12, y: 0 }, align: { x: left ? 1 : 0, y: 0.5 },
+    make: () => {
+      const b = pixelButton(words, { icon: TOOL_ICONS[tool], words }, () => {});
+      b.classList.add('desk-readout');
+      b.tabIndex = -1;
+      return b;
+    },
+  };
 }
 
 /** A way out of the cave on a tile of floor, or none there any more if it had one. */
@@ -1703,7 +1792,10 @@ function emote(e: Emote): void {
 const keys = new Set<string>();
 const typing = (e: Event) => e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || !!document.querySelector('dialog[open]');
 window.addEventListener('keydown', (e) => {
+  readMods(e);
   if (typing(e)) return;
+  // Alt alone would open the browser's menu bar in some browsers; here it changes what a ground tool does.
+  if ((e.code === 'AltLeft' || e.code === 'AltRight') && prefs.mode === 'edit') e.preventDefault();
   if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && !e.shiftKey && prefs.mode === 'edit') {
     e.preventDefault();
     undo();
@@ -1737,8 +1829,8 @@ window.addEventListener('keydown', (e) => {
     if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
   }
 });
-window.addEventListener('keyup', (e) => keys.delete(e.code));
-window.addEventListener('blur', () => keys.clear());
+window.addEventListener('keyup', (e) => { readMods(e); keys.delete(e.code); });
+window.addEventListener('blur', () => { keys.clear(); readMods({ altKey: false, shiftKey: false, ctrlKey: false, metaKey: false }); });
 
 /** The direction held on the keyboard, on screen: x to the right, y down. */
 function keyDirection(): [number, number] {
@@ -1748,13 +1840,37 @@ function keyDirection(): [number, number] {
 }
 
 type Gesture =
-  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number; point?: { i: number; j: number }; walls?: 'lay' | 'take' }
+  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number; point?: { i: number; j: number }; walls?: 'lay' | 'take'; tool?: Tool; plane?: Plane }
   | { kind: 'walk' }
   | { kind: 'edge'; base: World; orig: Scene; a0: number; a1: number; b0: number; b1: number; changed: boolean }
   | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true; crossed?: true }
   | { kind: 'pan'; x: number; y: number; cam: { x: number; y: number } }
   | { kind: 'pinch'; dist: number; zoom: number; mid: { x: number; y: number }; cam: { x: number; y: number } };
 let gesture: Gesture | null = null;
+
+/**
+ * The flat plane a ground stroke keeps to: the height of the ground where it was pressed, and how far the plane is
+ * moved so the press lies on the tile pressed (a step's face lies in front of its tile on any plane at its height).
+ */
+interface Plane { level: number; di: number; dj: number }
+function planeAt(e: { clientX: number; clientY: number }): Plane | null {
+  const tile = tileUnder(e);
+  const p = groundPixel(e);
+  const level = world.heightAtPixel(p.x, p.y);
+  if (!tile || level === null) return null;
+  const q = world.planeAt(p.x, p.y, level);
+  const onto = (v: number, from: number) => Math.min(from + 0.99, Math.max(from + 0.01, v)) - v;
+  return { level, di: onto(q.i, tile.i), dj: onto(q.j, tile.j) };
+}
+/** The tile under the pointer on a stroke's plane, however the ground under it has risen or fallen since. */
+function tileOnPlane(e: { clientX: number; clientY: number }, plane: Plane): { i: number; j: number } | null {
+  const p = groundPixel(e);
+  const q = world.planeAt(p.x, p.y, plane.level);
+  const i = Math.floor(q.i + plane.di), j = Math.floor(q.j + plane.dj);
+  return inside(world.map, i, j) ? { i, j } : null;
+}
+/** The tile the tools work on under the pointer: on the plane of a ground stroke while one goes on, else the one drawn there. */
+const pointerTile = (e: { clientX: number; clientY: number }) => (gesture?.kind === 'stroke' && gesture.plane ? tileOnPlane(e, gesture.plane) : tileUnder(e));
 const pointers = new Map<number, { x: number; y: number }>();
 const pair = () => {
   const [a, b] = [...pointers.values()];
@@ -1775,7 +1891,7 @@ function strokeAt(e: { clientX: number; clientY: number }): void {
     if (!gesture.point) wayAt(e, gesture);
     return;
   }
-  const tile = tileUnder(e);
+  const tile = pointerTile(e);
   if (!tile) return;
   const key = `${tile.i},${tile.j}`;
   if (key === gesture.last) return;
@@ -1903,13 +2019,14 @@ function sideBySide(a: { i: number; j: number }, b: { i: number; j: number }): {
  * picked again: as the ground rises, another tile can come to lie under the same pixel.
  */
 function repeatStroke(ms: number): void {
-  if (gesture?.kind !== 'stroke' || !gesture.tile || !HELD.includes(toolNow()) || ms - gesture.at < REPEAT_MS) return;
+  if (gesture?.kind !== 'stroke' || !gesture.tile || !HELD.includes(gesture.tool ?? toolNow()) || ms - gesture.at < REPEAT_MS) return;
   gesture.touched.clear();
   gesture.at = ms;
   apply(gesture.tile, gesture);
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  readMods(e);
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 2) {
@@ -1940,9 +2057,16 @@ canvas.addEventListener('pointerdown', (e) => {
         remember();
         gesture = { kind: 'move', sel: selected, grab: { x: p.x - foot.x, y: p.y - foot.y }, from: { ...selected.obj }, ...(copy && { copy: true }) };
       } else gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
+    } else if (prefs.mode === 'edit' && (e.ctrlKey || e.metaKey) && PICKING.includes(toolNow())) {
+      // Ctrl-click (Cmd-click) picks up what the tool lays from the tile, and changes nothing.
+      const tile = tileUnder(e);
+      if (tile) pickFrom(tile);
+      gesture = null;
     } else if (prefs.mode === 'edit') {
       remember();
-      gesture = { kind: 'stroke', touched: new Set(), last: '', at: 0, ...(e.altKey && { alt: true as const }) };
+      const tool = withMods(toolNow(), { alt: e.altKey, shift: e.shiftKey }, sceneNow());
+      const plane = SHAPING.includes(tool) ? planeAt(e) : null;
+      gesture = { kind: 'stroke', touched: new Set(), last: '', at: 0, tool, ...(plane && { plane }), ...(e.altKey && { alt: true as const }) };
       strokeAt(e);
     } else {
       gesture = { kind: 'walk' };
@@ -1989,7 +2113,8 @@ canvas.addEventListener('pointermove', (e) => {
   } else if (gesture?.kind === 'edge' && edgeSide) dragEdge(gesture, edgeSide, e);
   else if (gesture?.kind === 'stroke') strokeAt(e);
   else if (gesture?.kind === 'walk') walkTo(e);
-  if (prefs.mode === 'edit' && e.pointerType === 'mouse') hover = tileUnder(e);
+  readMods(e);
+  if (prefs.mode === 'edit' && e.pointerType === 'mouse') hover = pointerTile(e);
   // Over another scene the brush shows there, until a press there edits it; a stroke stays in the scene it began in.
   away = prefs.mode === 'edit' && e.pointerType === 'mouse' && !gesture && !hover ? awayUnder(e) : null;
   hotEdge = prefs.mode === 'edit' && e.pointerType === 'mouse' ? (gesture?.kind === 'edge' ? edgeSide : gesture ? null : edgeAt(e)) : null;
@@ -2103,7 +2228,7 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}`;
   if (prefs.mode === 'play' || key !== shown) {
     const begun = performance.now();
     const cave = world.scene.cave;
@@ -2136,7 +2261,9 @@ function frame(ms: number): void {
       highlight = v && !canStand(selected!, v) ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: '#e0332e99' } : undefined;
     }
     world.hotEdge = prefs.mode === 'edit' ? hotEdge : null;
-    canvas.style.cursor = hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && (away ? toolIn(away.scene) : toolNow()) === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
+    // With Ctrl (Cmd) held, the tools that pick something up from a tile show it by the cursor.
+    const picking = prefs.mode === 'edit' && !hotEdge && !gesture && mods.pick && PICKING.includes(toolNow());
+    canvas.style.cursor = picking ? 'copy' : hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && (away ? toolIn(away.scene) : toolNow()) === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
     let t0 = part('things', begun);
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
     t0 = performance.now();
@@ -2148,6 +2275,8 @@ function frame(ms: number): void {
     // The selected object, outlined over everything (lights included), so it shows even behind rock or in the dark.
     const chosen = prefs.mode === 'edit' ? thingOf(selected, wind) : null;
     if (chosen) outline(image, view, chosen, OUTLINE);
+    // The ground tools outline the top of the tile under the pointer the same way, so it shows which tile on uneven ground, behind rock and in the dark.
+    if (prefs.mode === 'edit' && hover && GROUND_TOOLS.includes(toolNow())) world.outlineTile(image, view, hover.j * world.map.w + hover.i, blocked ? '#e0332e' : '#ffffffcc');
     if (prefs.colliders) world.drawColliders(image, view);
     t0 = part('light', t0);
     paintDesk(image, view);
@@ -2308,6 +2437,14 @@ function picks<T extends { id: string; name: string; picture: HTMLElement }>(lab
 }
 
 const propThumbs = pictureCache('plant__picture', 400);
+/** What the modifier keys do with a tool, for its tip. */
+function keyTips(tool: Tool): string[] {
+  const out: string[] = [];
+  if (tool === 'raise' || tool === 'lower' || tool === 'level' || tool === 'shape' || tool === 'paint') out.push(t(`keys.${tool}`));
+  if ((tool === 'raise' || tool === 'lower' || tool === 'level') && toolsFor(sceneNow()).includes('smooth')) out.push(t('keys.shift'));
+  return out;
+}
+
 /** The props tool's library: one search box over every prop, then pictures to pick from. */
 function propLibrary(): Node[] {
   const grid = h('div');
@@ -2478,12 +2615,12 @@ function editOptions(): Node[] {
   const out: Node[] = [
     h('div', { class: 'opts__head' }, iconPicture(TOOL_ICONS[tool]), h('b', {}, t(`tool.${tool}` as Key))),
     h('p', { class: 'opts__tip' }, t(`tip.${tool}` as Key)),
+    ...(keyTips(tool).length ? [h('p', { class: 'opts__tip' }, keyTips(tool).join(' '))] : []),
   ];
   // One block of fields, so their labels are as wide as each other's.
   const rows: Node[] = [];
   if (tool === 'paint') {
-    // Ground follows the height by default; in a cave, where the height is flat, the default is the cave's own stone.
-    const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5, 6, 7] : [0, 1, 2, 3, 5, 6, 7];
+    const grounds = paintsFor(sceneNow());
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }
@@ -2495,6 +2632,10 @@ function editOptions(): Node[] {
   }
   if (tool === 'ways') {
     rows.push(field({ words: t('way') }, choice(t('way'), [{ id: 'ladder', icon: 'ladder', words: t('way.ladder') }, { id: 'door', icon: 'door', words: t('way.door') }], () => prefs.way, (id) => set({ way: id as Prefs['way'] }), 'buttons')));
+  }
+  if (tool === 'level') {
+    const heights = [{ id: 'start', words: t('level.start') }, ...Array.from({ length: MAX_LEVEL - MIN_LEVEL + 1 }, (_, k) => ({ id: String(MIN_LEVEL + k), words: String(MIN_LEVEL + k) }))];
+    rows.push(field({ words: t('level.to') }, choice(t('level.to'), heights, () => (prefs.levelTo === null ? 'start' : String(prefs.levelTo)), (id) => set({ levelTo: id === 'start' ? null : Number(id) }), 'list')));
   }
   if (tool === 'shape') {
     rows.push(field({ words: t('shape') }, choice(t('shape'), SHAPE_PICKS.map((p) => ({ id: p.id, icon: p.icon, words: t(`shape.${p.id}` as Key) })), () => prefs.shape, (id) => set({ shape: id as ShapePick }), 'buttons')));

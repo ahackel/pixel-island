@@ -145,3 +145,5 @@ body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
 /* A way's link handle (drag it onto another way): half the size of a button, as each way of the scene has one. */
 .desk-handle canvas { width: 26px !important; height: 28px !important; }
 .desk-handle { cursor: grab; touch-action: none; }
+/* What the tile under the pointer is, beside the brush: shown only, so the pointer goes through it to the desk. */
+.desk-pin.desk-readout { pointer-events: none; opacity: 0.9; }
