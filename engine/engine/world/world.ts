@@ -9,7 +9,7 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  BRICK, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
+  BRICK, BY_HEIGHT, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
   TILE_H, TILE_W, MAX_LEVEL, MIN_LEVEL, toScreen, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
@@ -386,7 +386,7 @@ export class World {
   /** Quarter turns, 0 to 3. */
   rot: number;
   /** The ground as seen: the scene's ground turned by `rot`. Edits go here and are copied back by `redraw`. */
-  map: HeightMap & { paint: Uint8Array; shape: Uint8Array };
+  map: HeightMap & { paint: Uint8Array; shape: Uint8Array; side: Uint8Array };
   ground!: TerrainImage;
   /** The ground as drawn: the map, with the sea floor sloping gently from every coast. Walkers wade on it. */
   floor!: HeightMap;
@@ -782,7 +782,7 @@ export class World {
     return Math.floor(d.j) * this.scene.w + Math.floor(d.i);
   }
 
-  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array } {
+  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array; side: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
     // The scene's shift as a step in this view.
@@ -790,19 +790,22 @@ export class World {
     const base = this.scene.origin ?? this.scene;
     const seed = { i: to.i - at.i, j: to.j - at.j, x: (this.rot % 2 ? base.w : base.h) * (TILE_W / 2) + 8 };
     const data = { ...mapOf(this.scene), seed };
-    const map = { ...data, shape: data.shape ?? defaultShape(data) };
+    // Every cell has a material for its faces while edited (0, as its top, where the scene keeps none).
+    const map = { ...data, shape: data.shape ?? defaultShape(data), side: data.side ?? new Uint8Array(data.w * data.h) };
     if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
     const shape = new Uint8Array(w * h);
+    const side = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const c = this.dataCell(i, j);
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
+      side[j * w + i] = map.side[c];
       // A ramp turns with the view.
       shape[j * w + i] = turnShape(map.shape[c], this.rot);
     }
-    return { ...map, w, h, levels, paint, shape };
+    return { ...map, w, h, levels, paint, shape, side };
   }
 
   /** Turns the view; the scene itself does not change. */
@@ -855,6 +858,7 @@ export class World {
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
   commit(): void {
     const shape = (this.scene.shape ??= new Array(this.scene.w * this.scene.h).fill(0));
+    const side = new Array(this.scene.w * this.scene.h).fill(0);
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
       const at = j * this.map.w + i;
@@ -863,7 +867,11 @@ export class World {
       shape[c] = turnShape(this.map.shape[at], -this.rot);
       // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock is stone but where it is built of brick or mine.
       this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || (isRock(level) && paint !== BRICK && paint !== MINE)) ? 0 : paint;
+      // Faces as their top's are not kept, nor any of rock, which has no faces of its own.
+      side[c] = isRock(level) || this.map.side[at] === paint || (this.map.side[at] === BY_HEIGHT && paint === 0) ? 0 : this.map.side[at];
     }
+    if (side.some((n) => n > 0)) this.scene.side = side;
+    else delete this.scene.side;
   }
 
   /** After the ground changed: copies it back to the scene and draws it again. */
@@ -1185,7 +1193,7 @@ export class World {
    * The sea's gradient toward the horizon goes by the window, not the ground: with `far` it is drawn on, else the
    * water's pixels are left for it with alpha WATER_ALPHA (`horizon`).
    */
-  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string }): void {
+  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }): void {
     const { w, h } = view;
     const SEA = rgb(ocean.deep);
     const FOAM = rgb(ocean.wave);
@@ -1229,7 +1237,7 @@ export class World {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
           // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
           if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
-          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx])) blend(image, x, y, highlight.color);
+          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx]) && highlight.part !== 'floor') blend(image, x, y, highlight.color);
           continue;
         }
         if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) {
@@ -1258,7 +1266,8 @@ export class World {
         if (grid) {
           if (onGrid(gx, gy)) for (let k = 0; k < 3; k++) d[o + k] *= 1 - GRID_SHADE;
         }
-        if (highlight?.cells.has(g.cell[p])) blend(image, x, y, highlight.color);
+        // With a part, only the tops (floor) or only the faces (walls) of the tiles.
+        if (highlight?.cells.has(g.cell[p]) && (!highlight.part || (highlight.part === 'floor') === g.tops[p] > 0)) blend(image, x, y, highlight.color);
       }
     }
   }
@@ -1280,10 +1289,11 @@ export class World {
 
   /**
    * Paints the camera window: the ground, every shadow at once, then things back to front with
-   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
+   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor): all of them, or with
+   * `part` only their tops (`floor`) or only their faces and rock (`walls`).
    * The picture is reused by the next call: copy it to keep it.
    */
-  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
+  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }, outline = false, ms = 0, grid = false): Pixels {
     const { w, h } = view;
     this.coldLeft = COLD_DRAWS;
     const g = this.ground;

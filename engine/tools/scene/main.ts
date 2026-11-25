@@ -8,7 +8,7 @@ import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
 import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
-import { heightAt, inside, isLand, isRock, levelAt, MAX_LEVEL, MIN_LEVEL, PAINTS, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
+import { BRICK, BY_HEIGHT, heightAt, inside, isLand, isRock, levelAt, MAX_LEVEL, MIN_LEVEL, MINE, PAINTS, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
@@ -59,6 +59,9 @@ const ISLAND_ONLY: Tool[] = ['smooth'];
 /** What the Shape tool makes of the ground (ground.ts). */
 const SHAPE_PICKS = [{ id: 'smooth', icon: 'smooth' }, { id: 'cut', icon: 'rect' }, { id: 'ramp', icon: 'slope' }, { id: 'hole', icon: 'down' }] as const;
 type ShapePick = (typeof SHAPE_PICKS)[number]['id'];
+/** What the Material tool paints, with its icon. */
+const TARGETS = [{ id: 'floor', icon: 'flat' }, { id: 'walls', icon: 'wall' }, { id: 'both', icon: 'layers' }] as const;
+type Target = (typeof TARGETS)[number]['id'];
 const toolsFor = (s: Scene) => TOOLS.filter((tool) => !(s.cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
 const toolsHere = () => toolsFor(sceneNow());
 /**
@@ -105,6 +108,8 @@ interface Prefs {
   tool: Tool;
   /** 0 by height, otherwise `PAINTS[n - 1]`. */
   paint: number;
+  /** What the Material tool paints: the tops of the ground, the faces of its steps and a cave's rock walls, or both. */
+  target: Target;
   /** The height the Level tool levels to, picked with Ctrl-click; null for the height where a stroke starts. */
   levelTo: number | null;
   /** What the Shape tool makes of the ground. */
@@ -147,13 +152,14 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, levelTo: null, shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, target: 'floor', levelTo: null, shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
     if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
+    if (TARGETS.some((p) => p.id === saved?.target)) prefs.target = saved.target;
     if (Number.isInteger(saved?.levelTo) && saved.levelTo >= MIN_LEVEL && saved.levelTo <= MAX_LEVEL) prefs.levelTo = saved.levelTo;
     if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
     if (saved?.way === 'ladder' || saved?.way === 'door') prefs.way = saved.way;
@@ -1043,6 +1049,8 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
       return brushCells(at, tool, w).every((c) => w.map.levels[c] <= MIN_LEVEL);
     case 'exit':
       return !isLand(w.map, at.i, at.j);
+    case 'paint':
+      return brushCells(at, tool, w).every((c) => !paintable(w.map, c));
     default:
       return false;
   }
@@ -1314,8 +1322,7 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
       }
       break;
     case 'paint':
-      for (const c of fresh) map.paint[c] = prefs.paint;
-      groundDirty ||= fresh.length > 0;
+      for (const c of fresh) groundDirty = paintCell(map, c) || groundDirty;
       break;
     case 'carve':
       // Alt carves back to rock.
@@ -1361,6 +1368,42 @@ function apply(at: { i: number; j: number }, stroke: { touched: Set<number>; lev
   sceneChanged();
 }
 
+/** The stone of a cave's rock walls and unpainted floor, as the edited map holds it (scene.ts `mapOf`); stone in daylight. */
+const STONE = PAINTS.indexOf('rock') + 1;
+/** What a cave's rock is built of with a material painted on it: brick, mine or stone; null for what rock cannot be (sand, say). */
+const rockOf = (n: number) => (n === BRICK || n === MINE ? n : n === CAVE_OPEN || n === STONE ? CAVE_OPEN : null);
+/** Whether the Material tool, with its target, can paint a cell at all, so the brush shows red where none can. */
+function paintable(map: World['map'], c: number): boolean {
+  if (!isRock(map.levels[c])) return true;
+  return prefs.target === 'both' || (prefs.target === 'walls' && rockOf(prefs.paint) !== null);
+}
+/**
+ * Paints a cell with the Material tool's material, as its target says: Floor its top, keeping its faces as they were;
+ * Walls the faces of its steps, or on a cave's rock what its walls are built of; Both all of it. Says whether it changed.
+ */
+function paintCell(map: World['map'], c: number, n = prefs.paint, target = prefs.target): boolean {
+  const before = map.paint[c], sideBefore = map.side[c];
+  if (isRock(map.levels[c])) {
+    if (target === 'floor') return false;
+    // Rock painted with what no wall is built of, with Both, is stone again.
+    const built = rockOf(n) ?? (target === 'both' ? CAVE_OPEN : null);
+    if (built === null) return false;
+    map.paint[c] = built;
+  } else if (target === 'both') {
+    map.paint[c] = n;
+    map.side[c] = 0;
+  } else if (target === 'floor') {
+    // Faces that went with the top keep what they were.
+    if (map.side[c] === 0 && before !== n) map.side[c] = before || BY_HEIGHT;
+    map.paint[c] = n;
+  } else map.side[c] = n || BY_HEIGHT;
+  // Faces of the top's own material, or by height under unpainted ground, go with the top again.
+  if (map.side[c] === map.paint[c] || (map.side[c] === BY_HEIGHT && map.paint[c] === 0)) map.side[c] = 0;
+  return map.paint[c] !== before || map.side[c] !== sideBefore;
+}
+/** The material of a cell's faces as the Material tool names it: its own, or its top's. */
+const sideOf = (map: World['map'], c: number) => (map.side[c] === BY_HEIGHT ? 0 : map.side[c] || map.paint[c]);
+
 /** What a Ctrl-click picks up from a tile for the tool: the height to level to, the shape, or the material. */
 function pickFrom(at: { i: number; j: number }): void {
   const map = world.map;
@@ -1371,7 +1414,8 @@ function pickFrom(at: { i: number; j: number }): void {
   if (tool === 'paint') {
     const grounds = paintsFor(sceneNow());
     // Ground by height in a cave is the cave's own stone.
-    const n = map.paint[c] === 0 && sceneNow().cave ? CAVE_OPEN : map.paint[c];
+    const had = prefs.target === 'walls' && !isRock(map.levels[c]) ? sideOf(map, c) : map.paint[c];
+    const n = had === 0 && sceneNow().cave ? CAVE_OPEN : had;
     if (grounds.includes(n)) set({ paint: n });
   }
 }
@@ -1386,7 +1430,9 @@ function readoutPin(at: { i: number; j: number }, onScreen: (p: { x: number; y: 
   const rock = isRock(map.levels[c]);
   const sh = map.shape[c];
   const shape = sh === SMOOTH ? 'smooth' : sh === HOLE ? 'hole' : rampDir(sh) >= 0 ? 'ramp' : 'cut';
-  const words = [rock ? t('read.rock') : String(map.levels[c]), t(`paint.${map.paint[c]}` as Key), ...(rock ? [] : [t(`shape.${shape}` as Key)])].join(' · ');
+  // A top and faces of different materials show as both, the top's first.
+  const material = t(`paint.${map.paint[c]}` as Key) + (!rock && map.side[c] ? ` / ${t(`paint.${sideOf(map, c)}` as Key)}` : '');
+  const words = [rock ? t('read.rock') : String(map.levels[c]), material, ...(rock ? [] : [t(`shape.${shape}` as Key)])].join(' · ');
   const tool = toolHeld(world.scene);
   // Beside the brush, off the side corner of its outermost tile: the right one, or the left one in the right part of the view.
   const o = offsetOf(world);
@@ -2254,7 +2300,11 @@ function frame(ms: number): void {
     shown = key;
     shownThings = things;
     const blocked = prefs.mode === 'edit' && (hover ? cannotEdit(hover) : !!away && toolIn(away.scene) !== 'move' && cannotEdit(away.tile, lyingOf(away.scene).world));
-    let highlight = prefs.mode === 'edit' && hover ? { cells: new Set(brushCells(hover)), color: blocked ? '#e0332e99' : '#ffffff66' } : undefined;
+    let highlight = prefs.mode === 'edit' && hover ? {
+      cells: new Set(brushCells(hover)), color: blocked ? '#e0332e99' : '#ffffff66',
+      // The Material tool tints only what it paints: the tops, or the faces and rock.
+      ...(toolNow() === 'paint' && prefs.target !== 'both' && { part: prefs.target }),
+    } : undefined;
     if (prefs.mode === 'edit' && toolNow() === 'move') {
       // Objects are not tied to a tile, so the Move tool marks one only where what it holds may not stay.
       const v = selected && world.toView(selected.obj);
@@ -2622,6 +2672,7 @@ function editOptions(): Node[] {
   if (tool === 'paint') {
     const grounds = paintsFor(sceneNow());
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
+    rows.push(field({ words: t('target') }, choice(t('target'), TARGETS.map((p) => ({ id: p.id, icon: p.icon, words: t(`target.${p.id}` as Key) })), () => prefs.target, (id) => set({ target: id as Target }), 'buttons')));
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }
   if (tool === 'walls') {
@@ -2655,6 +2706,7 @@ function editOptions(): Node[] {
   }
   if (rows.length) out.push(fields(...rows));
   if (tool === 'shape') out.push(h('p', { class: 'opts__tip' }, t(`tip.shape.${prefs.shape}` as Key)));
+  if (tool === 'paint') out.push(h('p', { class: 'opts__tip' }, t(`tip.target.${prefs.target}` as Key)));
   if (tool === 'prop') out.push(...propLibrary());
   if (tool === 'plant') out.push(picks(t('plants'), FLORA.map((e) => ({ id: e.id, name: plantName(e.id, e.label), picture: thumb(e.id) })), prefs.plant, (plant) => set({ plant })));
   if (tool === 'decor') out.push(picks(t('decor'), DECOR.map((d) => ({ id: d.id, name: t(`decor.${d.id}` as Key), picture: decorThumb(d.id) })), prefs.decor, (decor) => set({ decor })));

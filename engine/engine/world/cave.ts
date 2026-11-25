@@ -58,6 +58,8 @@ export function carve(map: HeightMap & { paint: Uint8Array }, cells: number[], o
     if (open === !isRock(levels[c])) continue;
     levels[c] = open ? floorBeside(map, c) : ROCK_LEVEL;
     map.paint[c] = CAVE_GROUND;
+    // Open floor and filled rock both start with faces of what they are.
+    if (map.side) map.side[c] = 0;
     changed = true;
   }
   return changed;
