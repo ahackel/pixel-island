@@ -146,7 +146,6 @@ body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
 .desk-handle canvas { width: 26px !important; height: 28px !important; }
 .desk-handle { cursor: grab; touch-action: none; }
 /* What the tile under the pointer is, beside the brush: shown only, so the pointer goes through it to the desk. */
-.desk-pin.desk-readout { pointer-events: none; opacity: 0.9; }
 
 /* The brush gizmo floats at the top left of the view while a brushed tool is chosen; a press or drag on it sizes the brush. */
 .brushgizmo {

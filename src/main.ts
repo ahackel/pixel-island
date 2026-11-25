@@ -321,7 +321,9 @@ const app = document.getElementById('app')!;
 
 type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem } | { door: SceneDoor };
 /** Where the survivor is going: waypoints round what is in the way (ladders climbed on the way), the last one the goal. */
-let target: { way: Waypoint[]; run: boolean; pick?: Pick } | null = null;
+let target: { way: Waypoint[]; run: boolean; pick?: Pick; replans?: number } | null = null;
+/** How often a way that stalls is planned again from where the survivor stands before it is given up. */
+const REPLANS = 3;
 /** The doors a way may go through: closed ones, which the survivor opens on the way, and locked ones while a key is in the bag. */
 const passable = (d: SceneDoor) => d.state === 'closed' || (d.state === 'locked' && game.bag.includes('key'));
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
@@ -1683,7 +1685,8 @@ function frame(ms: number): void {
   /** A door opened on the way, which the survivor waits at rather than giving the way up. */
   let doorOpen = false;
   if (target && !paused && !sleeping && !telling() && !actor.onLadder) {
-    if (target.way.length > 1 && Math.hypot(target.way[0].i - actor.i, target.way[0].j - actor.j) < 0.2) {
+    // On at each turn of the way once there (the walk stops on it), so the next stretch starts where it was planned from.
+    if (target.way.length > 1 && Math.hypot(target.way[0].i - actor.i, target.way[0].j - actor.j) < 0.02) {
       // At the foot or top of a ladder on the way: up or down it, then on.
       const at = target.way.shift()!;
       if (at.climb) actor.climb(at.climb, ms);
@@ -1718,8 +1721,12 @@ function frame(ms: number): void {
   const before = [actor.i, actor.j], climbed = actor.onLadder;
   // shortcut: slowness scales the step, so the walk cycle plays at full rate; add a speed to Actor if it reads as sliding.
   actor.update(world, paused || telling() ? 0 : dt * speedOf(game), di, dj, run, ms);
-  // A target that cannot be reached is given up rather than walked against forever (not while climbing, which ends straight up or down).
-  if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising && !climbed && !actor.onLadder && !doorOpen) target = null;
+  // A way that stalls (something moved into it) is planned again from here, a few times; one that still cannot be
+  // walked is given up rather than walked against forever (not while climbing, which ends straight up or down).
+  if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising && !climbed && !actor.onLadder && !doorOpen && (di || dj)) {
+    const again = (target.replans ?? 0) < REPLANS ? findPath(world, actor, target.way[target.way.length - 1], passable) : [];
+    target = again.length ? { ...target, way: again, replans: (target.replans ?? 0) + 1 } : null;
+  }
   // Down a hole, the way out through it is taken.
   if (climbing && !actor.onLadder) {
     const go = climbing;

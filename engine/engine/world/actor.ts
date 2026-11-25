@@ -276,8 +276,9 @@ export class Actor {
   }
 
   /**
-   * Moves by a direction on the map (any length; it is normalised) for `dt` seconds. A zero
-   * direction stands still, letting an emote finish.
+   * Moves toward the point `di`, `dj` away on the map for `dt` seconds, at walking or running speed but no further than
+   * that point (a direction of length 1 or more, as the keys give, just goes that way). A zero direction stands still,
+   * letting an emote finish.
    */
   update(world: World, dt: number, di: number, dj: number, run: boolean, ms: number): void {
     this.fly(Math.min(dt, 0.1));
@@ -321,7 +322,8 @@ export class Actor {
     if (this.carrying) run = false;
     this.play(this.carrying ? 'carry' : run ? 'run' : 'walk', ms);
     const depth = this.depth(world);
-    const step = (run ? SPEED.run : SPEED.walk) * (depth > 0 ? WADING : 1) * Math.min(dt, 0.1);
+    // No further than asked: a walker sent to a point stops on it rather than past it, on the way it was planned along.
+    const step = Math.min(length, (run ? SPEED.run : SPEED.walk) * (depth > 0 ? WADING : 1) * Math.min(dt, 0.1));
     if (depth > 0) this.splash(Math.min(dt, 0.1), run);
     const mi = (di / length) * step;
     const mj = (dj / length) * step;

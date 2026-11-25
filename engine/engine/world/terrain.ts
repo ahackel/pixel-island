@@ -50,6 +50,8 @@ export interface HeightMap {
   readonly dark?: boolean;
   /** Per cell, 1 for solid rock drawn as nothing but black (world.ts draws a cave's rock so): the faces of ground toward it are black too. */
   readonly solid?: Uint8Array;
+  /** Drawn without its water (the editor's view): the ground under the water line bare, coloured as ever, no waves. */
+  readonly bare?: boolean;
   /** The level water fills up to: cells below it are under water, cells at it are beach. `SEA_LEVEL` unless set; null for none at all (a dry cave). */
   readonly water?: number | null;
   /** How far the ground has moved in tiles (see `Scene.shift`), in this view: what is drawn by position is seeded from the position without it. */
@@ -752,7 +754,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
   for (let p = 0; p < w * h; p++) {
     const depth = water - height[p];
     let color = colors[p];
-    if (depth > 0) {
+    if (depth > 0 && !shape.bare) {
       // The point of the water surface seen here, which lies at the water line.
       const sx = (p % w) + 0.5 - origin.x;
       const sy = Math.floor(p / w) + 0.5 - origin.y + water * LEVEL_PX;
