@@ -7,7 +7,7 @@ import { canSaveToProject, removeFromProject, saveToProject } from '../../shared
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
 import { FLORA, plantById } from '../../engine/flora/flora-catalog.ts';
-import { castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture } from '../../engine/world/island.ts';
+import { blend, castShadow, footOf, layShadow, ROOM, stamp, withSunShadow, type Picture, type Pixels } from '../../engine/world/island.ts';
 import { BRICK, BY_HEIGHT, heightAt, inside, isLand, isRock, LEVEL_PX, levelAt, MAX_LEVEL, MIN_LEVEL, MINE, PAINTS, setLevel, standingHeight, surfaceAt, TILE_H, TILE_W, toScreen } from '../../engine/world/terrain.ts';
 import { Actor, EMOTES, type Carried, type Emote } from '../../engine/world/actor.ts';
 import { CARRIED, itemPicture, LINKING, nameLink, openFrames, OWN, type PlacedItem } from '../../engine/world/props.ts';
@@ -24,7 +24,7 @@ import { doorFits, ladderOn, type Climb, type DoorState } from '../../engine/wor
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
 import { bestRamp, CUT, HOLE, RAMP, rampDir, SMOOTH } from '../../engine/world/ground.ts';
-import { carve, CAVE_WALL, caveLamps, caveThings, caveTint, CAVE_DAY, flicker } from '../../engine/world/cave.ts';
+import { carve, caveLamps, rockWallAt, caveThings, caveTint, CAVE_DAY, flicker } from '../../engine/world/cave.ts';
 import { edgeBetween, edgeEnds, edgeKey, type Edge } from '../../engine/world/building/building.ts';
 import { wallById, wallKinds, type WallKind } from '../../engine/world/building/walls.ts';
 import { lightByTile } from '../../engine/world/daylight.ts';
@@ -1012,6 +1012,9 @@ const tileUnder = (e: { clientX: number; clientY: number }) => {
 /** The tile drawn under the pointer, as the tools take it. */
 function tileDrawn(e: { clientX: number; clientY: number }): { i: number; j: number } | null {
   const p = groundPixel(e);
+  // A cave's walls stand over the ground behind them, and past the map along its back: what is there is their rock.
+  const wall = world.scene.cave ? rockWallAt(world, p.x, p.y) : null;
+  if (wall !== null) return { i: wall % world.map.w, j: Math.floor(wall / world.map.w) };
   const tile = world.tileAt(p.x, p.y);
   if (!tile) return null;
   // A hole's walls are the faces of the ground behind it reaching down into it; below the hole's rim they are the hole's.
@@ -1027,10 +1030,25 @@ function tileDrawn(e: { clientX: number; clientY: number }): { i: number; j: num
   return Math.abs(q.i - tile.i - 1) < Math.abs(q.j - tile.j - 1) ? holes[0] : holes[1];
 }
 
+/** Tints the walls of the cells of rock among `cells` in a composed window, where they are drawn in front. */
+function tintWalls(image: Pixels, view: Rect, cells: number[], color: string): void {
+  const m = world.map, g = world.ground;
+  const high = (settingsOf(world.scene).headroom || 6) * LEVEL_PX + 4;
+  for (const c of cells) {
+    if (!isRock(m.levels[c])) continue;
+    const i = c % m.w, j = Math.floor(c / m.w);
+    const left = toScreen(i, j + 1, world.flatLevel), right = toScreen(i + 1, j, world.flatLevel), back = toScreen(i, j, world.flatLevel), front = toScreen(i + 1, j + 1, world.flatLevel);
+    const x0 = Math.max(0, Math.floor(g.origin.x + left.x - view.x)), x1 = Math.min(view.w, Math.ceil(g.origin.x + right.x - view.x));
+    const y0 = Math.max(0, Math.floor(g.origin.y + back.y - high - view.y)), y1 = Math.min(view.h, Math.ceil(g.origin.y + front.y - view.y + 1));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (rockWallAt(world, x + view.x, y + view.y) === c) blend(image, x, y, color);
+  }
+}
+
 /** Whether the pointer is on the top of the ground or on a face (a step's, or rock): what the Material tool paints there. */
 let aimed: 'floor' | 'walls' = 'floor';
 function aimAt(e: { clientX: number; clientY: number }): 'floor' | 'walls' {
   const p = groundPixel(e), g = world.ground;
+  if (world.scene.cave && rockWallAt(world, p.x, p.y) !== null) return 'walls';
   const x = Math.floor(p.x), y = Math.floor(p.y);
   if (x < 0 || y < 0 || x >= g.w || y >= g.h) return 'floor';
   const c = g.cell[y * g.w + x];
@@ -1376,20 +1394,19 @@ function setEdges(map: World['map'], cells: number[]): void {
  * The Ground tool's press and pull: the brush stays on the cells pressed, and the pointer drawn up or down raises or
  * lowers them a level for each level's height on screen, the ground following the pointer. Cells come up to the height
  * the pressed one is pulled to and no higher, or go down to it and no lower, so a pull makes a plateau or a pit. In a
- * cave, a pull down on rock carves it open to the floor beside it (and deeper as it goes on), and floor pulled up to
- * the top of the rock is rock again. Each step is worked from the ground as it was at the press, so it previews live.
+ * cave, a pull down on rock carves it open to the floor beside it (and deeper as it goes on). Only how far the pointer
+ * is above or below where it was pressed counts, until it is let go. Each step is worked from the ground as it was at
+ * the press, so it previews live.
  * A quick tap in a cave, with no pull, turns rock into floor and floor into rock (`tapRock`).
  */
-interface Pull { y: number; tile: { i: number; j: number }; cells: number[]; from: number | null; top: number; was: { levels: Int8Array; shape: Uint8Array; paint: Uint8Array; side: Uint8Array }; d: number; words: string; ms: number; went?: true }
+interface Pull { y: number; tile: { i: number; j: number }; cells: number[]; from: number | null; was: { levels: Int8Array; shape: Uint8Array; paint: Uint8Array; side: Uint8Array }; d: number; words: string; ms: number; went?: true }
 /** Screen pixels the pointer moves for a level: a level's height on screen, but not so little that it jumps. */
 const pullStep = () => Math.max(LEVEL_PX * zoom, 12);
 function startPull(e: { clientY: number }, tile: { i: number; j: number }): Pull {
   const map = world.map;
   const level = map.levels[tile.j * map.w + tile.i];
   const was = { levels: Int8Array.from(map.levels), shape: Uint8Array.from(map.shape), paint: Uint8Array.from(map.paint), side: Uint8Array.from(map.side) };
-  // A cave's floor pulled up to the rock's top, its headroom over the floor, fills in.
-  const top = world.scene.cave ? Math.min(MAX_LEVEL + 1, world.flatLevel + (settingsOf(world.scene).headroom || CAVE_WALL)) : MAX_LEVEL;
-  return { y: e.clientY, tile, cells: brushCells(tile, 'ground'), from: isRock(level) ? null : level, top, was, d: NaN, words: '', ms: performance.now() };
+  return { y: e.clientY, tile, cells: brushCells(tile, 'ground'), from: isRock(level) ? null : level, was, d: NaN, words: '', ms: performance.now() };
 }
 /** A tap without a pull to toggle a cave's rock: no longer than this, in milliseconds. */
 const TAP_MS = 350;
@@ -1409,7 +1426,7 @@ function pullTo(pull: Pull, clientY: number): void {
   let d = Math.sign(dy) * Math.floor(Math.abs(dy) + 0.4);
   const low = MIN_LEVEL - (pull.from ?? MIN_LEVEL);
   // Not over a cutaway, where it would be cut away unseen, nor under its floor, out of reach.
-  if (pull.from !== null) d = Math.max(Math.max(low, (world.cutBelow ?? -Infinity) - pull.from), Math.min(Math.min(pull.top, world.cutaway ?? Infinity) - pull.from, d));
+  if (pull.from !== null) d = Math.max(Math.max(low, (world.cutBelow ?? -Infinity) - pull.from), Math.min(Math.min(MAX_LEVEL, world.cutaway ?? Infinity) - pull.from, d));
   if (d === pull.d) return;
   pull.d = d;
   if (d) pull.went = true;
@@ -1428,14 +1445,11 @@ function pullTo(pull: Pull, clientY: number): void {
     }
   } else {
     const to = pull.from + d;
-    const filled: number[] = [];
     for (const c of pull.cells) {
       const level = map.levels[c];
       if (isRock(level) || (d > 0 ? level >= to : level <= to)) continue;
-      if (world.scene.cave && to >= pull.top) filled.push(c);
-      else setLevel(map, c % map.w, Math.floor(c / map.w), to);
+      setLevel(map, c % map.w, Math.floor(c / map.w), to);
     }
-    carve(map, filled, false);
   }
   setEdges(map, pull.cells);
   const after = map.levels[pressed];
@@ -2397,6 +2411,10 @@ const release = (e: PointerEvent) => {
 };
 canvas.addEventListener('pointerup', release);
 canvas.addEventListener('pointercancel', release);
+// Should the canvas lose the pointer mid-gesture, a pull still follows it and ends where it is let go.
+window.addEventListener('pointermove', (e) => { if (e.target !== canvas && gesture?.kind === 'stroke' && gesture.pull && pointers.has(e.pointerId)) pullTo(gesture.pull, e.clientY); });
+window.addEventListener('pointerup', (e) => { if (pointers.has(e.pointerId)) release(e); });
+window.addEventListener('pointercancel', (e) => { if (pointers.has(e.pointerId)) release(e); });
 canvas.addEventListener('pointerleave', () => { hover = null; away = null; if (gesture?.kind !== 'edge') hotEdge = null; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // A trackpad sends a two-finger move as scrolling, which pans, and a pinch as scrolling with Ctrl
@@ -2544,6 +2562,8 @@ function frame(ms: number): void {
     if (chosen) outline(image, view, chosen, OUTLINE);
     // The ground tools outline the top of the tile under the pointer the same way, so it shows which tile on uneven ground, behind rock and in the dark.
     if (prefs.mode === 'edit' && hover && onGround()) world.outlineTile(image, view, hover.j * world.map.w + hover.i, blocked ? '#e0332e' : '#ffffffcc');
+    // A cave's walls stand over the rock the brush lies on: they are tinted with it, but by Material on tops alone.
+    if (prefs.mode === 'edit' && hover && highlight && world.scene.cave && !(toolNow() === 'paint' && highlight.part === 'floor')) tintWalls(image, view, [...highlight.cells], highlight.color);
     if (prefs.colliders) world.drawColliders(image, view);
     t0 = part('light', t0);
     paintDesk(image, view);
@@ -2732,26 +2752,23 @@ function propLibrary(): Node[] {
 // ------------------------------------------------------------------ brush gizmo
 
 /**
- * The brush size, floating at the top left of the view while a brushed tool is chosen: a beige disc as big as the
- * biggest brush, an orange one inside as big as this one. A press or drag on it sizes the brush to reach the pointer;
- * the wheel over it, and [ and ], size it a step.
+ * The brush size, floating at the top left of the view while a brushed tool is chosen: the biggest brush's tiles in
+ * beige, two by two pixels a tile, and this one's tiles over them in orange, just as they lie on the grid. A press or
+ * drag on it sizes the brush to reach the tile pointed at; the wheel over it, and [ and ], size it a step.
  */
-const GIZMO = { d: 15 };
+const GIZMO = { cell: 2, reach: Math.floor(BRUSH_MAX / 2) };
 const gizmo = h('div', { class: 'brushgizmo', role: 'slider', 'aria-valuemin': '1', 'aria-valuemax': String(BRUSH_MAX) });
-/** How far out a brush of a size reaches on the gizmo, in its pixels from the middle. */
-const gizmoRadius = (n: number) => (n / BRUSH_MAX) * (GIZMO.d / 2);
 function drawGizmo(): void {
-  const { canvas, ctx } = pixelCanvas(GIZMO.d, GIZMO.d + 1, S);
-  const disc = (r: number, dy: number, color: string) => {
+  const side = (2 * GIZMO.reach + 1) * GIZMO.cell;
+  const { canvas, ctx } = pixelCanvas(side, side + 1, S);
+  const tiles = (n: number, dy: number, color: string) => {
     ctx.fillStyle = color;
-    for (let y = 0; y < GIZMO.d; y++) for (let x = 0; x < GIZMO.d; x++) {
-      if (Math.hypot(x + 0.5 - GIZMO.d / 2, y + 0.5 - GIZMO.d / 2) <= r) ctx.fillRect(x, y + dy, 1, 1);
-    }
+    for (const [di, dj] of roundBrush(n)) ctx.fillRect((di + GIZMO.reach) * GIZMO.cell, (dj + GIZMO.reach) * GIZMO.cell + dy, GIZMO.cell, GIZMO.cell);
   };
-  // A shadow line under the beige disc, as under every pixel button.
-  disc(GIZMO.d / 2, 1, C.shadow);
-  disc(GIZMO.d / 2, 0, C.paper);
-  disc(Math.max(1, gizmoRadius(prefs.brush)), 0, C.lit);
+  // A shadow line under the beige, as under every pixel button.
+  tiles(BRUSH_MAX, 1, C.shadow);
+  tiles(BRUSH_MAX, 0, C.paper);
+  tiles(prefs.brush, 0, C.lit);
   gizmo.replaceChildren(canvas);
   gizmo.title = `${t('brush')}: ${prefs.brush}`;
   gizmo.setAttribute('aria-label', t('brush'));
@@ -2770,12 +2787,12 @@ function showGizmo(): void {
   gizmo.hidden = prefs.mode !== 'edit' || !BRUSHED.includes(toolNow());
   if (!gizmo.hidden) drawGizmo();
 }
-/** The size whose disc on the gizmo reaches the pointer. */
+/** The size whose brush reaches the gizmo's tile under the pointer: twice the tiles out from the middle, and one. */
 function gizmoSize(e: { clientX: number; clientY: number }): number {
   const r = gizmo.querySelector('canvas')!.getBoundingClientRect();
-  const k = r.width / GIZMO.d;
-  const out = Math.hypot((e.clientX - r.left) / k - GIZMO.d / 2, (e.clientY - r.top) / k - GIZMO.d / 2);
-  return Math.round((out / (GIZMO.d / 2)) * BRUSH_MAX);
+  const tile = (r.width / (2 * GIZMO.reach + 1));
+  const out = Math.hypot(e.clientX - r.left - r.width / 2, e.clientY - r.top - r.width / 2) / tile;
+  return Math.round(2 * out + 0.5);
 }
 gizmo.addEventListener('pointerdown', (e) => { gizmo.setPointerCapture(e.pointerId); setBrush(gizmoSize(e)); });
 gizmo.addEventListener('pointermove', (e) => gizmo.hasPointerCapture(e.pointerId) && setBrush(gizmoSize(e)));

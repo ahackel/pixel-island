@@ -191,6 +191,8 @@ interface CaveView {
   kept: Map<string, Thing>;
   /** Stalagmites and rubble. */
   others: Thing[];
+  /** `rockWallAt` per pixel of the ground image, worked out as asked: -2 not yet, -1 no wall. */
+  walls?: Int32Array;
   /** The cell of floor the player stands on (`cellOf`), and the time of the last frame. */
   key: string;
   ms?: number;
@@ -262,6 +264,54 @@ export function caveThings(world: World, at?: { i: number; j: number }, ms?: num
     return thing;
   });
   return [...world.buildingThings(at), ...blocks, ...known.others];
+}
+
+/**
+ * The cell of rock whose wall is drawn at a pixel of the ground image, as the editor shows the cave (rock that hides
+ * floor down to its stub), or null where no wall is: the frontmost, as it is drawn over those behind it. The walls
+ * stand on the front edges of standing rock, from the floor up; those along the back of the map reach up past its
+ * ground, where only this finds them.
+ */
+export function rockWallAt(world: World, x: number, y: number): number | null {
+  if (!derived.get(world) || derived.get(world)!.ground !== world.ground) setUpCave(world);
+  const known = derived.get(world)!;
+  const g = world.ground;
+  x = Math.floor(x);
+  y = Math.floor(y);
+  const inImage = x >= 0 && y >= 0 && x < g.w && y < g.h;
+  if (inImage) {
+    known.walls ??= new Int32Array(g.w * g.h).fill(-2);
+    const had = known.walls[y * g.w + x];
+    if (had !== -2) return had < 0 ? null : had;
+  }
+  const c = wallAt(world, known.view, x + 0.5, y + 0.5);
+  if (inImage) known.walls![y * g.w + x] = c ?? -1;
+  return c;
+}
+function wallAt(world: World, view: RockView, x: number, y: number): number | null {
+  const map = world.map;
+  const q = world.planeAt(x, y, 0);
+  const across = q.i - q.j, down0 = q.i + q.j;
+  const high = rockTop(wallOf(world.scene));
+  let best: number | null = null, depth = -Infinity;
+  // How far over the floor, in pixels, the pixel lies on a wall whose foot runs where i + j is `down`.
+  const over = (down: number) => ((down - down0) * TILE_H) / 2 - world.flatLevel * LEVEL_PX;
+  for (let c = 0; c < map.w * map.h; c++) {
+    if (view.kind[c] !== STANDS) continue;
+    const i = c % map.w, j = Math.floor(c / map.w);
+    const top = view.hides.has(c) ? STUB_PX : high;
+    // Its wall along i + 1, then along j + 1, where floor lies there.
+    const a = i + 1 - across, b = across + j + 1;
+    const walls: [boolean, number, number][] = [[isOpen(map, i + 1, j) && a >= j && a < j + 1, i + 1 + a, i + 1 + a], [isOpen(map, i, j + 1) && b >= i && b < i + 1, b + j + 1, b + j + 1]];
+    for (const [on, down, d] of walls) {
+      if (!on) continue;
+      const h = over(down);
+      if (h < 0 || h > top || d <= depth) continue;
+      best = c;
+      depth = d;
+    }
+  }
+  return best;
 }
 
 /** How dark the cave is away from any light, as a tint for daylight.ts `lightByTile`. */
