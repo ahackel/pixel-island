@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { sidebarButton, bar, box, choice, filterToggles, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { sidebarButton, bar, box, choice, filterToggles, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, rangeSlider, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -13,6 +13,7 @@ const div = (css: string) => Object.assign(document.createElement('div'), { styl
 
 // Demo state.
 let value = 0.4;
+let range: [number, number] = [2, 6];
 const picked: Record<string, string> = { arrows: 'a', icons: 'sun', buttons: 'moon', colors: 'o', list: 'b', many: 'c5', shelf: 'sun' };
 let anyColor = '#3a2f5c';
 const pickOf = (look: string) => [() => picked[look], (id: string) => { picked[look] = id; }] as const;
@@ -61,6 +62,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   ['swatch grid', [() => swatchGrid('Swatches', many, ...pickOf('many'), 10)]],
   ['colour picker', [() => colorPicker('Any colour', () => anyColor, (hex) => { anyColor = hex; }, { presets: ['#3a2f5c', '#1d2a3a', '#2f1d1d'] })]],
   ['slider', [() => slider('Slider', value, (v) => { value = v; }, 60, (v) => `${Math.round(v * 100)}`)]],
+  ['range slider', [() => rangeSlider('Range', { min: 0, max: 8, get: () => range, change: (lo, hi) => { range = [lo, hi]; } }), () => rangeSlider('Short', { min: 1, max: 4, get: () => [2, 2], change: noop, format: (v) => (v === 4 ? 'All' : String(v)) })]],
   ['number field', [() => numberField({ words: 'W' }, 24, noop, { min: 0, max: 99, width: 50 }), () => numberField({ icon: 'sun' }, 7, noop, { width: 40 })]],
   ['bar', [() => bar(0.6, C.hunger), () => bar(0.15, C.hunger, 32, true)]],
   ['fields', [() => fields(

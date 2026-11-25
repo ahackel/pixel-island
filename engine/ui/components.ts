@@ -93,6 +93,64 @@ export function slider(label: string, value: number, change: (value: number) => 
   return wrap;
 }
 
+/**
+ * A standing slider over whole steps, `min` at the bottom to `max` at the top, with two knobs on one track, a low one
+ * and a high one that never pass each other; only the track and the knobs, so it floats over a picture. Drag a knob,
+ * or press the track to bring the nearer knob there. `get` says where the knobs are, `change` hears each move; it
+ * redraws itself while dragged. `length` is the most pixels the track takes; `format` writes a value for its tip.
+ */
+export function rangeSlider(label: string, o: { min: number; max: number; get: () => [number, number]; change: (lo: number, hi: number) => void; format?: (value: number) => string; length?: number; done?: () => void }): Live {
+  const self = Object.assign(el('span', 'urange'), { redraw: () => {} }) as Live;
+  const span = Math.max(1, o.max - o.min);
+  const step = Math.max(3, Math.min(8, Math.floor((o.length ?? 60) / span)));
+  const words = (v: number) => o.format?.(v) ?? String(v);
+  const KNOB_W = 7, KNOB_H = 5, w = KNOB_W, h = span * step + KNOB_H;
+  /** The middle row of a value's knob. */
+  const yOf = (v: number) => 2 + (o.max - v) * step;
+  self.redraw = () => {
+    const [lo, hi] = o.get();
+    const { canvas, ctx } = pixelCanvas(w, h + 1, S);
+    rounded(ctx, 2, yOf(o.max) - 1, 3, span * step + 3, C.track);
+    rounded(ctx, 2, yOf(hi) - 1, 3, (hi - lo) * step + 3, C.lit);
+    for (const v of lo === hi ? [hi] : [lo, hi]) panel(ctx, 0, yOf(v) - 2, KNOB_W, KNOB_H - 1, C.paper, C.shadow);
+    canvas.className = 'urange__track';
+    self.replaceChildren(canvas);
+    self.title = `${label}: ${words(lo)} – ${words(hi)}`;
+    self.setAttribute('aria-valuetext', `${words(lo)} – ${words(hi)}`);
+  };
+  const valueAt = (e: PointerEvent) => {
+    const r = self.querySelector('canvas')!.getBoundingClientRect();
+    const y = ((e.clientY - r.top) / r.height) * (h + 1);
+    return Math.max(o.min, Math.min(o.max, o.max - Math.round((y - 2) / step)));
+  };
+  // Which knob the press holds; with both on one step, the one the pointer then moves toward.
+  let held: 'lo' | 'hi' | 'either' | null = null;
+  const move = (v: number) => {
+    let [lo, hi] = o.get();
+    if (held === 'either') {
+      if (v === lo) return;
+      held = v > hi ? 'hi' : 'lo';
+    }
+    if (held === 'hi') hi = Math.max(lo, v);
+    else lo = Math.min(hi, v);
+    if (`${[lo, hi]}` === `${o.get()}`) return;
+    o.change(lo, hi);
+    self.redraw();
+  };
+  self.setAttribute('role', 'group');
+  self.setAttribute('aria-label', label);
+  self.addEventListener('pointerdown', (e) => {
+    const v = valueAt(e), [lo, hi] = o.get();
+    self.setPointerCapture(e.pointerId);
+    held = lo === hi ? (v > hi ? 'hi' : v < lo ? 'lo' : 'either') : Math.abs(v - hi) < Math.abs(v - lo) || (v - hi === lo - v && v > hi) ? 'hi' : 'lo';
+    move(v);
+  });
+  self.addEventListener('pointermove', (e) => self.hasPointerCapture(e.pointerId) && held && move(valueAt(e)));
+  self.addEventListener('pointerup', () => { held = null; o.done?.(); });
+  self.redraw();
+  return self;
+}
+
 /** A box for ordinary DOM content with the pixel look: corner pixels cut, a shadow line under. */
 export function box(...children: Node[]): HTMLElement {
   const outer = el('div', 'ubox');
