@@ -37,6 +37,11 @@ export interface HeightMap {
   readonly levels: Int8Array | Float32Array;
   /** Optional painted ground per cell: 0 follows the height rule, otherwise `PAINTS[n - 1]`. Under water it is ignored. */
   readonly paint?: Uint8Array;
+  /**
+   * Optional material per cell for the faces of its steps: 0 the same as its top (`paint`), `BY_HEIGHT` as the height
+   * rule has them whatever the top is painted, otherwise `PAINTS[n - 1]`. So a top can be painted without its faces.
+   */
+  readonly side?: Uint8Array;
   /** The level beyond the map's edge, which the border cells slope toward: open sea (`MIN_LEVEL`) unless set. */
   readonly outside?: number;
   /** Shape per cell (ground.ts: smooth, cut, ramps, hole); by rule where missing (ground.ts `defaultShape`). */
@@ -92,6 +97,8 @@ export type Surface = (typeof SURFACES)[number];
  */
 export const PAINTS = ['sand', 'grass', 'rock', 'cave', 'dirt', 'brick', 'mine'] as const;
 export const BRICK = PAINTS.indexOf('brick') + 1, MINE = PAINTS.indexOf('mine') + 1;
+/** A cell's `side`: its faces as the height rule has them, whatever its top is painted. */
+export const BY_HEIGHT = PAINTS.length + 1;
 
 const paintAt = (map: HeightMap, i: number, j: number) => (map.paint && inside(map, i, j) ? map.paint[j * map.w + i] : 0);
 
@@ -99,12 +106,12 @@ const paintAt = (map: HeightMap, i: number, j: number) => (map.paint && inside(m
  * What a cell is, by rule from its height and its neighbours, counted from the water line: a level under it shallow,
  * deeper deep, at it beach, one over it sand. High ground is rock six levels over the water (over level 0 without any).
  */
-export function surfaceAt(map: HeightMap, i: number, j: number): Surface {
+export function surfaceAt(map: HeightMap, i: number, j: number, byRule = false): Surface {
   const level = levelAt(map, i, j);
   const water = waterOf(map);
   if (level < water - 1) return 'deep';
   if (level < water) return 'shallow';
-  const painted = paintAt(map, i, j);
+  const painted = byRule ? 0 : paintAt(map, i, j);
   if (painted) return PAINTS[painted - 1];
   if (level === water) return 'beach';
   if (level >= (map.water ?? SEA_LEVEL) + 6 || steepness(map, i, j) >= 3) return 'rock';
@@ -638,6 +645,10 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
     const left = rimLeft !== null ? [rimLeft - HOLE_DEPTH, rimLeft - HOLE_DEPTH] : cornersOf(map, i, j + 1);
     // Toward solid rock that is not drawn, a face is the rock's own black.
     const solid = (ni: number, nj: number) => !!map.solid && inside(map, ni, nj) && map.solid[nj * map.w + ni] === 1;
+    // The faces are of the cell's own material for them, if it has one, else of its top's.
+    const sided = map.side && !isRock(levelAt(map, i, j)) ? map.side[index] : 0;
+    const faceSurface = sided === BY_HEIGHT ? surfaceAt(map, i, j, true) : sided ? PAINTS[sided - 1] : surface;
+    const facePainted = sided === BY_HEIGHT ? false : sided ? true : painted;
     const faces = [
       { from: at[1], to: at[2], below: [right[0], right[3]], side: 1, rim: rimRight, black: solid(i + 1, j) },
       { from: at[3], to: at[2], below: [left[0], left[1]], side: 0, rim: rimLeft, black: solid(i, j + 1) },
@@ -656,7 +667,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
         for (let y = Math.ceil(yTop - 0.5); y < yBottom; y++) {
           const level = (ground - (y + 0.5)) / LEVEL_PX;
           if (face.black) { put(x, y, '#000000', index, level); continue; }
-          const kind = groundAt(surface, level - water, painted, dry);
+          const kind = groundAt(faceSurface, level - water, facePainted, dry);
           let color: string = SIDES[kind][face.side];
           // Brick, mine and (in the dark) stone faces are painted by their material, by where they are round the floor.
           const painter = kind === 'brick' || kind === 'mine' || (map.dark && (kind === 'rock' || kind === 'cave'));
@@ -666,7 +677,7 @@ export function renderTerrain(shape: HeightMap, size?: { w: number; h: number; o
             const built = kind === 'brick' ? brickAt(along, up, down, shaded) : kind === 'mine' ? mineAt(along, up, down, shaded) : null;
             const stone = kind === 'brick' ? null : STONE[down < 1 ? 3 : stoneStep(0, along, up, SHEAR * (x - ox), shaded ? -1 : 1)];
             color = hexOf(built ?? stone!);
-          } else if (surface === 'grass' && kind === 'grass' && y - yTop < 2) color = GRASS_LIP;
+          } else if (surface === 'grass' && (kind === 'grass' || faceSurface !== surface) && y - yTop < 2) color = GRASS_LIP;
           else if (hash(x, y) < 0.06) color = mixHex(color, '#000000', 0.08);
           if (face.rim === null) { put(x, y, color, index, level); continue; }
           // Down in a hole, out of the water (unless the hole itself is under it).

@@ -17,7 +17,7 @@ import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp 
 import { CUT, defaultShape, HOLE, SHAPES } from './ground.ts';
 import { edgeKey, type Edge } from './building/building.ts';
 import { cleanDoors, cleanLadders, type SceneDoor, type SceneLadder } from './ways.ts';
-import { BRICK, createHeightMap, generateIsland, isRock, MAX_LEVEL, MINE, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
+import { BRICK, BY_HEIGHT, createHeightMap, generateIsland, isRock, MAX_LEVEL, MINE, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
   /** A flora catalogue id. */
@@ -71,6 +71,8 @@ export interface Scene {
   levels: number[];
   /** Painted surface per tile: 0 follows the height (in a cave, the cave's own stone), otherwise `PAINTS[n - 1]`. */
   paint: number[];
+  /** The material of each tile's step faces, where any differs from its top's (terrain.ts `HeightMap.side`); missing when none does. */
+  side?: number[];
   /** Shape per tile (ground.ts: smooth, cut, a ramp's four directions, hole). Missing only in scenes from before shapes, which get theirs by rule (ground.ts `defaultShape`). */
   shape?: number[];
   plants: PlacedPlant[];
@@ -213,6 +215,7 @@ export const mapOf = (scene: Scene): HeightMap & { paint: Uint8Array } => ({
   paint: scene.cave ? Uint8Array.from(scene.paint, (p) => p || CAVE_OPEN) : Uint8Array.from(scene.paint),
   levels: Int8Array.from(scene.levels),
   ...(scene.shape && { shape: Uint8Array.from(scene.shape) }),
+  ...(scene.side && { side: Uint8Array.from(scene.side) }),
   water: settingsOf(scene).water,
   ...(scene.cave && settingsOf(scene).outside === 'void' && { outside: ROCK_LEVEL }),
 });
@@ -245,11 +248,13 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
   const paint = new Array(w * h).fill(0);
   const was = scene.shape ?? Array.from(defaultShape(mapOf(scene)));
   const shape = new Array(w * h).fill(scene.cave ? CUT : 0);
+  const side = scene.side && new Array(w * h).fill(0);
   for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) {
     const ni = i + dx, nj = j + dy;
     if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
     levels[nj * w + ni] = scene.levels[j * scene.w + i];
     paint[nj * w + ni] = scene.paint[j * scene.w + i];
+    if (side) side[nj * w + ni] = scene.side![j * scene.w + i];
     shape[nj * w + ni] = was[j * scene.w + i];
   }
   const moved = <T extends { i: number; j: number }>(o: T): T => ({ ...o, i: o.i + dx, j: o.j + dy });
@@ -258,6 +263,7 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
   const spot = (o: { i: number; j: number }) => ({ i: Math.max(0, Math.min(w - 0.5, o.i + dx)), j: Math.max(0, Math.min(h - 0.5, o.j + dy)) });
   return {
     ...scene, w, h, levels, paint, shape,
+    ...(side && { side }),
     plants: kept(scene.plants),
     decor: kept(scene.decor),
     animals: kept(scene.animals),
@@ -401,6 +407,10 @@ export function cleanScene(input: unknown): Scene {
   // Shapes as saved, or for a scene from before shapes, by rule from its ground (with its water line).
   scene.shape = Array.isArray(s.shape) && s.shape.length === w * h && s.shape.every((n) => Number.isInteger(n) && n >= 0 && n < SHAPES)
     ? s.shape.slice() : Array.from(defaultShape(mapOf(scene)));
+  // Faces of another material than their tops, kept only where some are: rock has no faces of its own.
+  const side = Array.isArray(s.side) && s.side.length === w * h
+    ? s.side.map((n, c) => (Number.isInteger(n) && n >= 0 && n <= BY_HEIGHT && !isRock(scene.levels[c]) ? n : 0)) : null;
+  if (side?.some((n) => n > 0)) scene.side = side;
   for (const it of scene.items) if (it.item === 'hole') digHole(scene, it);
   refreshLinks(scene, sources);
   return scene;

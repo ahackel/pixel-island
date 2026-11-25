@@ -9,8 +9,8 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  BRICK, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
-  TILE_H, TILE_W, type HeightMap, type TerrainImage,
+  BRICK, BY_HEIGHT, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
+  TILE_H, TILE_W, MAX_LEVEL, MIN_LEVEL, toScreen, type HeightMap, type TerrainImage,
 } from './terrain.ts';
 import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
@@ -327,16 +327,18 @@ function withLoneRockFloored<M extends HeightMap & { shape: Uint8Array }>(map: M
   return { ...map, levels, shape };
 }
 
-/** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change. */
+/** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change; a cave's rock stays and does not count. */
 export function smooth(map: HeightMap, cells: number[]): void {
   const before = Int8Array.from(map.levels);
   for (const c of cells) {
+    // A cave's rock is neither smoothed nor counted: it stands for no height.
+    if (isRock(before[c])) continue;
     const i = c % map.w;
     const j = Math.floor(c / map.w);
     let sum = 0;
     let n = 0;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-      if (!inside(map, i + di, j + dj)) continue;
+      if (!inside(map, i + di, j + dj) || isRock(before[(j + dj) * map.w + i + di])) continue;
       sum += before[(j + dj) * map.w + i + di];
       n++;
     }
@@ -386,7 +388,7 @@ export class World {
   /** Quarter turns, 0 to 3. */
   rot: number;
   /** The ground as seen: the scene's ground turned by `rot`. Edits go here and are copied back by `redraw`. */
-  map: HeightMap & { paint: Uint8Array; shape: Uint8Array };
+  map: HeightMap & { paint: Uint8Array; shape: Uint8Array; side: Uint8Array };
   ground!: TerrainImage;
   /** The ground as drawn: the map, with the sea floor sloping gently from every coast. Walkers wade on it. */
   floor!: HeightMap;
@@ -782,7 +784,7 @@ export class World {
     return Math.floor(d.j) * this.scene.w + Math.floor(d.i);
   }
 
-  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array } {
+  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array; side: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
     // The scene's shift as a step in this view.
@@ -790,19 +792,22 @@ export class World {
     const base = this.scene.origin ?? this.scene;
     const seed = { i: to.i - at.i, j: to.j - at.j, x: (this.rot % 2 ? base.w : base.h) * (TILE_W / 2) + 8 };
     const data = { ...mapOf(this.scene), seed };
-    const map = { ...data, shape: data.shape ?? defaultShape(data) };
+    // Every cell has a material for its faces while edited (0, as its top, where the scene keeps none).
+    const map = { ...data, shape: data.shape ?? defaultShape(data), side: data.side ?? new Uint8Array(data.w * data.h) };
     if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
     const shape = new Uint8Array(w * h);
+    const side = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const c = this.dataCell(i, j);
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
+      side[j * w + i] = map.side[c];
       // A ramp turns with the view.
       shape[j * w + i] = turnShape(map.shape[c], this.rot);
     }
-    return { ...map, w, h, levels, paint, shape };
+    return { ...map, w, h, levels, paint, shape, side };
   }
 
   /** Turns the view; the scene itself does not change. */
@@ -834,7 +839,14 @@ export class World {
     this.shown = withLoneRockFloored(this.map);
     // In the dark, stone faces are painted in the cave's tones.
     const dark = settingsOf(this.scene).light === 'dark';
-    if (!this.void && !this.shown.levels.some(isRock)) return renderTerrain(dark ? { ...this.shown, dark } : this.shown);
+    // Under a cutaway, ground over it is drawn as cut ground at its level.
+    const cut = this.cutaway;
+    const sliced = <T extends HeightMap & { shape: Uint8Array }>(m: T): T => (cut === null ? m : {
+      ...m,
+      levels: (m.levels as Int8Array).map((l) => (!isRock(l) && l > cut ? cut : l)),
+      shape: m.shape.map((sh, c) => (!isRock(m.levels[c]) && m.levels[c] > cut ? CUT : sh)),
+    });
+    if (!this.void && !this.shown.levels.some(isRock)) return this.capped(renderTerrain(sliced(dark ? { ...this.shown, dark } : this.shown)));
     // Rock is drawn black on the floor's own plane (cave.ts stands its blocks and walls on it), so nothing slopes off at
     // the edge of the hollow and the editor's grid lies flat across it.
     let flat = Infinity;
@@ -842,19 +854,35 @@ export class World {
     if (flat === Infinity) flat = this.scene.cave ? CAVE_FLOOR : SEA_LEVEL;
     this.flatLevel = flat;
     // Rock drawn so is cut ground; beyond a void's edge lies rock, which the ground beside it does not slope to.
-    return renderTerrain({
-      ...this.shown,
-      levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
-      shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
+    const ground = sliced(this.shown);
+    return this.capped(renderTerrain({
+      ...ground,
+      levels: ground.levels.map((l) => (isRock(l) ? flat : l)),
+      shape: ground.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
       solid: Uint8Array.from(this.shown.levels, (l) => (isRock(l) ? 1 : 0)),
       dark,
       ...(this.void && { outside: ROCK_LEVEL }),
-    });
+    }));
+  }
+
+  /** Marks the caps of ground cut off by the cutaway: darker, with a hatch across, so they read as cut, not as ground. */
+  private capped(image: TerrainImage): TerrainImage {
+    if (this.cutaway === null) return image;
+    const { rgba, cell, tops, w } = image;
+    for (let p = 0; p < cell.length; p++) {
+      if (cell[p] < 0 || !tops[p] || !this.aboveCut(cell[p])) continue;
+      // Half grey, so a cap keeps a hint of its ground, with darker lines across it every few pixels.
+      const hatch = ((p % w) + Math.floor(p / w)) % 6 === 0;
+      const grey = (rgba[p * 4] + rgba[p * 4 + 1] + rgba[p * 4 + 2]) / 3;
+      for (let k = 0; k < 3; k++) rgba[p * 4 + k] = ((rgba[p * 4 + k] + grey) / 2) * (hatch ? 0.6 : 0.85);
+    }
+    return image;
   }
 
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
   commit(): void {
     const shape = (this.scene.shape ??= new Array(this.scene.w * this.scene.h).fill(0));
+    const side = new Array(this.scene.w * this.scene.h).fill(0);
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
       const at = j * this.map.w + i;
@@ -863,7 +891,11 @@ export class World {
       shape[c] = turnShape(this.map.shape[at], -this.rot);
       // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock is stone but where it is built of brick or mine.
       this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || (isRock(level) && paint !== BRICK && paint !== MINE)) ? 0 : paint;
+      // Faces as their top's are not kept, nor any of rock, which has no faces of its own.
+      side[c] = isRock(level) || this.map.side[at] === paint || (this.map.side[at] === BY_HEIGHT && paint === 0) ? 0 : this.map.side[at];
     }
+    if (side.some((n) => n > 0)) this.scene.side = side;
+    else delete this.scene.side;
   }
 
   /** After the ground changed: copies it back to the scene and draws it again. */
@@ -981,6 +1013,49 @@ export class World {
     if (x < 0 || y < 0 || x >= this.ground.w || y >= this.ground.h) return null;
     const c = this.ground.cell[y * this.ground.w + x];
     return c < 0 ? null : { i: c % this.map.w, j: Math.floor(c / this.map.w) };
+  }
+
+  /**
+   * Outlines the top of one tile in a composed window, over everything drawn there (lights included): its own pixels
+   * next to another tile's or to its faces. Under water the floor has no top drawn as such, so there it is the edge of
+   * all of it that shows.
+   */
+  outlineTile(image: Pixels, view: Rect, cell: number, color: string): void {
+    const g = this.ground;
+    const wet = this.map.levels[cell] < this.water;
+    const i = cell % this.map.w, j = Math.floor(cell / this.map.w);
+    // Only the rows and columns the tile can be drawn in: its diamond, from the highest ground down to the lowest.
+    const top = toScreen(i, j, MAX_LEVEL + 1), bottom = toScreen(i + 1, j + 1, MIN_LEVEL - 1);
+    const x0 = Math.max(0, Math.floor(g.origin.x + top.x - TILE_W / 2 - view.x - 1)), x1 = Math.min(view.w, Math.ceil(g.origin.x + top.x + TILE_W / 2 - view.x + 1));
+    const y0 = Math.max(0, Math.floor(g.origin.y + top.y - view.y - 1)), y1 = Math.min(view.h, Math.ceil(g.origin.y + bottom.y - view.y + 1));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const gx = x + view.x, gy = y + view.y;
+      if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) continue;
+      const p = gy * g.w + gx;
+      if (g.cell[p] !== cell || (!wet && g.tops[p] === 0)) continue;
+      const rim = [p - 1, p + 1, p - g.w, p + g.w].some((q) => q < 0 || q >= g.cell.length || g.cell[q] !== cell || (!wet && g.tops[q] === 0));
+      if (rim) blend(image, x, y, color);
+    }
+  }
+
+  /** The height, in levels, of the ground drawn at a pixel of the ground image, or null off it. */
+  heightAtPixel(x: number, y: number): number | null {
+    x = Math.floor(x);
+    y = Math.floor(y);
+    if (x < 0 || y < 0 || x >= this.ground.w || y >= this.ground.h) return null;
+    const p = y * this.ground.w + x;
+    return this.ground.cell[p] < 0 ? null : this.ground.height[p];
+  }
+
+  /**
+   * The map point (view coordinates, in fractions of a tile) seen at a pixel of the ground image on a flat plane at
+   * `level`, whatever ground is drawn there: the editor keeps a stroke on one plane, so ground rising or falling under
+   * the pointer does not move the stroke onto another tile.
+   */
+  planeAt(x: number, y: number, level: number): { i: number; j: number } {
+    const across = (2 * (x - this.ground.origin.x)) / TILE_W; // i - j
+    const down = (2 * (y - this.ground.origin.y + level * LEVEL_PX)) / TILE_H; // i + j
+    return { i: (down + across) / 2, j: (down - across) / 2 };
   }
 
   private plantMemo = new WeakMap<PlacedPlant, {
@@ -1142,7 +1217,7 @@ export class World {
    * The sea's gradient toward the horizon goes by the window, not the ground: with `far` it is drawn on, else the
    * water's pixels are left for it with alpha WATER_ALPHA (`horizon`).
    */
-  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string }): void {
+  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }): void {
     const { w, h } = view;
     const SEA = rgb(ocean.deep);
     const FOAM = rgb(ocean.wave);
@@ -1186,7 +1261,7 @@ export class World {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
           // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
           if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
-          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx])) blend(image, x, y, highlight.color);
+          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx]) && highlight.part !== 'floor') blend(image, x, y, highlight.color);
           continue;
         }
         if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) {
@@ -1215,7 +1290,8 @@ export class World {
         if (grid) {
           if (onGrid(gx, gy)) for (let k = 0; k < 3; k++) d[o + k] *= 1 - GRID_SHADE;
         }
-        if (highlight?.cells.has(g.cell[p])) blend(image, x, y, highlight.color);
+        // With a part, only the tops (floor) or only the faces (walls) of the tiles.
+        if (highlight?.cells.has(g.cell[p]) && (!highlight.part || (highlight.part === 'floor') === g.tops[p] > 0)) blend(image, x, y, highlight.color);
       }
     }
   }
@@ -1237,10 +1313,11 @@ export class World {
 
   /**
    * Paints the camera window: the ground, every shadow at once, then things back to front with
-   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor).
+   * higher ground in front hiding them. `highlight` tints some tiles (the brush in the editor): all of them, or with
+   * `part` only their tops (`floor`) or only their faces and rock (`walls`).
    * The picture is reused by the next call: copy it to keep it.
    */
-  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string }, outline = false, ms = 0, grid = false): Pixels {
+  compose(view: Rect, things: Thing[], highlight?: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }, outline = false, ms = 0, grid = false): Pixels {
     const { w, h } = view;
     this.coldLeft = COLD_DRAWS;
     const g = this.ground;
@@ -1611,6 +1688,16 @@ export class World {
   hotEdge: 'n' | 'e' | 's' | 'w' | null = null;
   /** The level of the plane rock is drawn on (the lowest floor): where a cave's grid, its red edge and its blocks of rock stand. */
   flatLevel = SEA_LEVEL;
+  /**
+   * The editor's cutaway: ground higher than this level is drawn cut off at it, its tops a hatched cap, so what lies
+   * behind and below shows; null for none. Only the drawing changes (`redraw` after setting it), not the map.
+   */
+  cutaway: number | null = null;
+  /** Whether a cell's ground stands above the cutaway, so it is drawn cut off. */
+  aboveCut(c: number): boolean {
+    const level = this.map.levels[c];
+    return this.cutaway !== null && !isRock(level) && level > this.cutaway;
+  }
   private edgeOf: TerrainImage | null = null;
   /** Where a point of the map's border is drawn: on the red edge. */
   edgeScreen(i: number, j: number): { x: number; y: number } {
