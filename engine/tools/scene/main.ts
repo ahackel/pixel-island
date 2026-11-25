@@ -2398,6 +2398,8 @@ canvas.addEventListener('wheel', (e) => {
 let last = performance.now();
 let shown = '';
 let shownThings: Thing[] = [];
+/** The water's time, in tenths of a second: held while zoomed out. */
+let waveTime = 0;
 const fpsLine = h('p', { class: 'fps', 'aria-hidden': 'true' });
 let fpsCount = 0;
 let fpsSince = performance.now();
@@ -2470,7 +2472,10 @@ function frame(ms: number): void {
 
   const view = viewRect();
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
-  const waves = Math.floor(ms / 100);
+  // Zoomed out (a screen pixel to less than a ground pixel) the waves hold still: they hardly show, and drawing them
+  // again every tenth of a second is most of a frame's work over that many pixels.
+  if (zoom >= 1) waveTime = Math.floor(ms / 100);
+  const waves = waveTime;
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
   const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}|${aimed}|${cut},${floor}`;
   if (prefs.mode === 'play' || key !== shown) {

@@ -14,7 +14,7 @@ import { particleSystem, tileHalo } from './particles.ts';
 import { footOf, type Thing } from './island.ts';
 import { LONE, RockFade, rockView, STANDS, type RockView } from './front-rock.ts';
 import { CAVE_FLOOR, settingsOf, type Scene } from './scene.ts';
-import { BRICK, inside, isRock, LEVEL_PX, MINE, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
+import { BRICK, hiddenByGround, inside, isRock, LEVEL_PX, MINE, PAINTS, ROCK_LEVEL, standingHeight, TILE_H, TILE_W, type HeightMap } from './terrain.ts';
 import { rasterOf, type TileLamp, type World } from './world.ts';
 
 /** The level of a new cave's floor (scene.ts), and how tall its walls stand in levels unless its headroom says (`SceneSettings.headroom`). */
@@ -307,6 +307,8 @@ function wallAt(world: World, view: RockView, x: number, y: number): number | nu
       if (!on) continue;
       const h = over(down);
       if (h < 0 || h > top || d <= depth) continue;
+      // Higher ground in front covers a wall, as it covers anything standing behind it.
+      if (hiddenByGround(map, world.ground, Math.floor(x), Math.floor(y), i, j, world.flatLevel)) continue;
       best = c;
       depth = d;
     }

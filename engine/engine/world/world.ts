@@ -1225,14 +1225,13 @@ export class World {
 
   /**
    * Draws the ground, the sea floor under the water and the water surface of `view` into `image`, a picture its size.
-   * The sea's gradient toward the horizon goes by the window, not the ground: with `far` it is drawn on, else the
-   * water's pixels are left for it with alpha WATER_ALPHA (`horizon`).
+   * The sea's gradient toward the horizon goes by the window, not the ground: the water's pixels are left for it with
+   * alpha WATER_ALPHA (`horizon`).
    */
-  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean, far: boolean, highlight?: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }): void {
+  private drawBase(image: Pixels, view: Rect, ms: number, grid: boolean): void {
     const { w, h } = view;
     const SEA = rgb(ocean.deep);
     const FOAM = rgb(ocean.wave);
-    const FAR = rgb(ocean.far);
     const g = this.ground;
     const shore = this.shoreOf(g);
     const d = image.data;
@@ -1261,7 +1260,6 @@ export class World {
     this.drawFish(image, view, ms);
     for (let y = 0; y < h; y++) {
       const gy = y + view.y;
-      const shade = ocean.gradient * (1 - y / h);
       for (let x = 0; x < w; x++) {
         const gx = x + view.x;
         const o = (y * w + x) * 4;
@@ -1276,15 +1274,13 @@ export class World {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
           // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
           if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
-          if (highlight && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && highlight.cells.has(g.cell[gy * g.w + gx]) && highlight.part !== 'floor') blend(image, x, y, highlight.color);
           continue;
         }
         if (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w) {
           d[o] = SEA[0]; d[o + 1] = SEA[1]; d[o + 2] = SEA[2]; d[o + 3] = 255;
           const mark = markAt(gx, gy, 9, ms);
           if (mark) for (let k = 0; k < 3; k++) d[o + k] += (FOAM[k] - d[o + k]) * mark;
-          if (far) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * shade;
-          else d[o + 3] = WATER_ALPHA;
+          d[o + 3] = WATER_ALPHA;
           continue;
         }
         const p = gy * g.w + gx;
@@ -1300,13 +1296,10 @@ export class World {
           if (wet) for (let k = 0; k < 3; k++) d[o + k] += (WET_RGB[k] - d[o + k]) * wet * WET_DEPTH;
           if (sheet) for (let k = 0; k < 3; k++) d[o + k] += (FOAM[k] - d[o + k]) * sheet;
         }
-        if (depth > 0 && far) for (let k = 0; k < 3; k++) d[o + k] += (FAR[k] - d[o + k]) * shade;
-        else if (depth > 0) d[o + 3] = WATER_ALPHA;
+        if (depth > 0) d[o + 3] = WATER_ALPHA;
         if (grid) {
           if (onGrid(gx, gy)) for (let k = 0; k < 3; k++) d[o + k] *= 1 - GRID_SHADE;
         }
-        // With a part, only the tops (floor) or only the faces (walls) of the tiles.
-        if (highlight?.cells.has(g.cell[p]) && (!highlight.part || (highlight.part === 'floor') === g.tops[p] > 0)) blend(image, x, y, highlight.color);
       }
     }
   }
@@ -1341,8 +1334,7 @@ export class World {
     if (this.image?.width !== w || this.image.height !== h) this.image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
     const image = this.image;
     const d = image.data;
-    if (highlight) this.drawBase(image, view, ms, grid, true, highlight);
-    else {
+    {
       // The ground and water are kept from frame to frame: moved along when the view moves, drawing only the strips it
       // uncovers, and refreshed for the waves a band of rows at a time, each band every WATER_MS, so no frame redraws it all.
       const bandOf = (k: number) => Math.floor((ms + (k * WATER_MS) / BANDS) / WATER_MS);
@@ -1356,7 +1348,7 @@ export class World {
       if (!old || x1 <= x0 || y1 <= y0) {
         const was = this.base;
         b = this.base = { ground: g, grid, alone: this.alone, x: view.x, y: view.y, w, h, data: sized(was?.data), spare: sized(was?.spare), lit: sized(was?.lit), bands: new Float64Array(BANDS) };
-        this.drawBase({ data: b.data, width: w, height: h }, view, ms, grid, false);
+        this.drawBase({ data: b.data, width: w, height: h }, view, ms, grid);
         for (let k = 0; k < BANDS; k++) b.bands[k] = bandOf(k);
         horizon(b.data, b.lit, w, h, 0, 0, w, h);
       } else {
@@ -1369,7 +1361,7 @@ export class World {
           if (sw <= 0 || sh <= 0) return;
           if (this.strip.length < sw * sh * 4) this.strip = new Uint8ClampedArray(sw * sh * 4);
           const s = { data: this.strip.subarray(0, sw * sh * 4), width: sw, height: sh };
-          this.drawBase(s, { x: view.x + x, y: view.y + y, w: sw, h: sh }, ms, grid, false);
+          this.drawBase(s, { x: view.x + x, y: view.y + y, w: sw, h: sh }, ms, grid);
           for (let r = 0; r < sh; r++) kept.data.set(s.data.subarray(r * sw * 4, (r + 1) * sw * 4), ((y + r) * w + x) * 4);
           drawn.push([x, y, sw, sh]);
         };
@@ -1397,12 +1389,21 @@ export class World {
           strip(0, top, left, bottom - top);
           strip(right, top, w - right, bottom - top);
         }
+        // Only rows with water or a wet beach in them move with the waves: each run of them in the band is drawn again.
+        const wet = this.wetRowsOf(g);
+        const moves = (r: number) => !this.alone || (r + view.y >= 0 && r + view.y < g.h && wet[r + view.y] === 1);
         for (let k = 0; k < BANDS; k++) {
           const now = bandOf(k);
           if (now === kept.bands[k]) continue;
           kept.bands[k] = now;
-          const r0 = Math.floor((k * h) / BANDS);
-          strip(0, r0, w, Math.floor(((k + 1) * h) / BANDS) - r0);
+          const r1 = Math.floor(((k + 1) * h) / BANDS);
+          for (let r = Math.floor((k * h) / BANDS); r < r1; r++) {
+            if (!moves(r)) continue;
+            let end = r;
+            while (end < r1 && moves(end)) end++;
+            strip(0, r, w, end - r);
+            r = end;
+          }
         }
         t0 = part('water', t0);
         if (dy || resized) horizon(kept.data, kept.lit, w, h, 0, 0, w, h);
@@ -1411,6 +1412,7 @@ export class World {
       }
       d.set(b.lit);
     }
+    if (highlight) this.tint(image, view, highlight);
     const placed = things
       .map((t) => {
         const at = footOf(g, t.spot);
@@ -1553,6 +1555,45 @@ export class World {
    * Per ground pixel, how many pixels a beach pixel lies from the water, up to `WASH_RUN`; 255
    * elsewhere. Only ground at the water line counts, so higher ground drawn next to water is left dry.
    */
+  /** Per row of the ground image, 1 where water or a wet beach is drawn in it: the rows that move with the waves. */
+  private wetRowsOf(g: TerrainImage): Uint8Array {
+    if (this.wetRows?.ground === g) return this.wetRows.rows;
+    const shore = this.shoreOf(g);
+    const rows = new Uint8Array(g.h);
+    for (let p = 0; p < shore.length; p++) if (shore[p] <= WASH_RUN) rows[Math.floor(p / g.w)] = 1;
+    this.wetRows = { ground: g, rows };
+    return rows;
+  }
+  private wetRows: { ground: TerrainImage; rows: Uint8Array } | null = null;
+
+  /**
+   * Tints the tiles of `highlight` in a composed window: all of their pixels, or with `part` only their tops (floor) or
+   * only their faces and rock (walls). Only the rows and columns the tiles can be drawn in are looked at.
+   */
+  private tint(image: Pixels, view: Rect, highlight: { cells: Set<number>; color: string; part?: 'floor' | 'walls' }): void {
+    const g = this.ground, m = this.map;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const c of highlight.cells) {
+      const i = c % m.w, j = Math.floor(c / m.w);
+      x0 = Math.min(x0, toScreen(i, j + 1, 0).x - 1);
+      x1 = Math.max(x1, toScreen(i + 1, j, 0).x + 1);
+      y0 = Math.min(y0, toScreen(i, j, MAX_LEVEL + 1).y - 1);
+      y1 = Math.max(y1, toScreen(i + 1, j + 1, MIN_LEVEL - 1).y + 1);
+    }
+    const ox = g.origin.x - view.x, oy = g.origin.y - view.y;
+    for (let y = Math.max(0, Math.floor(y0 + oy)); y < Math.min(view.h, Math.ceil(y1 + oy)); y++) {
+      for (let x = Math.max(0, Math.floor(x0 + ox)); x < Math.min(view.w, Math.ceil(x1 + ox)); x++) {
+        const gx = x + view.x, gy = y + view.y;
+        if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) continue;
+        const p = gy * g.w + gx, c = g.cell[p];
+        if (c < 0 || !highlight.cells.has(c)) continue;
+        // Rock is drawn flat and black: it takes the tint but for a Floor part.
+        const rock = isRock(this.shown.levels[c]);
+        if (rock ? highlight.part !== 'floor' : !highlight.part || (highlight.part === 'floor') === g.tops[p] > 0) blend(image, x, y, highlight.color);
+      }
+    }
+  }
+
   private shoreOf(g: TerrainImage): Uint8Array {
     if (this.shore?.ground === g) return this.shore.dist;
     const dist = new Uint8Array(g.w * g.h).fill(255);
