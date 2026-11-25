@@ -51,14 +51,15 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'ground', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'walls', 'ways', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
+const TOOLS = ['move', 'ground', 'paint', 'walls', 'ways', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
-/** A cave's ground is carved out of the rock and has ways out. */
-const CAVE_ONLY: Tool[] = ['carve', 'exit'];
-const ISLAND_ONLY: Tool[] = [];
-/** What the Shape tool makes of the ground (ground.ts). */
-const SHAPE_PICKS = [{ id: 'smooth', icon: 'smooth' }, { id: 'cut', icon: 'rect' }, { id: 'ramp', icon: 'slope' }, { id: 'hole', icon: 'down' }] as const;
-type ShapePick = (typeof SHAPE_PICKS)[number]['id'];
+/**
+ * What a stroke works as: a tool, or what the Ground tool does with a modifier key held (smooth, level) and what the
+ * Ways tool does in a cell (shape: ramps and holes).
+ */
+type Work = Tool | 'smooth' | 'level' | 'shape';
+/** A cave has ways out. */
+const CAVE_ONLY: Tool[] = ['exit'];
 /** What the Material tool paints, with its icon. */
 const TARGETS = [{ id: 'floor', icon: 'flat' }, { id: 'walls', icon: 'wall' }, { id: 'both', icon: 'layers' }] as const;
 type Target = (typeof TARGETS)[number]['id'];
@@ -68,24 +69,24 @@ type Edges = (typeof EDGES)[number]['id'];
 /** What the Ways tool makes: a ladder or a door on an edge, a ramp or a hole in a cell. */
 const WAYS = [{ id: 'ladder', icon: 'ladder' }, { id: 'door', icon: 'door' }, { id: 'ramp', icon: 'slope' }, { id: 'hole', icon: 'down' }] as const;
 type WayPick = (typeof WAYS)[number]['id'];
-/** The Ways tool's picks that work on cells, as the Shape tool would. */
+/** The Ways tool's picks that work on cells (a stroke's `shape` work), not on edges. */
 const cellWay = (way: WayPick): way is 'ramp' | 'hole' => way === 'ramp' || way === 'hole';
-const toolsFor = (s: Scene) => TOOLS.filter((tool) => !(s.cave ? ISLAND_ONLY : CAVE_ONLY).includes(tool));
+const toolsFor = (s: Scene) => TOOLS.filter((tool) => s.cave || !CAVE_ONLY.includes(tool));
 const toolsHere = () => toolsFor(sceneNow());
 /**
- * The tool at work in a scene: the one chosen, or Move where it has no use (raising the ground of a cave, say). The
+ * The tool at work in a scene: the one chosen, or Move where it has no use (a way out of a cave, on an island). The
  * choice is kept, so going back to an island brings the tool back.
  */
 const toolIn = (s: Scene): Tool => (toolsFor(s).includes(prefs.tool) ? prefs.tool : 'move');
 const toolNow = () => toolIn(sceneNow());
-const BRUSHED: Tool[] = ['ground', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'carve', 'erase'];
+const BRUSHED: Work[] = ['ground', 'smooth', 'level', 'paint', 'erase'];
 /** The tools that shape the ground: their strokes keep to one flat plane, and the tile under the pointer is read out. */
-const SHAPING: Tool[] = ['ground', 'raise', 'lower', 'smooth', 'level', 'shape', 'carve'];
-const GROUND_TOOLS: Tool[] = [...SHAPING, 'paint'];
+const SHAPING: Work[] = ['ground', 'smooth', 'level', 'shape'];
+const GROUND_TOOLS: Tool[] = ['ground', 'paint'];
 /** Whether the tool at work works on the ground's cells, so the tile under the pointer is outlined and read out: a ground tool, or Ways laying ramps or holes. */
 const onGround = () => GROUND_TOOLS.includes(toolNow()) || (toolNow() === 'ways' && cellWay(prefs.way));
 /** The tools that pick something up from the tile under a Ctrl-click (Cmd-click on a Mac) instead of working there. */
-const PICKING: Tool[] = ['ground', 'level', 'shape', 'paint'];
+const PICKING: Tool[] = ['ground', 'paint'];
 
 /** The modifier keys held, as last seen on a key or the pointer. */
 const mods = { alt: false, shift: false, pick: false };
@@ -94,25 +95,19 @@ function readMods(e: { altKey: boolean; shiftKey: boolean; ctrlKey: boolean; met
   mods.shift = e.shiftKey;
   mods.pick = e.ctrlKey || e.metaKey;
 }
-/**
- * The tool a ground stroke works as with modifier keys held: Alt raises for Lower and lowers for Raise (and does the
- * opposite in Shape and Carve, in `apply`), Shift smooths for Ground, Raise, Lower and Level where the scene has
- * smoothing, and Alt levels for Ground.
- */
-function withMods(tool: Tool, m: { alt?: boolean; shift?: boolean }, s: Scene): Tool {
-  if (m.shift && (tool === 'ground' || tool === 'raise' || tool === 'lower' || tool === 'level') && toolsFor(s).includes('smooth')) return 'smooth';
+/** What a stroke of a tool works as with modifier keys held: the Ground tool smooths with Shift and levels with Alt. */
+function withMods(tool: Tool, m: { alt?: boolean; shift?: boolean }): Work {
+  if (m.shift && tool === 'ground') return 'smooth';
   if (m.alt && tool === 'ground') return 'level';
-  if (m.alt && tool === 'raise') return 'lower';
-  if (m.alt && tool === 'lower') return 'raise';
   return tool;
 }
 /** The tool at work in a scene with the modifier keys held now. */
-const toolHeld = (s: Scene) => withMods(toolIn(s), mods, s);
+const toolHeld = (s: Scene) => withMods(toolIn(s), mods);
 const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
-const TOOL_ICONS: Record<Tool, string> = {
-  move: 'pointer', ground: 'mountain', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+const TOOL_ICONS: Record<Work, string> = {
+  move: 'pointer', ground: 'mountain', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -122,12 +117,10 @@ interface Prefs {
   paint: number;
   /** What the Material tool paints: the tops of the ground, the faces of its steps and a cave's rock walls, or both. */
   target: Target;
-  /** The height the Level tool (and the Ground tool with Alt) levels to, picked with Ctrl-click; null for the height where a stroke starts. */
+  /** The height the Ground tool levels to with Alt, picked with Ctrl-click; null for the height where a stroke starts. */
   levelTo: number | null;
   /** What the Ground tool makes of the edges of the cells it works on. */
   edges: Edges;
-  /** What the Shape tool makes of the ground. */
-  shape: ShapePick;
   /** The kind of wall the Walls tool builds (building/walls.ts). */
   wall: string;
   /** What the Ways tool makes: a ladder up a step or a door, on an edge; a ramp or a hole, in a cell. */
@@ -166,13 +159,12 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, target: 'floor', levelTo: null, edges: 'keep', shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, target: 'floor', levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
-    if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
     if (TARGETS.some((p) => p.id === saved?.target)) prefs.target = saved.target;
     if (Number.isInteger(saved?.levelTo) && saved.levelTo >= MIN_LEVEL && saved.levelTo <= MAX_LEVEL) prefs.levelTo = saved.levelTo;
     if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
@@ -1090,7 +1082,7 @@ let hover: { i: number; j: number } | null = null;
 /** The tile under the pointer in another open scene: the tools work there too, a press there edits that scene. */
 let away: { scene: Scene; tile: { i: number; j: number } } | null = null;
 
-function brushCells(at: { i: number; j: number }, tool = toolNow(), w = world): number[] {
+function brushCells(at: { i: number; j: number }, tool: Work = toolNow(), w = world): number[] {
   const size = BRUSHED.includes(tool) ? prefs.brush : 1;
   return roundBrush(size).filter(([di, dj]) => inside(w.map, at.i + di, at.j + dj)).map(([di, dj]) => (at.j + dj) * w.map.w + at.i + di).filter((c) => !w.aboveCut(c));
 }
@@ -1115,13 +1107,9 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
       if (kind?.place === 'decor') return levelAt(w.floor, at.i, at.j) < DECOR_DEPTH;
       return !isLand(w.map, at.i, at.j);
     }
-    case 'shape':
+    case 'smooth':
     case 'level':
       return brushCells(at, tool, w).every((c) => isRock(w.map.levels[c]));
-    case 'raise':
-      return brushCells(at, tool, w).every((c) => w.map.levels[c] >= MAX_LEVEL);
-    case 'lower':
-      return brushCells(at, tool, w).every((c) => w.map.levels[c] <= MIN_LEVEL);
     case 'exit':
       return !isLand(w.map, at.i, at.j);
     case 'paint':
@@ -1350,7 +1338,7 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
  * to, what it planted, whether Alt was held, whether it takes ramps (or holes) away, the tool as the modifier keys made
  * it, whether the Ground tool began it (so it sets edges), and the ramp or hole the Ways tool lays.
  */
-interface StrokeState { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean; tool?: Tool; ground?: true; shape?: 'ramp' | 'hole' }
+interface StrokeState { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean; tool?: Work; ground?: true; shape?: 'ramp' | 'hole' }
 
 /** Makes the edges of cells smooth or cut, as the Ground tool's Edges say; ramps, holes and rock stay. */
 function setEdges(map: World['map'], cells: number[]): void {
@@ -1448,31 +1436,13 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       if (stroke.ground) setEdges(map, cells);
       groundDirty = true;
       break;
-    case 'raise':
-    case 'lower':
-      for (const c of fresh) if (!isRock(map.levels[c])) setLevel(map, c % map.w, Math.floor(c / map.w), map.levels[c] + (tool === 'raise' ? 1 : -1));
-      groundDirty ||= fresh.length > 0;
-      break;
-    case 'shape': {
-      const pick = stroke.shape ?? prefs.shape;
+    case 'shape':
       for (const c of fresh) {
         if (isRock(map.levels[c])) continue;
-        // The Ways tool's holes come and go as its ladders do: a drag starting on a hole fills holes in.
+        // Holes come and go as ladders do: a drag starting on a hole, or with Alt held, fills holes in.
         if (stroke.shape === 'hole') {
           stroke.unramp ??= !!stroke.alt || map.shape[c] === HOLE;
           const shape = stroke.unramp ? (map.shape[c] === HOLE ? CUT : map.shape[c]) : HOLE;
-          if (map.shape[c] !== shape) { map.shape[c] = shape; groundDirty = true; }
-          continue;
-        }
-        if (pick === 'hole' && stroke.alt) {
-          // Alt fills holes back in, as cut ground.
-          if (map.shape[c] === HOLE) { map.shape[c] = CUT; groundDirty = true; }
-          continue;
-        }
-        if (pick !== 'ramp') {
-          // Alt swaps smooth and cut.
-          const made = stroke.alt ? (pick === 'smooth' ? 'cut' : 'smooth') : pick;
-          const shape = made === 'smooth' ? SMOOTH : made === 'cut' ? CUT : HOLE;
           if (map.shape[c] !== shape) { map.shape[c] = shape; groundDirty = true; }
           continue;
         }
@@ -1489,13 +1459,8 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
         groundDirty = true;
       }
       break;
-    }
     case 'paint':
       for (const c of fresh) groundDirty = paintCell(map, c) || groundDirty;
-      break;
-    case 'carve':
-      // Alt carves back to rock.
-      groundDirty = carve(map, fresh, !stroke.alt) || groundDirty;
       break;
     case 'exit':
       if (fresh.length) toggleExit(at);
@@ -1574,13 +1539,12 @@ function paintCell(map: World['map'], c: number, n = prefs.paint, target = prefs
 /** The material of a cell's faces as the Material tool names it: its own, or its top's. */
 const sideOf = (map: World['map'], c: number) => (map.side[c] === BY_HEIGHT ? 0 : map.side[c] || map.paint[c]);
 
-/** What a Ctrl-click picks up from a tile for the tool: the height to level to, the shape, or the material. */
+/** What a Ctrl-click picks up from a tile for the tool: the height to level to, or the material. */
 function pickFrom(at: { i: number; j: number }): void {
   const map = world.map;
   const c = at.j * map.w + at.i;
   const tool = toolNow();
-  if ((tool === 'level' || tool === 'ground') && !isRock(map.levels[c])) set({ levelTo: map.levels[c] });
-  if (tool === 'shape' && !isRock(map.levels[c])) set({ shape: map.shape[c] === SMOOTH ? 'smooth' : map.shape[c] === HOLE ? 'hole' : rampDir(map.shape[c]) >= 0 ? 'ramp' : 'cut' });
+  if (tool === 'ground' && !isRock(map.levels[c])) set({ levelTo: map.levels[c] });
   if (tool === 'paint') {
     const grounds = paintsFor(sceneNow());
     // Ground by height in a cave is the cave's own stone.
@@ -2104,7 +2068,7 @@ const pair = () => {
 };
 
 /** Ground tools that keep working while the pointer is held still, and how often they repeat. */
-const HELD: Tool[] = ['raise', 'lower', 'smooth', 'level'];
+const HELD: Work[] = ['smooth', 'level'];
 const REPEAT_MS = 200;
 
 function strokeAt(e: { clientX: number; clientY: number }): void {
@@ -2296,9 +2260,9 @@ canvas.addEventListener('pointerdown', (e) => {
     } else if (prefs.mode === 'edit') {
       remember();
       const now = toolNow();
-      // The Ways tool's ramps and holes are laid as the Shape tool lays them, a cell at a time.
+      // The Ways tool lays ramps and holes a cell at a time.
       const shape = now === 'ways' && cellWay(prefs.way) ? prefs.way : undefined;
-      const tool = shape ? 'shape' : withMods(now, { alt: e.altKey, shift: e.shiftKey }, sceneNow());
+      const tool: Work = shape ? 'shape' : withMods(now, { alt: e.altKey, shift: e.shiftKey });
       const pressed = tool === 'ground' ? tileUnder(e) : null;
       const plane = SHAPING.includes(tool) && !pressed ? planeAt(e) : null;
       gesture = {
@@ -2692,8 +2656,7 @@ const propThumbs = pictureCache('plant__picture', 400);
 /** What the modifier keys do with a tool, for its tip. */
 function keyTips(tool: Tool): string[] {
   const out: string[] = [];
-  if (tool === 'ground' || tool === 'raise' || tool === 'lower' || tool === 'level' || tool === 'shape' || tool === 'paint') out.push(t(`keys.${tool}`));
-  if ((tool === 'raise' || tool === 'lower' || tool === 'level') && toolsFor(sceneNow()).includes('smooth')) out.push(t('keys.shift'));
+  if (tool === 'ground' || tool === 'paint') out.push(t(`keys.${tool}`));
   return out;
 }
 
@@ -2888,14 +2851,8 @@ function editOptions(): Node[] {
   }
   if (tool === 'ground') {
     rows.push(field({ words: t('edges') }, choice(t('edges'), EDGES.map((p) => ({ id: p.id, icon: p.icon, words: t(`edges.${p.id}` as Key) })), () => prefs.edges, (id) => set({ edges: id as Edges }), 'buttons')));
-  }
-  if (tool === 'level' || tool === 'ground') {
     const heights = [{ id: 'start', words: t('level.start') }, ...Array.from({ length: MAX_LEVEL - MIN_LEVEL + 1 }, (_, k) => ({ id: String(MIN_LEVEL + k), words: String(MIN_LEVEL + k) }))];
-    const label = t(tool === 'ground' ? 'level.flat' : 'level.to');
-    rows.push(field({ words: label }, choice(label, heights, () => (prefs.levelTo === null ? 'start' : String(prefs.levelTo)), (id) => set({ levelTo: id === 'start' ? null : Number(id) }), 'list')));
-  }
-  if (tool === 'shape') {
-    rows.push(field({ words: t('shape') }, choice(t('shape'), SHAPE_PICKS.map((p) => ({ id: p.id, icon: p.icon, words: t(`shape.${p.id}` as Key) })), () => prefs.shape, (id) => set({ shape: id as ShapePick }), 'buttons')));
+    rows.push(field({ words: t('level.flat') }, choice(t('level.flat'), heights, () => (prefs.levelTo === null ? 'start' : String(prefs.levelTo)), (id) => set({ levelTo: id === 'start' ? null : Number(id) }), 'list')));
   }
   if (BRUSHED.includes(tool)) {
     const picture = h('span', {}, brushPicture(prefs.brush));
@@ -2911,7 +2868,6 @@ function editOptions(): Node[] {
     rows.push(field({ words: t('brush') }, h('div', { class: 'urow' }, size, picture)));
   }
   if (rows.length) out.push(fields(...rows));
-  if (tool === 'shape') out.push(h('p', { class: 'opts__tip' }, t(`tip.shape.${prefs.shape}` as Key)));
   if (tool === 'paint') out.push(h('p', { class: 'opts__tip' }, t(`tip.target.${prefs.target}` as Key)));
   if (tool === 'ground') out.push(h('p', { class: 'opts__tip' }, t(`tip.edges.${prefs.edges}` as Key)));
   if (tool === 'ways') out.push(h('p', { class: 'opts__tip' }, t(`tip.way.${prefs.way}` as Key)));
