@@ -116,13 +116,36 @@ function straightened(world: World, from: P, way: P[], pass: (d: SceneDoor) => b
   return out;
 }
 
-/** Whether a straight walk is free, checked every fifth of a metre. */
+/**
+ * Whether a straight walk is free: checked every fifth of a metre, and just past every tile edge it crosses, so each
+ * step onto another tile is checked as the walker takes it. Through a tile's corner the walker may come by either
+ * tile beside it, so both ways round must be free.
+ */
 function clear(world: World, a: P, b: P, pass: (d: SceneDoor) => boolean): boolean {
-  const steps = Math.max(1, Math.ceil(Math.hypot(b.i - a.i, b.j - a.j) * 5));
+  const di = b.i - a.i, dj = b.j - a.j;
+  const steps = Math.max(1, Math.ceil(Math.hypot(di, dj) * 5));
+  const at = (t: number): P => ({ i: a.i + di * t, j: a.j + dj * t });
+  // Where the way crosses tile edges, along i and along j, as fractions of it.
+  const edges = (from: number, d: number) => {
+    const out: number[] = [];
+    if (!d) return out;
+    for (let x = d > 0 ? Math.floor(from) + 1 : Math.ceil(from) - 1; d > 0 ? x <= from + d : x >= from + d; x += Math.sign(d)) out.push((x - from) / d);
+    return out;
+  };
+  const across = edges(a.i, di), down = edges(a.j, dj);
+  const ts = [...Array.from({ length: steps }, (_, s) => (s + 1) / steps), ...across, ...down].sort((x, y) => x - y);
+  const EPS = 1e-6;
   let prev = a;
-  for (let s = 1; s <= steps; s++) {
-    const p = { i: a.i + ((b.i - a.i) * s) / steps, j: a.j + ((b.j - a.j) * s) / steps };
-    if (!world.canWalk(prev, p, pass)) return false;
+  for (const t of ts) {
+    // Just past an edge, so the point lies in the tile beyond it.
+    const p = at(Math.min(1, t + EPS));
+    const corner = across.some((x) => Math.abs(x - t) < EPS) && down.some((y) => Math.abs(y - t) < EPS);
+    if (corner) {
+      const c = at(t), si = Math.sign(di) * EPS * 10, sj = Math.sign(dj) * EPS * 10;
+      for (const side of [{ i: c.i + si, j: c.j - sj }, { i: c.i - si, j: c.j + sj }]) {
+        if (!world.canWalk(prev, side, pass) || !world.canWalk(side, p, pass)) return false;
+      }
+    } else if (!world.canWalk(prev, p, pass)) return false;
     prev = p;
   }
   return true;

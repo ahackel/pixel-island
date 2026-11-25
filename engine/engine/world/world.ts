@@ -383,6 +383,20 @@ function horizon(from: Uint8ClampedArray, to: Uint8ClampedArray, w: number, h: n
   }
 }
 
+/**
+ * Whether a move from `from` to `to` runs into something round at (ci, cj), `r` across from its middle: the way passes
+ * within `r` of it. Inside it already (placed on the walker), any move away from its middle is allowed, so nobody is
+ * stuck in it. Neither depends on how long the move is, so a way planned in long steps is walked in short ones alike.
+ */
+function bumps(from: { i: number; j: number }, to: { i: number; j: number }, ci: number, cj: number, r: number): boolean {
+  const fi = from.i - ci, fj = from.j - cj, di = to.i - from.i, dj = to.j - from.j;
+  if (fi * fi + fj * fj < r * r) return fi * di + fj * dj < 0;
+  const len = di * di + dj * dj;
+  const t = len ? Math.max(0, Math.min(1, -(fi * di + fj * dj) / len)) : 0;
+  const ni = fi + di * t, nj = fj + dj * t;
+  return ni * ni + nj * nj < r * r;
+}
+
 export class World {
   scene: Scene;
   /** Quarter turns, 0 to 3. */
@@ -1843,18 +1857,13 @@ export class World {
     if ((a[0] !== b[0] || a[1] !== b[1]) && (!standable(this.floor, ...b) || !this.stepOk(a, b))) return false;
     for (const p of this.viewPlants()) {
       const r = BLOCK[plantById(p.plant)!.category] * p.size;
-      if (!r) continue;
-      const near = Math.hypot(p.vi - to.i, p.vj - to.j);
-      // Moving away is always allowed, so nobody gets stuck inside a plant placed on them.
-      if (near < r && near < Math.hypot(p.vi - from.i, p.vj - from.j)) return false;
+      if (r && bumps(from, to, p.vi, p.vj, r)) return false;
     }
-    // Objects block their footprint; stepping out of one is allowed.
+    // Objects block their footprint the same way.
     for (const p of this.viewProps()) {
       const kind = propKind(p.kind);
       const r = kind ? blockRadius(kind, p.size) : 0;
-      if (!r) continue;
-      const near = Math.hypot(p.vi - to.i, p.vj - to.j);
-      if (near < r && near < Math.hypot(p.vi - from.i, p.vj - from.j)) return false;
+      if (r && bumps(from, to, p.vi, p.vj, r)) return false;
     }
     for (const it of this.viewItems()) {
       if (itemCovers(it, this.rot, this.scene.objects, to.i, to.j) && !itemCovers(it, this.rot, this.scene.objects, from.i, from.j)) return false;
