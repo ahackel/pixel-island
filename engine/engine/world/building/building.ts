@@ -9,7 +9,7 @@
 //  - neighbouring cell pieces of one kind make a patch, drawn as one piece over its bounding rectangle;
 //  - a covering patch (a roof) rests on the wall tops: the walls under it stop below its eaves and
 //    lie in its shade, and standing in it hides it and cuts its front walls to half height.
-import { cornersOf, isRock, LEVEL_M, levelAt, LEVEL_PX, SHADOW_RUN, TILE_H, TILE_W, waterOf, type HeightMap, type TerrainImage } from '../terrain.ts';
+import { cornersOf, inside, isRock, LEVEL_M, levelAt, LEVEL_PX, SHADOW_RUN, TILE_H, TILE_W, waterOf, type HeightMap, type TerrainImage } from '../terrain.ts';
 
 export const HALF_W = TILE_W / 2; // screen columns along one cell edge
 export const HALF_H = TILE_H / 2; // rows down along one cell edge
@@ -85,6 +85,46 @@ export function endHeights(map: HeightMap, e: Edge): [number, number] {
   // Over water, it stands on the water line.
   const water = waterOf(map);
   return [Math.max(water, end(0)), Math.max(water, end(1))];
+}
+
+/**
+ * Both sides of an edge, in levels at its two ends: `low` the lower ground and `high` the higher (a wall's top counts
+ * from it; a fence stands on it), and `foot` where a wall's face reaches down to: the ground on the camera's side of
+ * the edge, so down a step to the lower side where that lies in front, and the higher side where it is the step's
+ * own face that stands in front of the wall. Rock is no ground, as for `endHeights`; over water, the water line.
+ */
+export function wallEnds(map: HeightMap, e: Edge): { low: [number, number]; high: [number, number]; foot: [number, number] } {
+  const [bi, bj] = e.axis === 'H' ? [e.i, e.j - 1] : [e.i - 1, e.j];
+  const ahead = cornersOf(map, e.i, e.j), behind = cornersOf(map, bi, bj);
+  const f = e.axis === 'H' ? [ahead[0], ahead[1]] : [ahead[0], ahead[3]];
+  const k = e.axis === 'H' ? [behind[3], behind[2]] : [behind[1], behind[2]];
+  const rockFront = !inside(map, e.i, e.j) || isRock(levelAt(map, e.i, e.j)), rockBehind = !inside(map, bi, bj) || isRock(levelAt(map, bi, bj));
+  const water = waterOf(map);
+  const side = (n: 0 | 1, pick: (a: number, b: number) => number) =>
+    Math.max(water, rockBehind && !rockFront ? f[n] : rockFront && !rockBehind ? k[n] : pick(f[n], k[n]));
+  const front = (n: 0 | 1) => Math.max(water, rockFront ? k[n] : f[n]);
+  return { low: [side(0, Math.min), side(1, Math.min)], high: [side(0, Math.max), side(1, Math.max)], foot: [front(0), front(1)] };
+}
+
+/** The two ends of an edge, as map points. */
+export const edgeEnds = (e: Edge): [[number, number], [number, number]] => [[e.i, e.j], e.axis === 'H' ? [e.i + 1, e.j] : [e.i, e.j + 1]];
+/** The edge between two neighbouring map points (a cell's corners), or null if they are not neighbours. */
+export function edgeBetween(a: [number, number], b: [number, number]): Edge | null {
+  if (a[1] === b[1] && Math.abs(a[0] - b[0]) === 1) return { axis: 'H', i: Math.min(a[0], b[0]), j: a[1] };
+  if (a[0] === b[0] && Math.abs(a[1] - b[1]) === 1) return { axis: 'V', i: a[0], j: Math.min(a[1], b[1]) };
+  return null;
+}
+/** The four edges meeting at a map point (a cell corner). */
+export const edgesAt = (x: number, y: number): Edge[] => [{ axis: 'H', i: x - 1, j: y }, { axis: 'H', i: x, j: y }, { axis: 'V', i: x, j: y - 1 }, { axis: 'V', i: x, j: y }];
+
+/**
+ * Whether a step from one cell to a diagonal neighbour goes past a wall: past the end of any wall at the corner the two
+ * cells share, which the step would squeeze by.
+ */
+export function cornerBlocked(b: Building, from: [number, number], to: [number, number]): boolean {
+  if (Math.abs(to[0] - from[0]) !== 1 || Math.abs(to[1] - from[1]) !== 1) return false;
+  const x = Math.max(from[0], to[0]), y = Math.max(from[1], to[1]);
+  return edgesAt(x, y).some((e) => b.edges.has(edgeKey(e)));
 }
 
 /** The highest ground under a patch, at least the water line. */

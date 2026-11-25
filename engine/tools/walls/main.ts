@@ -15,7 +15,6 @@ import { freezeWall } from '../../engine/world/building/pieces/painted-wall.ts';
 import {
   addWall, changeWall, deleteWall, edgeKindOf, lockWall, readWallFile, reloadWalls, unlockWall, wallById, wallFile, wallKinds, type WallKind,
 } from '../../engine/world/building/walls.ts';
-import { plankWall } from '../../engine/world/building/pieces/plank-wall.ts';
 import { blankGrid, gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
@@ -132,7 +131,10 @@ function panelFor(tab: Tab): (Node | string)[] {
       if (w.builtin) { prefs.height = v; savePrefs(); benchDirty = true; } else changed({ height: v }, true);
     });
     if (w.art) return [height];
-    const o = w.rule!.options;
+    // Only planks have options of their own; brick, stone and fences are drawn by rule as they are.
+    const rule = w.rule!;
+    if (rule.piece !== 'plank') return [h('div', { class: 'urow' }, height), h('div', { class: 'urow' }, ...(w.builtin ? [pb(L('Duplicate to edit', 'Zum Bearbeiten duplizieren'), { icon: 'copy' }, duplicate)] : []), freeze)];
+    const o = rule.options;
     const set = (next: Partial<typeof o>) => {
       if (w.builtin) return;
       changed({ rule: { piece: 'plank', options: { ...o, ...next } } }, true);
@@ -161,7 +163,7 @@ function panelFor(tab: Tab): (Node | string)[] {
     { x0: 0, y0: art.oy - w.height * LEVEL_PX, x1: art.w - 1, y1: art.oy - w.height * LEVEL_PX, color: '#e0332e66' },
   ];
   const onion = w.locked ? () => {
-    const fresh = freezeWall(plankWall(w.rule!.options), w.height);
+    const fresh = freezeWall(edgeKindOf({ ...w, art: undefined }), w.height);
     const out = blankGrid(art.w, art.h);
     gridsOf(fresh)[0].forEach((r, y) => r.forEach((c, x) => {
       const tx = x - fresh.ox + art.ox, ty = y - fresh.oy + art.oy;

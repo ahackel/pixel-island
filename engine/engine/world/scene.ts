@@ -15,7 +15,8 @@ import { LINKING, nameLink, OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
 import { CUT, defaultShape, SHAPES } from './ground.ts';
-import { createHeightMap, generateIsland, isRock, MAX_LEVEL, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
+import { edgeKey, type Edge } from './building/building.ts';
+import { BRICK, createHeightMap, generateIsland, isRock, MAX_LEVEL, MINE, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
   /** A flora catalogue id. */
@@ -80,6 +81,8 @@ export interface Scene {
   items: PlacedItem[];
   /** The scene's own objects, made in the object editor, by `OWN` id: kept here so the scene stands on its own. */
   objects?: Record<string, Build>;
+  /** Thin walls on cell edges, in scene coordinates (the world turns them with the view), by wall kind (building/walls.ts). */
+  walls?: SceneWall[];
   /** Anything else standing on the ground, from the props library (engine/world/prop.ts). Missing in older scenes. */
   props?: PlacedProp[];
   /** The painted props and locked pixels it uses, so it draws the same in a game or on another device (see prop.ts). */
@@ -95,6 +98,21 @@ export interface Scene {
   settings?: SceneSettings;
   /** Where the scene lies on the scene editor's desk, beside the other scenes open there: its north corner, in tiles. Only the editor uses it. */
   desk?: { i: number; j: number };
+}
+
+/** A thin wall on a cell edge: `H` runs from (i, j) to (i + 1, j), `V` from (i, j) to (i, j + 1); `kind` a wall kind's id. */
+export interface SceneWall { edge: Edge; kind: string }
+
+/** The walls of a scene as read back: on edges inside its map, of a named kind, one per edge. */
+export function cleanWalls(raw: unknown, w: number, h: number): SceneWall[] {
+  const out = new Map<string, SceneWall>();
+  for (const x of Array.isArray(raw) ? raw : []) {
+    const e = x?.edge, kind = x?.kind;
+    if (!e || (e.axis !== 'H' && e.axis !== 'V') || !Number.isInteger(e.i) || !Number.isInteger(e.j) || typeof kind !== 'string' || !kind) continue;
+    const fits = e.axis === 'H' ? e.i >= 0 && e.i < w && e.j >= 0 && e.j <= h : e.i >= 0 && e.i <= w && e.j >= 0 && e.j < h;
+    if (fits) out.set(edgeKey(e), { edge: { axis: e.axis, i: e.i, j: e.j }, kind: kind.slice(0, 40) });
+  }
+  return [...out.values()];
 }
 
 export interface CaveSettings {
@@ -241,6 +259,7 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
     people: kept(scene.people),
     items: kept(scene.items),
     props: kept(scene.props ?? []),
+    ...(scene.walls && { walls: cleanWalls(scene.walls.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
     spawn: spot(scene.spawn),
     ...((scene.origin || w !== scene.w || h !== scene.h) && { origin: scene.origin ?? { w: scene.w, h: scene.h } }),
     ...((scene.shift || dx || dy) && { shift: { i: (scene.shift?.i ?? 0) + dx, j: (scene.shift?.j ?? 0) + dy } }),
@@ -333,11 +352,13 @@ export function cleanScene(input: unknown): Scene {
   // What the scene brought along first, so its props are known when they are checked.
   useCarried(s.carried);
   const props = (Array.isArray(s.props) ? s.props : []).map((p) => cleanPlacedProp(p, w, h)).filter((p): p is PlacedProp => !!p);
+  const walls = cleanWalls(s.walls, w, h);
   const scene: Scene = {
     id: typeof s.id === 'string' && s.id ? s.id : newId(),
     name: typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 40) : s.cave ? 'Cave' : 'Island',
     w, h, levels, paint, plants, decor, animals, people, items, props,
     ...(Object.keys(objects).length && { objects }),
+    ...(walls.length && { walls }),
     spawn: { i: num(s.spawn?.i, 0, w, w / 2), j: num(s.spawn?.j, 0, h, h / 2) },
     ...(s.origin && typeof s.origin === 'object' && Number.isInteger(s.origin.w) && Number.isInteger(s.origin.h) && { origin: { w: clamp(s.origin.w, MIN_SIZE, MAX_SIZE), h: clamp(s.origin.h, MIN_SIZE, MAX_SIZE) } }),
     ...(s.shift && typeof s.shift === 'object' && (Number(s.shift.i) || Number(s.shift.j)) && { shift: { i: Math.round(num(s.shift.i, -MAX_SIZE * 8, MAX_SIZE * 8, 0)), j: Math.round(num(s.shift.j, -MAX_SIZE * 8, MAX_SIZE * 8, 0)) } }),
@@ -353,9 +374,9 @@ export function cleanScene(input: unknown): Scene {
     };
     const old = oldCave(levels, paint);
     if (old) ({ levels, paint } = old);
-    // The cave's own stone is unpainted floor, and rock has no paint.
+    // The cave's own stone is unpainted floor, and rock has no paint but what it is built of (brick or mine).
     scene.levels = levels;
-    scene.paint = paint.map((p, c) => (p === CAVE_OPEN || isRock(levels[c]) ? 0 : p));
+    scene.paint = paint.map((p, c) => (p === CAVE_OPEN || (isRock(levels[c]) && p !== BRICK && p !== MINE) ? 0 : p));
   }
   const set = s.settings;
   if (set && typeof set === 'object') {

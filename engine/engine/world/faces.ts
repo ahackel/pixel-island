@@ -114,7 +114,7 @@ export function paverAt(u: number, v: number, i: number, j: number): Rgb {
 
 // ------------------------------------------------------------------ mine
 
-const WOOD = { wood: rgbOf('#6b4b2e'), dark: rgbOf('#47311e'), light: rgbOf('#8c6a43') };
+export const WOOD = { wood: rgbOf('#6b4b2e'), dark: rgbOf('#47311e'), light: rgbOf('#8c6a43') };
 /** The beam along a mine face's top, in pixels. */
 const BEAM = 5;
 

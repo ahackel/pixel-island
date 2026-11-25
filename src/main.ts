@@ -1655,6 +1655,8 @@ function frame(ms: number): void {
     ...thrown.map((t) => thrownThing(t, ms)), ...game.builds.filter((b) => b.kind === 'raft').map((b) => raftThing(b.stage, groundSpot(b))),
     ...campfires, ...crabs.map((c) => crabThing(world, c, ms)), ...sharks.map((s) => finThing(s, ms, island.water)),
   ];
+  // The scene's own walls, those in front of the survivor dissolving as they walk.
+  things.push(...world.wallThings(actor, ms));
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
   const rect = view.rect();
   let t0 = part('things', begun);

@@ -17,12 +17,14 @@ import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
 import { findPath } from '../../engine/world/path.ts';
 import {
-  CAVE_DEFAULTS, CAVE_OPEN, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
+  CAVE_DEFAULTS, CAVE_OPEN, cleanWalls, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
 } from '../../engine/world/scene.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
 import { bestRamp, CUT, HOLE, RAMP, rampDir, SMOOTH } from '../../engine/world/ground.ts';
 import { carve, caveLamps, caveThings, caveTint, CAVE_DAY, flicker } from '../../engine/world/cave.ts';
+import { edgeBetween, edgeEnds, edgeKey, type Edge } from '../../engine/world/building/building.ts';
+import { wallById, wallKinds, type WallKind } from '../../engine/world/building/walls.ts';
 import { lightByTile } from '../../engine/world/daylight.ts';
 import { isHidden, propKind, propKinds, propPicture, variantsOf } from '../../engine/world/prop.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
@@ -47,7 +49,7 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
+const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'walls', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
 /** A cave's ground is carved out of the rock and has ways out; smoothing, which runs over rock too, is for islands. */
 const CAVE_ONLY: Tool[] = ['carve', 'exit'];
@@ -68,7 +70,7 @@ const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Tool, string> = {
-  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -78,6 +80,8 @@ interface Prefs {
   paint: number;
   /** What the Shape tool makes of the ground. */
   shape: ShapePick;
+  /** The kind of wall the Walls tool builds (building/walls.ts). */
+  wall: string;
   /** Brush size in tiles across, 1 to 7; the brush is round. */
   brush: number;
   plant: string;
@@ -112,13 +116,14 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', wall: 'brick', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
     if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
+    if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
     if (Number.isInteger(saved?.brush) && saved.brush >= 1 && saved.brush <= BRUSH_MAX) prefs.brush = saved.brush;
     if (plantById(saved?.plant)) prefs.plant = saved.plant;
     if (decorById(saved?.decor)) prefs.decor = saved.decor;
@@ -441,6 +446,7 @@ function drawLying(l: Lying): void {
     ...w.plantThings(0), ...w.decorThings(0), ...w.animalThings(0), ...w.itemThings(), ...w.propThings(0),
     ...w.scene.people.map((p) => personThing(p, 0, w)),
     ...(w.scene.cave ? caveThings(w) : []),
+    ...w.wallThings(),
     flagOf(w),
   ];
   const view = { x: -PAD.x, y: -PAD.y, w: g.w + 2 * PAD.x, h: g.h + PAD.y + PAD.x };
@@ -1723,7 +1729,7 @@ function keyDirection(): [number, number] {
 }
 
 type Gesture =
-  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number }
+  | { kind: 'stroke'; touched: Set<number>; last: string; level?: number; placed?: Set<PlacedPlant>; alt?: true; tile?: { i: number; j: number }; at: number; point?: { i: number; j: number }; walls?: 'lay' | 'take' }
   | { kind: 'walk' }
   | { kind: 'edge'; base: World; orig: Scene; a0: number; a1: number; b0: number; b1: number; changed: boolean }
   | { kind: 'move'; sel: Selected; grab: { x: number; y: number }; from: { i: number; j: number }; copy?: true; crossed?: true }
@@ -1742,6 +1748,10 @@ const REPEAT_MS = 200;
 
 function strokeAt(e: { clientX: number; clientY: number }): void {
   if (gesture?.kind !== 'stroke') return;
+  if (toolNow() === 'walls') {
+    wallStroke(e, gesture);
+    return;
+  }
   const tile = tileUnder(e);
   if (!tile) return;
   const key = `${tile.i},${tile.j}`;
@@ -1754,6 +1764,53 @@ function strokeAt(e: { clientX: number; clientY: number }): void {
   gesture.at = performance.now();
   pointerPixel = groundPixel(e);
   for (const step of sideBySide(from, tile)) apply(step, gesture);
+}
+
+/** How near a cell edge's middle, in tiles, a press has to be for the Walls tool to build on that edge alone. */
+const WALL_SNAP = 0.3;
+/**
+ * The Walls tool: a drag goes from tile corner to tile corner, the one nearest the pointer, and builds a wall of the
+ * chosen kind on each edge between them (every corner on the way, so a fast drag leaves no gap); a press near an
+ * edge's middle builds on that edge. A drag that starts on a wall of that kind takes walls away.
+ */
+function wallStroke(e: { clientX: number; clientY: number }, g: Extract<Gesture, { kind: 'stroke' }>): void {
+  const p = groundPixel(e);
+  const to = pointAt(p.x, p.y);
+  if (!to) return;
+  const corner = { i: Math.round(to.i), j: Math.round(to.j) };
+  let changed = false;
+  if (!g.point) {
+    const dv = Math.abs(to.i - corner.i), dh = Math.abs(to.j - corner.j);
+    const edge: Edge = dh < dv ? { axis: 'H', i: Math.floor(to.i), j: corner.j } : { axis: 'V', i: corner.i, j: Math.floor(to.j) };
+    const along = edge.axis === 'H' ? to.i - edge.i : to.j - edge.j;
+    if (Math.min(dh, dv) <= WALL_SNAP && Math.abs(along - 0.5) <= 0.5 - WALL_SNAP / 2) changed = buildWall(edge, g);
+  } else if (g.point.i !== corner.i || g.point.j !== corner.j) {
+    let at = g.point;
+    for (const step of sideBySide(g.point, corner)) {
+      const edge = edgeBetween([at.i, at.j], [step.i, step.j]);
+      if (edge) changed = buildWall(edge, g) || changed;
+      at = step;
+    }
+  }
+  g.point = corner;
+  if (changed) sceneChanged();
+}
+
+/** Builds a wall of the chosen kind on a view edge, or takes it away; says whether anything changed. */
+function buildWall(view: Edge, g: Extract<Gesture, { kind: 'stroke' }>): boolean {
+  const [a, b] = edgeEnds(view).map(([i, j]) => world.toData({ i, j }));
+  const edge = edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+  const s = world.scene;
+  if (!edge || !cleanWalls([{ edge, kind: prefs.wall }], s.w, s.h).length) return false;
+  const key = edgeKey(edge);
+  const walls = s.walls ?? [];
+  const there = walls.find((x) => edgeKey(x.edge) === key);
+  g.walls ??= there?.kind === prefs.wall ? 'take' : 'lay';
+  if (g.walls === 'take' ? there?.kind !== prefs.wall : there?.kind === prefs.wall) return false;
+  // A new list, so the world sees the walls changed.
+  const rest = walls.filter((x) => x !== there);
+  s.walls = g.walls === 'take' ? rest : [...rest, { edge, kind: prefs.wall }];
+  return true;
 }
 
 /** The tiles from a to b (without a, unless it is b), each next to the one before along i or j. */
@@ -1980,6 +2037,8 @@ function frame(ms: number): void {
       ...world.plantThings(wind), ...world.decorThings(ms), ...world.animalThings(ms, herd ?? undefined), ...world.itemThings(), ...world.propThings(wind), ...world.scene.people.map((p) => personThing(p, ms)),
       // In Play the rock in front of the character dissolves as they walk; while editing, all rock that hides floor is down to its stub.
       ...(cave ? (prefs.mode === 'play' && actor ? caveThings(world, actor, ms) : caveThings(world)) : []),
+      // The scene's walls: in Play those in front of the character dissolve as they walk.
+      ...(prefs.mode === 'play' && actor ? world.wallThings(actor, ms) : world.wallThings()),
     ];
     if (prefs.mode === 'play' && actor) things.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
     else {
@@ -2353,6 +2412,12 @@ function editOptions(): Node[] {
     const grounds = sceneNow().cave ? [CAVE_OPEN, 1, 2, 3, 5, 6, 7] : [0, 1, 2, 3, 5, 6, 7];
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
+  }
+  if (tool === 'walls') {
+    const kinds = wallKinds();
+    if (!kinds.some((k) => k.id === prefs.wall)) prefs.wall = kinds[0].id;
+    const name = (k: WallKind) => (k.builtin ? t(`wall.${k.id}` as Key) : k.name);
+    rows.push(field({ words: t('wall') }, choice(t('wall'), kinds.map((k) => ({ id: k.id, words: name(k) })), () => prefs.wall, (id) => set({ wall: id }), 'list')));
   }
   if (tool === 'shape') {
     rows.push(field({ words: t('shape') }, choice(t('shape'), SHAPE_PICKS.map((p) => ({ id: p.id, icon: p.icon, words: t(`shape.${p.id}` as Key) })), () => prefs.shape, (id) => set({ shape: id as ShapePick }), 'buttons')));

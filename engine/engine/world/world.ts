@@ -25,7 +25,9 @@ import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
 import { CAVE_FLOOR, CAVE_OPEN, mapOf, settingsOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
-import { blocked, BuildingView, crosses, type Building, type Part, type PieceKind } from './building/building.ts';
+import { blocked, BuildingView, cornerBlocked, crosses, edgeBetween, edgeEnds, emptyBuilding, wallEnds, type Building, type EdgeKind, type Part, type PieceKind } from './building/building.ts';
+import { edgeKindOf, wallById, wallFades } from './building/walls.ts';
+import { WallFade } from './wall-fade.ts';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 /** A lamp for `World.lightField`: where it stands on the map, how far it reaches in tiles, its colour, its strength 0 to 1. */
@@ -411,7 +413,8 @@ export class World {
     const { w, h } = this.map;
     const open = new Uint8Array(w * h);
     for (let c = 0; c < w * h; c++) open[c] = isRock(this.shown.levels[c]) ? 0 : 1;
-    const walled = (a: { x: number; y: number }, b: { x: number; y: number }) => this.buildings.some((bd) => crosses(bd, a, b));
+    const all = this.allBuildings();
+    const walled = (a: { x: number; y: number }, b: { x: number; y: number }) => all.some((bd) => crosses(bd, a, b));
     const out: LitLamp[] = [];
     for (const lamp of lamps) {
       const ci = Math.floor(lamp.i), cj = Math.floor(lamp.j);
@@ -486,8 +489,11 @@ export class World {
     if (!b || b.ground !== this.ground || b.kinds !== this.pieceKinds) {
       this.builtWith = { view: new BuildingView(this.pieceKinds, { map: this.floor, ground: this.ground }), ground: this.ground, kinds: this.pieceKinds };
     }
-    const view = this.builtWith!.view;
-    return this.buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => {
+    return this.partThings(this.builtWith!.view, this.buildings, at);
+  }
+
+  private partThings(view: BuildingView, buildings: Building[], at?: { i: number; j: number }): Thing[] {
+    return buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => {
       // Any spot will do to place the picture; the middle of its footprint, which also decides what ground lies in front of it.
       const spot = { i: (part.box.x0 + part.box.x1) / 2, j: (part.box.y0 + part.box.y1) / 2, level: 0 };
       const at0 = footOf(this.ground, spot);
@@ -497,6 +503,66 @@ export class World {
         box: { ...part.box, key: part.key }, shadow: part.shadow, bases: part.base,
       };
     });
+  }
+
+  /** The scene's own walls (`Scene.walls`) in view coordinates: a building per kind, as each kind has its own height. */
+  private walled: { from: Scene['walls']; rot: number; buildings: Building[] } | null = null;
+  viewWalls(): Building[] {
+    if (!this.walled || this.walled.from !== this.scene.walls || this.walled.rot !== this.rot) {
+      const byKind = new Map<string, Building>();
+      for (const { edge, kind } of this.scene.walls ?? []) {
+        const w = wallById(kind);
+        if (!w) continue;
+        const [a, b] = edgeEnds(edge).map(([i, j]) => this.toView({ i, j }));
+        const e = edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+        if (!e) continue;
+        const bd = byKind.get(kind) ?? byKind.set(kind, emptyBuilding(w.height)).get(kind)!;
+        bd.edges.set(`${e.axis}${e.i},${e.j}`, { kind, edge: e });
+      }
+      this.walled = { from: this.scene.walls, rot: this.rot, buildings: [...byKind.values()] };
+    }
+    return this.walled.buildings;
+  }
+  /** Everything that stops a walker on an edge: the game's buildings and the scene's walls. */
+  private allBuildings(): Building[] {
+    return [...this.buildings, ...this.viewWalls()];
+  }
+
+  /** How the scene's walls are drawn and how far each has dissolved. */
+  private wallDraw: { view: BuildingView; ground: TerrainImage; kinds: string; fade: WallFade; cell: string; walls: Building[]; ms?: number } | null = null;
+  /**
+   * The scene's walls as things. Those in front of the player at `at` dissolve over a quarter second, by the frame's
+   * time `ms` (at once without it), a straight run at a time (wall-fade.ts); without a player none do.
+   */
+  wallThings(at?: { i: number; j: number }, ms?: number): Thing[] {
+    const buildings = this.viewWalls();
+    if (!buildings.length) return [];
+    const dark = settingsOf(this.scene).light === 'dark';
+    const kinds = buildings.map((b) => b.edges.values().next().value!.kind).join('|') + `|${dark}`;
+    let d = this.wallDraw;
+    if (!d || d.ground !== this.ground || d.kinds !== kinds) {
+      const pieces: Record<string, EdgeKind> = {};
+      for (const b of buildings) {
+        const kind = b.edges.values().next().value!.kind;
+        pieces[kind] = edgeKindOf(wallById(kind)!, dark);
+      }
+      d = this.wallDraw = { view: new BuildingView(pieces, { map: this.floor, ground: this.ground }), ground: this.ground, kinds, fade: d?.fade ?? new WallFade(), cell: '-', walls: [] };
+    }
+    // Where the player stands, as the fade goes by it; walls or ground changed, it is aimed again.
+    const cell = at ? `${Math.floor(at.i)},${Math.floor(at.j)}` : '';
+    if (d.cell !== cell || d.walls !== buildings) {
+      const fading = buildings.flatMap((b) => [...b.edges.values()].map(({ edge, kind }) => ({
+        edge, kind, fades: wallFades(wallById(kind)!), top: Math.max(...wallEnds(this.floor, edge).high) + b.height,
+      })));
+      d.fade.aim(fading, this.floor, at ? { i: Math.floor(at.i), j: Math.floor(at.j) } : null);
+      d.cell = cell;
+      d.walls = buildings;
+    }
+    if (ms === undefined || d.ms === undefined) d.fade.settle();
+    else d.fade.advance(Math.max(0, Math.min(100, ms - d.ms)));
+    d.ms = ms;
+    for (const b of buildings) for (const piece of b.edges.values()) piece.fade = d.fade.fadeOf(piece.edge);
+    return this.partThings(d.view, buildings);
   }
 
   constructor(scene: Scene, rot = 0) {
@@ -1424,7 +1490,7 @@ export class World {
   /** Whether a walker can stand at a point: land or the shallows, reached without a cliff or too steep a slope, clear of big plants. */
   canWalk(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
     const a: [number, number] = [Math.floor(from.i), Math.floor(from.j)];
-    const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)];
+    const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)], b0 = b;
     if (!inside(this.floor, ...b) || this.water - levelAt(this.floor, ...b) > WADE) return false;
     if (isRock(levelAt(this.map, ...b)) || shapeAt(this.map, ...b) === HOLE) return false;
     // Onto a cell (not about in the one stood on, so nobody is stuck on a slope they were set down on): not too steep, and
@@ -1448,9 +1514,9 @@ export class World {
     for (const it of this.viewItems()) {
       if (itemCovers(it, this.rot, this.scene.objects, to.i, to.j) && !itemCovers(it, this.rot, this.scene.objects, from.i, from.j)) return false;
     }
-    // Walls block crossing their edge; stepping off one placed on the walker is allowed.
-    for (const b of this.buildings) {
-      if (crosses(b, { x: from.i, y: from.j }, { x: to.i, y: to.j })) return false;
+    // Walls block crossing their edge, and a step past a wall's end at a corner; stepping off one placed on the walker is allowed.
+    for (const b of this.allBuildings()) {
+      if (crosses(b, { x: from.i, y: from.j }, { x: to.i, y: to.j }) || cornerBlocked(b, a, b0)) return false;
       if (blocked(b, to.i, to.j, WALL_ROOM) && !blocked(b, from.i, from.j, WALL_ROOM)) return false;
     }
     return true;
@@ -1482,7 +1548,7 @@ export class World {
       const [a, b] = itemHalf(it, this.rot, this.scene.objects);
       loop([[it.vi - a, it.vj - b], [it.vi + a, it.vj - b], [it.vi + a, it.vj + b], [it.vi - a, it.vj + b]]);
     }
-    for (const b of this.buildings) {
+    for (const b of this.allBuildings()) {
       for (const { edge: e } of b.edges.values()) line([e.i, e.j], e.axis === 'H' ? [e.i + 1, e.j] : [e.i, e.j + 1]);
     }
   }

@@ -5,7 +5,10 @@
 import { cleanArt, type Art } from '../../core/stamp.ts';
 import { newId, readStore, writeStore } from '../../../shared/files.ts';
 import type { EdgeKind } from './building.ts';
+import { builtWall, fence } from './pieces/built-wall.ts';
 import { paintedWall } from './pieces/painted-wall.ts';
+import { PALETTE } from '../../core/palette.ts';
+import { stoneTones } from '../faces.ts';
 import { plankWall, type PlankWallOptions } from './pieces/plank-wall.ts';
 
 export interface WallKind {
@@ -14,28 +17,37 @@ export interface WallKind {
   /** Rule-drawn by one of the engine's pieces, or painted. */
   source: 'rule' | 'painted';
   builtin: boolean;
-  /** For a rule wall: which piece and its options. */
-  rule?: { piece: 'plank'; options: PlankWallOptions };
+  /** For a rule wall: which piece and its options (only planks have any). */
+  rule?: { piece: 'plank'; options: PlankWallOptions } | { piece: 'brick' | 'stone' | 'fence' };
   /** For a painted wall, or a locked built-in one. */
   art?: Art;
   locked?: boolean;
-  /** The wall height, in levels, it is shown and frozen at. */
+  /** The wall height, in levels, it is shown and frozen at, and built to in a scene (over the higher side of its edge). */
   height: number;
+  /** How thick it is on the plan, in tiles. */
+  thick?: number;
 }
 
 /**
- * The walls the engine ships. The hut's planks are the options the island game builds with. Rock walls
- * for caves are drawn by the cave code and will join this list when it moves into the engine.
+ * The walls the engine ships, for building scenes (`Scene.walls`) and games. The hut's planks are the options the
+ * island game builds with. A cave's rock walls are its rock's own faces (cave.ts), not walls of this list.
  */
 export const BUILTIN_WALLS: WallKind[] = [
-  { id: 'plank', name: 'Plank wall (hut)', source: 'rule', builtin: true, rule: { piece: 'plank', options: { overhang: 3, top: 'slope', seed: 1 } }, height: 4 },
+  { id: 'plank', name: 'Plank wall (hut)', source: 'rule', builtin: true, rule: { piece: 'plank', options: { overhang: 3, top: 'slope', seed: 1 } }, height: 4, thick: 0.1 },
+  { id: 'brick', name: 'Brick wall', source: 'rule', builtin: true, rule: { piece: 'brick' }, height: 5, thick: 0.14 },
+  { id: 'stone', name: 'Stone wall', source: 'rule', builtin: true, rule: { piece: 'stone' }, height: 5, thick: 0.18 },
+  { id: 'fence', name: 'Fence', source: 'rule', builtin: true, rule: { piece: 'fence' }, height: 2, thick: 0.06 },
 ];
+
+/** Whether a wall dissolves while it stands in front of the survivor: all but fences, which are low and seen through anyway. */
+export const wallFades = (w: WallKind) => w.rule?.piece !== 'fence';
 
 export const WALL_STORE = 'pixel-walls';
 interface Store { mine: WallKind[]; locks: Record<string, Art> }
 
 const TOPS = ['slope', 'stepped', 'flat'] as const;
 function cleanRule(raw: any): WallKind['rule'] {
+  if (raw?.piece === 'brick' || raw?.piece === 'stone' || raw?.piece === 'fence') return { piece: raw.piece };
   const o = raw?.options ?? {};
   const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : d);
   return { piece: 'plank', options: { overhang: int(o.overhang, 0, 6, 2), top: TOPS.includes(o.top) ? o.top : 'slope', seed: int(o.seed, 0, 9999, 1) } };
@@ -50,6 +62,7 @@ function cleanWall(raw: any): WallKind | null {
     id: typeof raw.id === 'string' && raw.id.startsWith('wall:') ? raw.id.slice(0, 40) : `wall:${newId()}`,
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 40) : 'Wall',
     source, builtin: false, height: typeof raw.height === 'number' ? Math.max(1, Math.min(8, Math.round(raw.height))) : 3,
+    ...(typeof raw.thick === 'number' && Number.isFinite(raw.thick) && { thick: Math.max(0.02, Math.min(0.4, raw.thick)) }),
     ...(source === 'rule' ? { rule: cleanRule(raw.rule) } : { art }),
   };
 }
@@ -74,13 +87,23 @@ export function wallKinds(): WallKind[] {
 }
 export const wallById = (id: string) => wallKinds().find((w) => w.id === id);
 
-/** How a wall kind is drawn: from its art when painted or locked, else by its rule. */
+/** How a wall kind is drawn: from its art when painted or locked, else by its rule; stone in a cave's tones when `dark`. */
 const drawn = new WeakMap<object, EdgeKind>();
-export function edgeKindOf(w: WallKind): EdgeKind {
+const drawnDark = new WeakMap<object, EdgeKind>();
+export function edgeKindOf(w: WallKind, dark = false): EdgeKind {
   const key = (w.art ?? w.rule ?? w) as object;
-  let kind = drawn.get(key);
-  if (!kind) drawn.set(key, (kind = w.art ? paintedWall(w.art) : plankWall(w.rule!.options)));
+  const kept = dark ? drawnDark : drawn;
+  let kind = kept.get(key);
+  if (!kind) kept.set(key, (kind = w.art ? paintedWall(w.art) : ruleWall(w, dark)));
   return kind;
+}
+function ruleWall(w: WallKind, dark: boolean): EdgeKind {
+  const rule = w.rule!;
+  switch (rule.piece) {
+    case 'plank': return plankWall(rule.options);
+    case 'fence': return fence();
+    default: return builtWall({ material: rule.piece, thick: w.thick ?? 0.14, ...(dark && { tones: stoneTones(PALETTE.cave) }) });
+  }
 }
 
 /**

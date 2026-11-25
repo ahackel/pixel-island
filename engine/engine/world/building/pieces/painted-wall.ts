@@ -7,7 +7,7 @@
 import { hexOf } from '../../../core/palette.ts';
 import { blankGrid, cellForHex, gridsOf, toArt, type Art, type Grid } from '../../../core/stamp.ts';
 import { createHeightMap, LEVEL_PX, renderTerrain } from '../../terrain.ts';
-import { endHeights, HALF_H, HALF_W, hex, mul, shadowAt, TONE, type Box, type EdgeKind } from '../building.ts';
+import { dissolved, endHeights, HALF_H, HALF_W, hex, mul, shadowAt, STUB_PX, TONE, type Box, type EdgeKind } from '../building.ts';
 
 /** The row the foot of edge column `c` stands on, at level 0, from the first end's row `sy`. */
 const tOf = (axis: 'H' | 'V', c: number) => (axis === 'H' ? (c + 0.5) / 16 : 1 - (c + 0.5) / 16);
@@ -21,7 +21,7 @@ export function paintedWall(art: Art): EdgeKind {
   const tall = (art.oy - top) / LEVEL_PX;
   return {
     on: 'edge',
-    draw(site, e, height, { cut, cap }) {
+    draw(site, e, height, { cut, cap, fade = 0 }) {
       const { map, ground } = site;
       const [h0, h1] = endHeights(map, e);
       const o = ground.origin;
@@ -48,7 +48,7 @@ export function paintedWall(art: Art): EdgeKind {
           const rgb = rgbs[r][c];
           if (!rgb) continue;
           const y = foot - (art.oy - r);
-          if (y < cutTo || y < capTo) continue;
+          if (y < cutTo || y < capTo || (y < foot - STUB_PX && dissolved(x0 + c, y, fade))) continue;
           const ly = y - y0;
           if (ly < 0 || ly >= h) continue;
           const px = mul(rgb, tone * (y < shadeTo ? 0.7 : 1));
