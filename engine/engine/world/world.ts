@@ -327,16 +327,18 @@ function withLoneRockFloored<M extends HeightMap & { shape: Uint8Array }>(map: M
   return { ...map, levels, shape };
 }
 
-/** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change. */
+/** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change; a cave's rock stays and does not count. */
 export function smooth(map: HeightMap, cells: number[]): void {
   const before = Int8Array.from(map.levels);
   for (const c of cells) {
+    // A cave's rock is neither smoothed nor counted: it stands for no height.
+    if (isRock(before[c])) continue;
     const i = c % map.w;
     const j = Math.floor(c / map.w);
     let sum = 0;
     let n = 0;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-      if (!inside(map, i + di, j + dj)) continue;
+      if (!inside(map, i + di, j + dj) || isRock(before[(j + dj) * map.w + i + di])) continue;
       sum += before[(j + dj) * map.w + i + di];
       n++;
     }
