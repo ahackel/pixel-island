@@ -1,8 +1,8 @@
 import './style.css';
 import { frameDone, part } from '../../shared/stats.ts';
-import { choice, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { choice, rangeSlider, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
 import { pixelCanvas } from '../../shared/pixel-ui.ts';
-import { C } from '../../ui/theme.ts';
+import { C, S } from '../../ui/theme.ts';
 import { canSaveToProject, removeFromProject, saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
@@ -61,8 +61,8 @@ type Work = Tool | 'smooth' | 'level' | 'shape';
 /** A cave has ways out. */
 const CAVE_ONLY: Tool[] = ['exit'];
 /** What the Material tool paints, with its icon. */
-const TARGETS = [{ id: 'floor', icon: 'flat' }, { id: 'walls', icon: 'wall' }, { id: 'both', icon: 'layers' }] as const;
-type Target = (typeof TARGETS)[number]['id'];
+/** What the Material tool paints: the top of the ground, or the faces of its steps and a cave's rock walls, as pressed; Shift both. */
+type Target = 'floor' | 'walls' | 'both';
 /** What the Ground tool makes of the edges of the cells it works on: leaves them, or makes them smooth or cut (ground.ts). */
 const EDGES = [{ id: 'keep', icon: 'shapes' }, { id: 'soft', icon: 'smooth' }, { id: 'hard', icon: 'rect' }] as const;
 type Edges = (typeof EDGES)[number]['id'];
@@ -115,8 +115,6 @@ interface Prefs {
   tool: Tool;
   /** 0 by height, otherwise `PAINTS[n - 1]`. */
   paint: number;
-  /** What the Material tool paints: the tops of the ground, the faces of its steps and a cave's rock walls, or both. */
-  target: Target;
   /** The height the Ground tool levels to with Alt, picked with Ctrl-click; null for the height where a stroke starts. */
   levelTo: number | null;
   /** What the Ground tool makes of the edges of the cells it works on. */
@@ -159,13 +157,12 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, target: 'floor', levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
     if (TOOLS.includes(saved?.tool)) prefs.tool = saved.tool;
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
-    if (TARGETS.some((p) => p.id === saved?.target)) prefs.target = saved.target;
     if (Number.isInteger(saved?.levelTo) && saved.levelTo >= MIN_LEVEL && saved.levelTo <= MAX_LEVEL) prefs.levelTo = saved.levelTo;
     if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
     if (WAYS.some((p) => p.id === saved?.way)) prefs.way = saved.way;
@@ -1009,8 +1006,8 @@ function groundPixel(e: { clientX: number; clientY: number }): { x: number; y: n
 }
 const tileUnder = (e: { clientX: number; clientY: number }) => {
   const tile = tileDrawn(e);
-  // Ground cut away is not there to work on.
-  return tile && !world.aboveCut(tile.j * world.map.w + tile.i) ? tile : null;
+  // Ground cut away, or under the cutaway's floor, is not there to work on.
+  return tile && !world.outsideCut(tile.j * world.map.w + tile.i) ? tile : null;
 };
 /** The tile drawn under the pointer, as the tools take it. */
 function tileDrawn(e: { clientX: number; clientY: number }): { i: number; j: number } | null {
@@ -1030,45 +1027,73 @@ function tileDrawn(e: { clientX: number; clientY: number }): { i: number; j: num
   return Math.abs(q.i - tile.i - 1) < Math.abs(q.j - tile.j - 1) ? holes[0] : holes[1];
 }
 
+/** Whether the pointer is on the top of the ground or on a face (a step's, or rock): what the Material tool paints there. */
+let aimed: 'floor' | 'walls' = 'floor';
+function aimAt(e: { clientX: number; clientY: number }): 'floor' | 'walls' {
+  const p = groundPixel(e), g = world.ground;
+  const x = Math.floor(p.x), y = Math.floor(p.y);
+  if (x < 0 || y < 0 || x >= g.w || y >= g.h) return 'floor';
+  const c = g.cell[y * g.w + x];
+  // A cave's rock is drawn flat, but what is painted on it is what its walls are built of.
+  if (c >= 0 && isRock(world.map.levels[c])) return 'walls';
+  return g.tops[y * g.w + x] ? 'floor' : 'walls';
+}
+/** What the Material tool paints now: what the pointer is on, or with Shift held the top and faces both. */
+const aimNow = (): Target => (mods.shift ? 'both' : aimed);
+
 // ------------------------------------------------------------------ cutaway
 
-/** Each open scene's cutaway while editing (World.cutaway), by scene id: the level the ground is cut away above. Not saved. */
-const cuts = new Map<string, number>();
-/** The levels a scene can be cut away at: from its lowest floor over the water to one under its highest ground; null if flat. */
-function cutRange(w = world): { lo: number; hi: number } | null {
-  let lo = Infinity, hi = -Infinity;
-  for (const l of w.map.levels) if (!isRock(l)) { lo = Math.min(lo, l); hi = Math.max(hi, l); }
+/**
+ * Each open scene's cutaway while editing, by scene id: the level the ground is cut away above (World.cutaway) and the
+ * level under which it lies out of reach (World.cutBelow), null for none. Not saved.
+ */
+const cuts = new Map<string, { above: number | null; below: number | null }>();
+/** The levels a scene's cutaway reaches over: from its lowest floor over the water to its highest ground; null if flat. */
+function cutRange(w = world): { lo: number; top: number } | null {
+  let lo = Infinity, top = -Infinity;
+  for (const l of w.map.levels) if (!isRock(l)) { lo = Math.min(lo, l); top = Math.max(top, l); }
   lo = Math.max(lo, w.water);
-  return hi - 1 >= lo ? { lo, hi: hi - 1 } : null;
+  return top > lo ? { lo, top } : null;
 }
-/** The cutaway in force: the scene's, kept inside its range; none in Play. */
+/** The cutaway in force: the level the scene's ground is cut away above, kept inside its range; none in Play. */
 function cutNow(): number | null {
-  const n = cuts.get(sceneNow().id), r = cutRange();
-  return prefs.mode !== 'edit' || n === undefined || !r ? null : Math.max(r.lo, Math.min(r.hi, n));
+  const n = cuts.get(sceneNow().id)?.above, r = cutRange();
+  return prefs.mode !== 'edit' || n === null || n === undefined || !r || n >= r.top ? null : Math.max(r.lo, n);
 }
-function setCut(n: number | null): void {
-  if (n === null) cuts.delete(sceneNow().id);
-  else cuts.set(sceneNow().id, n);
+/** The cutaway's floor in force: the level under which the scene's ground is out of reach; none in Play. */
+function belowNow(): number | null {
+  const n = cuts.get(sceneNow().id)?.below, r = cutRange();
+  return prefs.mode !== 'edit' || n === null || n === undefined || !r || n <= r.lo ? null : Math.min(cutNow() ?? r.top, n);
+}
+function setCut(above: number | null, below: number | null = belowNow()): void {
+  if (above === null && below === null) cuts.delete(sceneNow().id);
+  else cuts.set(sceneNow().id, { above, below: below !== null && above !== null ? Math.min(below, above) : below });
   hover = null;
   version++;
-  showCut();
 }
 /** Page Up and Page Down: the cutaway a level up or down; down from none starts under the highest ground, up past it ends it. */
 function stepCut(by: number): void {
   const r = cutRange(), now = cutNow();
   if (!r) return;
-  const next = now === null ? (by < 0 ? r.hi : null) : now + by;
-  setCut(next === null || next > r.hi ? null : Math.max(r.lo, next));
+  const next = now === null ? (by < 0 ? r.top - 1 : null) : now + by;
+  setCut(next === null || next >= r.top ? null : Math.max(r.lo, next));
+  showCut();
 }
-/** The cutaway's button among the view buttons: all ground, or a level to cut away above; hidden where there is nothing to cut. */
-const cutSlot = h('span');
+/**
+ * The cutaway, floating at the left of the view: a standing slider over the scene's levels with two knobs. Ground over
+ * the upper one is cut away, ground under the lower one is out of reach; both at their ends, all of it is there. Hidden
+ * where there is nothing to cut.
+ */
+const cutSlot = h('div', { class: 'cutaway' });
 function showCut(): void {
   const r = prefs.mode === 'edit' ? cutRange() : null;
   cutSlot.hidden = !r;
   if (!r) return void cutSlot.replaceChildren();
-  const levels = Array.from({ length: r.hi - r.lo + 1 }, (_, k) => String(r.hi - k));
-  const options = [{ id: 'all', icon: 'height', words: t('cut.all') }, ...levels.map((n) => ({ id: n, words: n }))];
-  cutSlot.replaceChildren(choice(t('cut'), options, () => String(cutNow() ?? 'all'), (id) => setCut(id === 'all' ? null : Number(id)), 'list'));
+  cutSlot.replaceChildren(rangeSlider(t('cut'), {
+    min: r.lo, max: r.top, length: 64,
+    get: () => [belowNow() ?? r.lo, cutNow() ?? r.top],
+    change: (lo, hi) => setCut(hi >= r.top ? null : hi, lo <= r.lo ? null : lo),
+  }));
 }
 
 /** The start point, shown while editing: a small flag. */
@@ -1084,7 +1109,7 @@ let away: { scene: Scene; tile: { i: number; j: number } } | null = null;
 
 function brushCells(at: { i: number; j: number }, tool: Work = toolNow(), w = world): number[] {
   const size = BRUSHED.includes(tool) ? prefs.brush : 1;
-  return roundBrush(size).filter(([di, dj]) => inside(w.map, at.i + di, at.j + dj)).map(([di, dj]) => (at.j + dj) * w.map.w + at.i + di).filter((c) => !w.aboveCut(c));
+  return roundBrush(size).filter(([di, dj]) => inside(w.map, at.i + di, at.j + dj)).map(([di, dj]) => (at.j + dj) * w.map.w + at.i + di).filter((c) => !w.outsideCut(c));
 }
 
 /** Whether the tool would do nothing on a tile, so the brush shows red there. */
@@ -1338,7 +1363,7 @@ function placeProp(at: { i: number; j: number }, placed: Set<PlacedPlant>): void
  * to, what it planted, whether Alt was held, whether it takes ramps (or holes) away, the tool as the modifier keys made
  * it, whether the Ground tool began it (so it sets edges), and the ramp or hole the Ways tool lays.
  */
-interface StrokeState { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean; tool?: Work; ground?: true; shape?: 'ramp' | 'hole' }
+interface StrokeState { touched: Set<number>; level?: number; placed?: Set<PlacedPlant>; alt?: true; unramp?: boolean; tool?: Work; ground?: true; shape?: 'ramp' | 'hole'; target?: Target }
 
 /** Makes the edges of cells smooth or cut, as the Ground tool's Edges say; ramps, holes and rock stay. */
 function setEdges(map: World['map'], cells: number[]): void {
@@ -1353,8 +1378,9 @@ function setEdges(map: World['map'], cells: number[]): void {
  * the pressed one is pulled to and no higher, or go down to it and no lower, so a pull makes a plateau or a pit. In a
  * cave, a pull down on rock carves it open to the floor beside it (and deeper as it goes on), and floor pulled up to
  * the top of the rock is rock again. Each step is worked from the ground as it was at the press, so it previews live.
+ * A quick tap in a cave, with no pull, turns rock into floor and floor into rock (`tapRock`).
  */
-interface Pull { y: number; tile: { i: number; j: number }; cells: number[]; from: number | null; top: number; was: { levels: Int8Array; shape: Uint8Array; paint: Uint8Array; side: Uint8Array }; d: number; words: string }
+interface Pull { y: number; tile: { i: number; j: number }; cells: number[]; from: number | null; top: number; was: { levels: Int8Array; shape: Uint8Array; paint: Uint8Array; side: Uint8Array }; d: number; words: string; ms: number; went?: true }
 /** Screen pixels the pointer moves for a level: a level's height on screen, but not so little that it jumps. */
 const pullStep = () => Math.max(LEVEL_PX * zoom, 12);
 function startPull(e: { clientY: number }, tile: { i: number; j: number }): Pull {
@@ -1363,17 +1389,30 @@ function startPull(e: { clientY: number }, tile: { i: number; j: number }): Pull
   const was = { levels: Int8Array.from(map.levels), shape: Uint8Array.from(map.shape), paint: Uint8Array.from(map.paint), side: Uint8Array.from(map.side) };
   // A cave's floor pulled up to the rock's top, its headroom over the floor, fills in.
   const top = world.scene.cave ? Math.min(MAX_LEVEL + 1, world.flatLevel + (settingsOf(world.scene).headroom || CAVE_WALL)) : MAX_LEVEL;
-  return { y: e.clientY, tile, cells: brushCells(tile, 'ground'), from: isRock(level) ? null : level, top, was, d: NaN, words: '' };
+  return { y: e.clientY, tile, cells: brushCells(tile, 'ground'), from: isRock(level) ? null : level, top, was, d: NaN, words: '', ms: performance.now() };
+}
+/** A tap without a pull to toggle a cave's rock: no longer than this, in milliseconds. */
+const TAP_MS = 350;
+/** A quick tap of the Ground tool in a cave: rock pressed is carved open, floor pressed filled with rock. Says whether it did. */
+function tapRock(pull: Pull): boolean {
+  if (!world.scene.cave || pull.went || performance.now() - pull.ms > TAP_MS) return false;
+  const map = world.map;
+  if (!carve(map, pull.cells, pull.from === null)) return false;
+  pull.words = pull.from === null ? `${t('read.rock')} → ${map.levels[pull.tile.j * map.w + pull.tile.i]}` : `${pull.from} → ${t('read.rock')}`;
+  groundDirty = true;
+  sceneChanged();
+  return true;
 }
 function pullTo(pull: Pull, clientY: number): void {
   const dy = (pull.y - clientY) / pullStep();
   // A little past half a level before the first step, so a press that wobbles changes nothing.
   let d = Math.sign(dy) * Math.floor(Math.abs(dy) + 0.4);
   const low = MIN_LEVEL - (pull.from ?? MIN_LEVEL);
-  // Not over a cutaway, where it would be cut away unseen.
-  if (pull.from !== null) d = Math.max(low, Math.min(Math.min(pull.top, world.cutaway ?? Infinity) - pull.from, d));
+  // Not over a cutaway, where it would be cut away unseen, nor under its floor, out of reach.
+  if (pull.from !== null) d = Math.max(Math.max(low, (world.cutBelow ?? -Infinity) - pull.from), Math.min(Math.min(pull.top, world.cutaway ?? Infinity) - pull.from, d));
   if (d === pull.d) return;
   pull.d = d;
+  if (d) pull.went = true;
   const map = world.map;
   map.levels.set(pull.was.levels);
   map.shape.set(pull.was.shape);
@@ -1418,7 +1457,7 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
   // The Ways tool lays ramps and holes a cell at a time.
   const cells = stroke.shape ? [at.j * map.w + at.i] : brushCells(at, tool);
   // Under a cutaway nothing is raised over it, where it would be cut away unseen.
-  const cut = world.cutaway, was = cut === null ? null : cells.map((c) => map.levels[c]);
+  const cut = world.cutaway, below = world.cutBelow, was = cut === null && below === null ? null : cells.map((c) => map.levels[c]);
   const fresh = cells.filter((c) => !stroke.touched.has(c));
   fresh.forEach((c) => stroke.touched.add(c));
   const tile = (c: number): [number, number] => [c % map.w, Math.floor(c / map.w)];
@@ -1460,7 +1499,7 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       }
       break;
     case 'paint':
-      for (const c of fresh) groundDirty = paintCell(map, c) || groundDirty;
+      for (const c of fresh) groundDirty = paintCell(map, c, stroke.target ?? 'floor') || groundDirty;
       break;
     case 'exit':
       if (fresh.length) toggleExit(at);
@@ -1499,7 +1538,12 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       world.scene.spawn = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
       break;
   }
-  if (was) cells.forEach((c, k) => { if (!isRock(was[k]) && was[k] <= cut! && !isRock(map.levels[c]) && map.levels[c] > cut!) map.levels[c] = cut!; });
+  // Nor is anything lowered under the cutaway's floor, out of reach.
+  if (was) cells.forEach((c, k) => {
+    if (isRock(was[k]) || isRock(map.levels[c])) return;
+    if (cut !== null && was[k] <= cut && map.levels[c] > cut) map.levels[c] = cut;
+    if (below !== null && was[k] >= below && map.levels[c] < below) map.levels[c] = below;
+  });
   sceneChanged();
 }
 
@@ -1508,15 +1552,15 @@ const STONE = PAINTS.indexOf('rock') + 1;
 /** What a cave's rock is built of with a material painted on it: brick, mine or stone; null for what rock cannot be (sand, say). */
 const rockOf = (n: number) => (n === BRICK || n === MINE ? n : n === CAVE_OPEN || n === STONE ? CAVE_OPEN : null);
 /** Whether the Material tool, with its target, can paint a cell at all, so the brush shows red where none can. */
-function paintable(map: World['map'], c: number): boolean {
+function paintable(map: World['map'], c: number, target = aimNow()): boolean {
   if (!isRock(map.levels[c])) return true;
-  return prefs.target === 'both' || (prefs.target === 'walls' && rockOf(prefs.paint) !== null);
+  return target === 'both' || (target === 'walls' && rockOf(prefs.paint) !== null);
 }
 /**
  * Paints a cell with the Material tool's material, as its target says: Floor its top, keeping its faces as they were;
  * Walls the faces of its steps, or on a cave's rock what its walls are built of; Both all of it. Says whether it changed.
  */
-function paintCell(map: World['map'], c: number, n = prefs.paint, target = prefs.target): boolean {
+function paintCell(map: World['map'], c: number, target: Target, n = prefs.paint): boolean {
   const before = map.paint[c], sideBefore = map.side[c];
   if (isRock(map.levels[c])) {
     if (target === 'floor') return false;
@@ -1548,7 +1592,7 @@ function pickFrom(at: { i: number; j: number }): void {
   if (tool === 'paint') {
     const grounds = paintsFor(sceneNow());
     // Ground by height in a cave is the cave's own stone.
-    const had = prefs.target === 'walls' && !isRock(map.levels[c]) ? sideOf(map, c) : map.paint[c];
+    const had = aimNow() === 'walls' && !isRock(map.levels[c]) ? sideOf(map, c) : map.paint[c];
     const n = had === 0 && sceneNow().cave ? CAVE_OPEN : had;
     if (grounds.includes(n)) set({ paint: n });
   }
@@ -1993,6 +2037,8 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.metaKey || e.ctrlKey) return;
+  // [ and ] size the brush a step.
+  if (prefs.mode === 'edit' && (e.code === 'BracketLeft' || e.code === 'BracketRight') && BRUSHED.includes(toolNow())) setBrush(prefs.brush + (e.code === 'BracketRight' ? 1 : -1));
   if (prefs.mode === 'edit' && (e.code === 'PageUp' || e.code === 'PageDown')) {
     e.preventDefault();
     stepCut(e.code === 'PageUp' ? 1 : -1);
@@ -2264,10 +2310,12 @@ canvas.addEventListener('pointerdown', (e) => {
       const shape = now === 'ways' && cellWay(prefs.way) ? prefs.way : undefined;
       const tool: Work = shape ? 'shape' : withMods(now, { alt: e.altKey, shift: e.shiftKey });
       const pressed = tool === 'ground' ? tileUnder(e) : null;
+      // The Material tool paints what was pressed, the top or the faces, all the stroke long.
+      if (now === 'paint') aimed = aimAt(e);
       const plane = SHAPING.includes(tool) && !pressed ? planeAt(e) : null;
       gesture = {
         kind: 'stroke', touched: new Set(), last: '', at: 0, tool, ...(plane && { plane }), ...(e.altKey && { alt: true as const }),
-        ...(now === 'ground' && { ground: true as const }), ...(shape && { shape }), ...(pressed && { pull: startPull(e, pressed) }),
+        ...(now === 'ground' && { ground: true as const }), ...(shape && { shape }), ...(now === 'paint' && { target: aimNow() }), ...(pressed && { pull: startPull(e, pressed) }),
       };
       strokeAt(e);
     } else {
@@ -2317,6 +2365,7 @@ canvas.addEventListener('pointermove', (e) => {
   else if (gesture?.kind === 'walk') walkTo(e);
   readMods(e);
   if (prefs.mode === 'edit' && e.pointerType === 'mouse') hover = pointerTile(e);
+  if (prefs.mode === 'edit' && e.pointerType === 'mouse' && !gesture) aimed = aimAt(e);
   // Over another scene the brush shows there, until a press there edits it; a stroke stays in the scene it began in.
   away = prefs.mode === 'edit' && e.pointerType === 'mouse' && !gesture && !hover ? awayUnder(e) : null;
   hotEdge = prefs.mode === 'edit' && e.pointerType === 'mouse' ? (gesture?.kind === 'edge' ? edgeSide : gesture ? null : edgeAt(e)) : null;
@@ -2340,7 +2389,7 @@ const release = (e: PointerEvent) => {
   if (gesture?.kind === 'move') showOptions();
   // An edge dragged nowhere leaves nothing to undo, nor does a Ground pull that came back to where it started.
   if (gesture?.kind === 'edge' && !gesture.changed) { undoStack.pop(); syncUndo(); }
-  if (gesture?.kind === 'stroke' && gesture.pull && !gesture.pull.d && prefs.edges === 'keep') { undoStack.pop(); syncUndo(); }
+  if (gesture?.kind === 'stroke' && gesture.pull && !gesture.pull.d && !tapRock(gesture.pull) && prefs.edges === 'keep') { undoStack.pop(); syncUndo(); }
   // The ground's highest and lowest may have changed, and with them the levels to cut away at.
   if (gesture?.kind === 'stroke') showCut();
   // Lifting one finger of a pinch does not start painting with the other.
@@ -2384,8 +2433,10 @@ function frame(ms: number): void {
   repeatStroke(ms);
   easeZoom(dt);
   const cut = cutNow();
-  if (world.cutaway !== cut) {
+  const floor = belowNow();
+  if (world.cutaway !== cut || world.cutBelow !== floor) {
     world.cutaway = cut;
+    world.cutBelow = floor;
     groundDirty = true;
   }
   if (groundDirty) {
@@ -2438,7 +2489,7 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}|${cut}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}|${aimed}|${cut},${floor}`;
   if (prefs.mode === 'play' || key !== shown) {
     const begun = performance.now();
     const cave = world.scene.cave;
@@ -2469,7 +2520,7 @@ function frame(ms: number): void {
     let highlight = prefs.mode === 'edit' && hover ? {
       cells: new Set(brushCells(hover)), color: blocked ? '#e0332e99' : '#ffffff66',
       // The Material tool tints only what it paints: the tops, or the faces and rock.
-      ...(toolNow() === 'paint' && prefs.target !== 'both' && { part: prefs.target }),
+      ...(toolNow() === 'paint' && !mods.shift && { part: aimed }),
     } : undefined;
     if (prefs.mode === 'edit' && toolNow() === 'move') {
       // Objects are not tied to a tile, so the Move tool marks one only where what it holds may not stay.
@@ -2678,16 +2729,57 @@ function propLibrary(): Node[] {
   return [searchField(t('props.search'), (query) => { prefs.propQuery = query; savePrefs(); fill(); }, prefs.propQuery), grid, link('../props/', t('props.edit'))];
 }
 
-/** The round brush as a little picture of the tiles it covers. */
-function brushPicture(size: number): HTMLCanvasElement {
-  const on = new Set(roundBrush(size).map(([di, dj]) => `${di},${dj}`));
-  const { canvas, ctx } = pixelCanvas(20, 20, 2);
-  for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) {
-    ctx.fillStyle = on.has(`${di},${dj}`) ? C.lit : C.track;
-    ctx.fillRect((di + 3) * 3, (dj + 3) * 3, 2, 2);
-  }
-  return canvas;
+// ------------------------------------------------------------------ brush gizmo
+
+/**
+ * The brush size, floating at the top left of the view while a brushed tool is chosen: a beige disc as big as the
+ * biggest brush, an orange one inside as big as this one. A press or drag on it sizes the brush to reach the pointer;
+ * the wheel over it, and [ and ], size it a step.
+ */
+const GIZMO = { d: 15 };
+const gizmo = h('div', { class: 'brushgizmo', role: 'slider', 'aria-valuemin': '1', 'aria-valuemax': String(BRUSH_MAX) });
+/** How far out a brush of a size reaches on the gizmo, in its pixels from the middle. */
+const gizmoRadius = (n: number) => (n / BRUSH_MAX) * (GIZMO.d / 2);
+function drawGizmo(): void {
+  const { canvas, ctx } = pixelCanvas(GIZMO.d, GIZMO.d + 1, S);
+  const disc = (r: number, dy: number, color: string) => {
+    ctx.fillStyle = color;
+    for (let y = 0; y < GIZMO.d; y++) for (let x = 0; x < GIZMO.d; x++) {
+      if (Math.hypot(x + 0.5 - GIZMO.d / 2, y + 0.5 - GIZMO.d / 2) <= r) ctx.fillRect(x, y + dy, 1, 1);
+    }
+  };
+  // A shadow line under the beige disc, as under every pixel button.
+  disc(GIZMO.d / 2, 1, C.shadow);
+  disc(GIZMO.d / 2, 0, C.paper);
+  disc(Math.max(1, gizmoRadius(prefs.brush)), 0, C.lit);
+  gizmo.replaceChildren(canvas);
+  gizmo.title = `${t('brush')}: ${prefs.brush}`;
+  gizmo.setAttribute('aria-label', t('brush'));
+  gizmo.setAttribute('aria-valuenow', String(prefs.brush));
 }
+function setBrush(n: number): void {
+  n = Math.max(1, Math.min(BRUSH_MAX, n));
+  if (n === prefs.brush) return;
+  prefs.brush = n;
+  savePrefs();
+  drawGizmo();
+  version++;
+}
+/** Shows the gizmo while a brushed tool is chosen. */
+function showGizmo(): void {
+  gizmo.hidden = prefs.mode !== 'edit' || !BRUSHED.includes(toolNow());
+  if (!gizmo.hidden) drawGizmo();
+}
+/** The size whose disc on the gizmo reaches the pointer. */
+function gizmoSize(e: { clientX: number; clientY: number }): number {
+  const r = gizmo.querySelector('canvas')!.getBoundingClientRect();
+  const k = r.width / GIZMO.d;
+  const out = Math.hypot((e.clientX - r.left) / k - GIZMO.d / 2, (e.clientY - r.top) / k - GIZMO.d / 2);
+  return Math.round((out / (GIZMO.d / 2)) * BRUSH_MAX);
+}
+gizmo.addEventListener('pointerdown', (e) => { gizmo.setPointerCapture(e.pointerId); setBrush(gizmoSize(e)); });
+gizmo.addEventListener('pointermove', (e) => gizmo.hasPointerCapture(e.pointerId) && setBrush(gizmoSize(e)));
+gizmo.addEventListener('wheel', (e) => { e.preventDefault(); setBrush(prefs.brush + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
 
 /** The options panel again, as the selection changed. */
 function showOptions(): void {
@@ -2837,7 +2929,6 @@ function editOptions(): Node[] {
   if (tool === 'paint') {
     const grounds = paintsFor(sceneNow());
     if (!grounds.includes(prefs.paint)) prefs.paint = grounds[0];
-    rows.push(field({ words: t('target') }, choice(t('target'), TARGETS.map((p) => ({ id: p.id, icon: p.icon, words: t(`target.${p.id}` as Key) })), () => prefs.target, (id) => set({ target: id as Target }), 'buttons')));
     rows.push(field({ words: t('paint') }, choice(t('paint'), grounds.map((n) => ({ id: String(n), words: t(`paint.${n}` as Key) })), () => String(prefs.paint), (n) => set({ paint: Number(n) }), 'list')));
   }
   if (tool === 'walls') {
@@ -2854,21 +2945,7 @@ function editOptions(): Node[] {
     const heights = [{ id: 'start', words: t('level.start') }, ...Array.from({ length: MAX_LEVEL - MIN_LEVEL + 1 }, (_, k) => ({ id: String(MIN_LEVEL + k), words: String(MIN_LEVEL + k) }))];
     rows.push(field({ words: t('level.flat') }, choice(t('level.flat'), heights, () => (prefs.levelTo === null ? 'start' : String(prefs.levelTo)), (id) => set({ levelTo: id === 'start' ? null : Number(id) }), 'list')));
   }
-  if (BRUSHED.includes(tool)) {
-    const picture = h('span', {}, brushPicture(prefs.brush));
-    // Dragging only changes the number and the picture: a redraw of the panel would drop the drag.
-    const sized = (v: number) => 1 + Math.round(v * (BRUSH_MAX - 1));
-    const size = pixelSlider(t('brush'), (prefs.brush - 1) / (BRUSH_MAX - 1), (v) => {
-      const n = sized(v);
-      if (n === prefs.brush) return;
-      prefs.brush = n;
-      savePrefs();
-      picture.replaceChildren(brushPicture(n));
-    }, 60, (v) => String(sized(v)));
-    rows.push(field({ words: t('brush') }, h('div', { class: 'urow' }, size, picture)));
-  }
   if (rows.length) out.push(fields(...rows));
-  if (tool === 'paint') out.push(h('p', { class: 'opts__tip' }, t(`tip.target.${prefs.target}` as Key)));
   if (tool === 'ground') out.push(h('p', { class: 'opts__tip' }, t(`tip.edges.${prefs.edges}` as Key)));
   if (tool === 'ways') out.push(h('p', { class: 'opts__tip' }, t(`tip.way.${prefs.way}` as Key)));
   if (tool === 'prop') out.push(...propLibrary());
@@ -2970,6 +3047,7 @@ function render(): void {
   showActions();
   if (brightToggle) brightToggle.hidden = !editing || !isDark(sceneNow());
   showCut();
+  showGizmo();
   // While editing, the scene lies on the desk; in Play it is seen as in the game, with open sea (or a cave's dark) round it.
   world.alone = editing;
   viewport.style.background = editing ? DESK : settingsOf(sceneNow()).outside === 'void' ? '#000' : ocean.deep;
@@ -3216,13 +3294,14 @@ function mount(): void {
     canvas,
     overlay.el,
     dockBox,
+    gizmo,
+    cutSlot,
     h('div', { class: 'zoom' },
       pixelButton(t('scene.settings'), { icon: 'cog' }, () => sceneDialog('settings')),
       pixelButton(t('zoom.in'), { icon: 'zoomin' }, () => stepZoom(1)),
       pixelButton(t('zoom.out'), { icon: 'zoomout' }, () => stepZoom(-1)),
       pixelButton(t('rotate.left'), { icon: 'turnleft' }, () => rotate(-1)),
       pixelButton(t('rotate.right'), { icon: 'turnright' }, () => rotate(1)),
-      cutSlot,
       brightToggle,
       toggle(t('zoom.grid'), { icon: 'grid' }, prefs.grid, (grid) => set({ grid })),
       toggle(t('zoom.colliders'), { icon: 'collider' }, prefs.colliders, (colliders) => set({ colliders })),

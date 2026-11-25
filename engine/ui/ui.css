@@ -36,6 +36,8 @@ canvas { image-rendering: pixelated; }
 .upage__main > header { flex-basis: 100%; }
 .uslider { touch-action: none; cursor: pointer; line-height: 0; }
 .uslider__track { display: block; }
+.urange { display: inline-block; touch-action: none; cursor: pointer; line-height: 0; }
+.urange__track { display: block; }
 .ufields { display: grid; grid-template-columns: max-content max-content; align-items: center; gap: 8px 12px; }
 .ufields > .ufield { display: contents; }
 .ugroup { position: relative; display: block; line-height: 0; }

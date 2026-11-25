@@ -865,12 +865,20 @@ export class World {
     }));
   }
 
-  /** Marks the caps of ground cut off by the cutaway: darker, with a hatch across, so they read as cut, not as ground. */
+  /**
+   * Marks the caps of ground cut off by the cutaway: darker, with a hatch across, so they read as cut, not as ground;
+   * and ground under its floor, tops and faces, darker still.
+   */
   private capped(image: TerrainImage): TerrainImage {
-    if (this.cutaway === null) return image;
+    if (this.cutaway === null && this.cutBelow === null) return image;
     const { rgba, cell, tops, w } = image;
     for (let p = 0; p < cell.length; p++) {
-      if (cell[p] < 0 || !tops[p] || !this.aboveCut(cell[p])) continue;
+      if (cell[p] < 0) continue;
+      if (this.belowCut(cell[p])) {
+        for (let k = 0; k < 3; k++) rgba[p * 4 + k] *= 0.55;
+        continue;
+      }
+      if (!tops[p] || !this.aboveCut(cell[p])) continue;
       // Half grey, so a cap keeps a hint of its ground, with darker lines across it every few pixels.
       const hatch = ((p % w) + Math.floor(p / w)) % 6 === 0;
       const grey = (rgba[p * 4] + rgba[p * 4 + 1] + rgba[p * 4 + 2]) / 3;
@@ -1693,10 +1701,21 @@ export class World {
    * behind and below shows; null for none. Only the drawing changes (`redraw` after setting it), not the map.
    */
   cutaway: number | null = null;
+  /** The editor's floor to the cutaway: ground lower than this level is drawn darker, as out of reach; null for none. */
+  cutBelow: number | null = null;
   /** Whether a cell's ground stands above the cutaway, so it is drawn cut off. */
   aboveCut(c: number): boolean {
     const level = this.map.levels[c];
     return this.cutaway !== null && !isRock(level) && level > this.cutaway;
+  }
+  /** Whether a cell's ground lies below the cutaway's floor, so it is drawn darker. */
+  belowCut(c: number): boolean {
+    const level = this.map.levels[c];
+    return this.cutBelow !== null && !isRock(level) && level < this.cutBelow;
+  }
+  /** Whether a cell's ground is outside the cutaway's band, cut off over it or under its floor. */
+  outsideCut(c: number): boolean {
+    return this.aboveCut(c) || this.belowCut(c);
   }
   private edgeOf: TerrainImage | null = null;
   /** Where a point of the map's border is drawn: on the red edge. */
