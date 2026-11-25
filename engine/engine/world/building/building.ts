@@ -21,7 +21,8 @@ export const edgeKey = (e: Edge) => `${e.axis}${e.i},${e.j}`;
 export const cellKey = (i: number, j: number) => `${i},${j}`;
 
 /** `fade`: how far it has dissolved down to a stub a level high (see `dissolved`), 0 to 1 in sixteenths; none unless set. */
-export interface EdgePiece { kind: string; edge: Edge; fade?: number }
+/** `open` and `locked` only for a door: how far its leaf has swung open, 0 to 1, and whether it shows its lock. */
+export interface EdgePiece { kind: string; edge: Edge; fade?: number; open?: number; locked?: boolean }
 export interface CellPiece { kind: string; i: number; j: number }
 
 /** A building as built so far. */
@@ -60,8 +61,11 @@ export interface Part {
   hidden?: boolean;
 }
 
-/** How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it, `fade` dissolved down to a stub. */
-export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number; fade?: number }): Part }
+/**
+ * How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it, `fade` dissolved
+ * down to a stub; for a door, `open` and `locked` as on its piece.
+ */
+export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number; fade?: number; open?: number; locked?: boolean }): Part }
 /** How a patch of cell pieces is drawn; `floor` is the highest ground under it. A covering kind is a roof. */
 export interface CellKind { on: 'cell'; covers: boolean; draw(site: Site, p: Patch, floor: number, height: number): Part }
 export type PieceKind = EdgeKind | CellKind;
@@ -240,8 +244,8 @@ export class BuildingView {
       const cut = !!home && frontOf(e, home);
       const over = roofs.find((p) => p !== home && under(e, p));
       const cap = over && floorOf(map, over) + b.height;
-      const fade = piece.fade ?? 0;
-      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}|${fade}`, () => kind.draw(this.site, e, b.height, { cut, cap, fade })));
+      const fade = piece.fade ?? 0, open = piece.open ?? 0, locked = !!piece.locked;
+      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}|${fade}|${open}|${locked}`, () => kind.draw(this.site, e, b.height, { cut, cap, fade, open, locked })));
     }
     for (const p of patches) {
       const kind = this.kinds[p.kind];

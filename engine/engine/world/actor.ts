@@ -7,15 +7,18 @@ import type { Picture } from './island.ts';
 import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt, waterOf } from './terrain.ts';
 import { ocean, rgb } from './ocean.ts';
 import type { Thing, World } from './world.ts';
+import type { Climb } from './ways.ts';
 import { drew, slots } from '../../shared/stats.ts';
 import { cached, idOf } from '../core/cache.ts';
 
 export const EMOTES = ['wave', 'use'] as const;
 export type Emote = (typeof EMOTES)[number];
-type ClipId = 'idle' | 'walk' | 'run' | 'carry' | 'hold' | 'sitDown' | 'sit' | 'lieDown' | 'lie' | 'sitUp' | 'standUp' | Emote;
+type ClipId = 'idle' | 'walk' | 'run' | 'carry' | 'hold' | 'sitDown' | 'sit' | 'lieDown' | 'lie' | 'sitUp' | 'standUp' | 'climb' | Emote;
 
 /** Metres per second. */
 const SPEED = { walk: 1.7, run: 3.6 };
+/** Levels per second up or down a ladder. */
+const CLIMB_SPEED = 2.6;
 /** How many times an emote plays before the character goes back to standing: a wave goes on a little, a use is one go. */
 const EMOTE_LOOPS: Record<Emote, number> = { wave: 2, use: 1 };
 /** Wading is slower than walking on land. */
@@ -152,6 +155,8 @@ export class Actor {
   /** How the character lies once down: the view and face up or down. */
   private lies: Lying = {};
   private nextFidget = 0;
+  /** A ladder being climbed: the way (ways.ts `Climb`), the point of it gone for next, and the level the character is at. */
+  private climbing: { way: Climb; k: number; level: number } | null = null;
   /** What is held, if anything; the character walks (never runs) while carrying. */
   carrying: Carried | null = null;
   private held = new WeakMap<Picture, Map<string, Picture>>();
@@ -197,6 +202,30 @@ export class Actor {
     this.asleep = asleep;
     this.lies = how;
     this.play(this.clip === 'sit' ? 'lieDown' : 'sitDown', ms);
+  }
+
+  /**
+   * Climbs a ladder along a way of points (ways.ts `climbOf`), facing the ladder, from the first point to the last; it
+   * does nothing else until it is there. A carried thing is held on.
+   */
+  climb(way: Climb, ms: number): void {
+    if (way.length < 2) return;
+    const first = way[0], last = way[way.length - 1];
+    const up = last.level > first.level;
+    // Toward the ladder: from its foot toward its top, whichever way the climb goes.
+    const di = up ? last.i - first.i : first.i - last.i, dj = up ? last.j - first.j : first.j - last.j;
+    if (Math.hypot(di, dj) > 1e-6) {
+      this.facing = this.aim = facingOf(di, dj, this.facing);
+      this.heading = Math.atan2(dj, di);
+    }
+    this.i = first.i;
+    this.j = first.j;
+    this.climbing = { way, k: 1, level: first.level };
+    this.play('climb', ms);
+  }
+  /** Whether the character is on a ladder. */
+  get onLadder(): boolean {
+    return !!this.climbing;
   }
 
   /** Whether the character is getting up and will not walk until it stands. */
@@ -252,6 +281,7 @@ export class Actor {
    */
   update(world: World, dt: number, di: number, dj: number, run: boolean, ms: number): void {
     this.fly(Math.min(dt, 0.1));
+    if (this.climbing) return this.climbOn(Math.min(dt, 0.1), ms);
     const length = Math.hypot(di, dj);
     if (length > 1e-6) {
       this.aim = facingOf(di, dj, this.aim);
@@ -312,6 +342,31 @@ export class Actor {
         }
         return;
       }
+    }
+  }
+
+  /** Goes on up or down the ladder for `dt` seconds; at the end of the way, stands again. */
+  private climbOn(dt: number, ms: number): void {
+    const c = this.climbing!;
+    while (dt > 0 && c.k < c.way.length) {
+      const to = c.way[c.k];
+      const up = Math.abs(to.level - c.level) / CLIMB_SPEED, along = Math.hypot(to.i - this.i, to.j - this.j) / SPEED.walk;
+      const need = Math.max(up, along);
+      if (need <= dt) {
+        this.i = to.i; this.j = to.j; c.level = to.level;
+        c.k++;
+        dt -= need;
+        continue;
+      }
+      const f = dt / need;
+      this.i += (to.i - this.i) * f;
+      this.j += (to.j - this.j) * f;
+      c.level += (to.level - c.level) * f;
+      dt = 0;
+    }
+    if (c.k >= c.way.length) {
+      this.climbing = null;
+      this.play(this.carrying ? 'hold' : 'idle', ms);
     }
   }
 
@@ -390,9 +445,10 @@ export class Actor {
       if (!both) kept.set(key, (both = drew('holding', () => holding(body, held, handsOn(pose, facing)), () => slots(SPRITE_W, SPRITE_H))));
       sprite = both;
     }
-    const depth = this.depth(world);
     // A carried thing puts the tool away, so only the body's own tool brings its particle system.
     const fx = this.carrying ? undefined : body.fx ?? undefined;
+    if (this.climbing) return { spot: { i: this.i, j: this.j, level: this.climbing.level }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, fx };
+    const depth = this.depth(world);
     if (depth <= 0) return { spot: { i: this.i, j: this.j, level: standingHeight(world.map, this.i, this.j) }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, fx };
     // In the shallows the feet stand on the sea floor, under the surface.
     const rows = Math.round(depth * LEVEL_PX);

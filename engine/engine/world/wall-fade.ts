@@ -1,6 +1,6 @@
 // Which thin walls (`Scene.walls`) dissolve in front of the survivor, as a cave's rock does (front-rock.ts), but closer
-// in: a wall within 4 cells of the survivor, in front of them on screen, that hides floor within 2 cells of them goes
-// down to its stub, and with it the whole straight run of that kind of wall it is part of; the run stays so while any
+// in: a wall within 4 cells of the survivor, in front of them on screen with them on its far side (behind its line, so
+// it stands between them and the camera), that hides floor within 2 cells of them goes down to its stub, and with it the whole straight run of that kind of wall it is part of; the run stays so while any
 // of it is wanted. Runs, not all joined walls: a house's walls meet at its corners, and its back walls should stand
 // while its front one goes. Fences never fade (walls.ts `wallFades`). No drawing.
 import { edgeKey, type Edge } from './building/building.ts';
@@ -51,6 +51,9 @@ export class WallFade {
       for (const w of walls) {
         const e = w.edge, d = e.i + e.j;
         if (!w.fades || d < front) continue;
+        // Only a wall the survivor is behind: standing outside a house before its front wall, the wall stays, though the
+        // floor behind it is near.
+        if (e.axis === 'H' ? at.j >= e.j : at.i >= e.i) continue;
         const mid = e.axis === 'H' ? [e.i + 0.5, e.j] : [e.i, e.j + 0.5];
         if (Math.hypot(mid[0] - at.i - 0.5, mid[1] - at.j - 0.5) > WALL_REACH) continue;
         // On screen, the wall's column and how far down it stands; floor behind it, within its height, is hidden.

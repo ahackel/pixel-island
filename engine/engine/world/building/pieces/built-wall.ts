@@ -35,7 +35,7 @@ function layout(site: Site, e: Edge, pad: number) {
 }
 
 /** Its shadow on the ground: a sheet from `from` (per end) up `tall` levels. */
-function sheet(site: Site, e: Edge, from: [number, number], tall: number): number[] {
+export function sheet(site: Site, e: Edge, from: [number, number], tall: number): number[] {
   const shadow: number[] = [];
   for (let s = 0; s <= 1; s += 1 / 48) {
     const g = from[0] + (from[1] - from[0]) * s;
@@ -45,7 +45,7 @@ function sheet(site: Site, e: Edge, from: [number, number], tall: number): numbe
   return shadow;
 }
 
-const boxOf = (e: Edge, t: number): Box => (e.axis === 'H' ? { x0: e.i, x1: e.i + 1, y0: e.j - t, y1: e.j + t } : { x0: e.i - t, x1: e.i + t, y0: e.j, y1: e.j + 1 });
+export const boxOf = (e: Edge, t: number): Box => (e.axis === 'H' ? { x0: e.i, x1: e.i + 1, y0: e.j - t, y1: e.j + t } : { x0: e.i - t, x1: e.i + t, y0: e.j, y1: e.j + 1 });
 
 /** A slab of brick or stone on an edge. */
 export function builtWall(opt: BuiltWallOptions): EdgeKind {

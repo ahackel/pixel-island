@@ -19,13 +19,15 @@ import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
 import { emittersOf, halos, particleSystem, Particles, tileHalo } from '@pixel/engine/world/particles.ts';
-import { heightAt, isLand, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
+import { heightAt, isLand, LEVEL_PX, standingHeight, surfaceAt, TILE_H, TILE_W } from '@pixel/engine/world/terrain.ts';
 import { World, type Thing, type TileLamp } from '@pixel/engine/world/world.ts';
 import type { PlacedDecor } from '@pixel/engine/world/decor.ts';
 import { caveLamps as caveOwnLamps, caveThings, caveTint, setUpCave } from '@pixel/engine/world/cave.ts';
 import { LINKING, openFrames, type PlacedItem } from '@pixel/engine/world/props.ts';
 import { Viewport } from '@pixel/shared/viewport.ts';
-import { findPath } from '@pixel/engine/world/path.ts';
+import { findPath, type Waypoint } from '@pixel/engine/world/path.ts';
+import { climbDown, doorSpot, edgeCells, ladderSpots, type SceneDoor } from '@pixel/engine/world/ways.ts';
+import { edgeKey } from '@pixel/engine/world/building/building.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
@@ -45,7 +47,7 @@ import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
 import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
-import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
+import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
@@ -181,7 +183,7 @@ function newGame(who = firstWho()): Game {
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
   const quest: Progress = { ...startProgress(), quest: START_QUEST };
   const g: Game = {
-    day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, struck: null, fires: [], lying: [], felled: [],
+    day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
     builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
   };
   if (ISLAND2) g.bag.push('lantern');
@@ -213,6 +215,8 @@ const isle: Shore = {
 };
 const saved = params.has('new') || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
+// Saves from before doors kept them have none opened.
+game.doors ??= {};
 /** Game seconds since the morning. Every load starts in the morning, since the game is saved on waking. */
 let time = 0;
 world.loose = game.items;
@@ -315,11 +319,13 @@ function setStyle(e: HTMLElement, name: 'opacity' | 'transform', value: string):
 }
 const app = document.getElementById('app')!;
 
-type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem };
-/** Where the survivor is going: waypoints round what is in the way, the last one the goal. */
-let target: { way: { i: number; j: number }[]; run: boolean; pick?: Pick } | null = null;
+type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem } | { door: SceneDoor };
+/** Where the survivor is going: waypoints round what is in the way (ladders climbed on the way), the last one the goal. */
+let target: { way: Waypoint[]; run: boolean; pick?: Pick } | null = null;
+/** The doors a way may go through: closed ones, which the survivor opens on the way, and locked ones while a key is in the bag. */
+const passable = (d: SceneDoor) => d.state === 'closed' || (d.state === 'locked' && game.bag.includes('key'));
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
-  const way = findPath(world, actor, at);
+  const way = findPath(world, actor, at, passable);
   target = way.length ? { way, run, pick } : null;
   // Being sent somewhere gets the survivor up; eating or picking something out of the bag does not.
   if (target) actor.rouse(performance.now());
@@ -361,7 +367,7 @@ type Fish = (typeof FISH_ITEMS)[number];
 const BAG_PICTURES: Record<BagItem, Rows> = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: TORCH_IN_BAG,
   stone: STONE, spear: SPEAR_IN_BAG, ...(Object.fromEntries(FISH_ITEMS.map((f, k) => [f, FISH_IN_BAG[k]])) as Record<Fish, Rows>), crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN,
+  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN, key: KEY,
 };
 /** The quests' pictures in the corner. */
 const QUEST_PICTURES: Record<QuestIcon, Rows> = {
@@ -664,6 +670,7 @@ const kindTomorrow = () => {
 
 function startNew(who: State): void {
   game = newGame(who);
+  for (const w of visited.values()) doorsOf(w);
   present = true;
   veilDay = 0;
   looks.clear();
@@ -797,7 +804,7 @@ if (params.has('cheats')) {
     }),
     {
       words: 'GIVE',
-      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern'] as const).map((it) => cheat(it.toUpperCase(), () => {
+      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern', 'key'] as const).map((it) => cheat(it.toUpperCase(), () => {
         if (game.bag.length < BAG_SLOTS) game.bag.push(it);
         showBag();
       })),
@@ -876,9 +883,18 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // so only the direction counts.
     const look = mapOffset(p.x - foot.x, p.y - foot.y);
     if (look.i || look.j) actor.lookAt(look.i, look.j);
-    // A hole or ladder that leads to another scene: walked up to, and taken.
+    // A hole or ladder that leads to another scene: walked up to, and taken; a hole from the top of its ladder.
     const way = world.scene.items.find((o) => o.to && near(p, o, 10, 6));
-    if (way) return goTo(nearSide(way), false, { way });
+    if (way) {
+      const down = world.holeLadder(way);
+      return goTo(down ? ladderSpots(down).top : nearSide(way), false, { way });
+    }
+    // A door: walked up to, and through; one locked or hidden, or leading to another scene, is seen to there.
+    const door = doorAt(p);
+    if (door) {
+      if (door.state === 'open' || (door.state === 'closed' && !door.to)) return walkTo(world.screenOf(...centreOf(farSide(door))));
+      return goTo(nearSideOf(door), false, { door });
+    }
     // Off the island (in a cave, or a scene a way led to) nothing of the island's is to pick, only a torch off a wall (its
     // picture stands on the wall, a stick and flame some 4 to 22 pixels over the floor) or a chest.
     if (!onIsland()) {
@@ -955,6 +971,8 @@ function openChest(it: PlacedItem): void {
 function goInto(to: World, at: { i: number; j: number }): void {
   // Chests opened before stand open.
   for (const it of to.scene.items) if (chestKey(it) in game.chests && !opening.has(it)) it.open = openFrames(it.item);
+  doorsOf(to);
+  downHole = false;
   world = to;
   scene = to.scene;
   actor.i = at.i;
@@ -992,19 +1010,54 @@ function worldOf(name: string): World | null {
 /** A portal being taken: when the fade began, and what happens at its darkest (once). */
 let warp: { start: number; go: () => void; gone: boolean } | null = null;
 const WARP = { out: 350, in: 350 };
-/** Takes a hole or ladder to the way it leads to: fades out, into that scene beside the way there, fades in. */
-function takeWay(it: PlacedItem): void {
-  if (!it.to || Math.hypot(it.i - actor.i, it.j - actor.j) > 1.6) return;
+/** Where a way of another scene is met: a hole or ladder object, or a door (in front of it), in that scene's coordinates. */
+function wayIn(to: World, id: string): { i: number; j: number } | null {
+  const it = to.scene.items.find((o) => o.id === id);
+  if (it) return it;
+  const door = to.scene.doors?.find((d) => d.id === id);
+  return door ? doorSpot(door) : null;
+}
+/** A climb down a hole before a way out through it, while it lasts: the way is taken once the survivor is down. */
+let climbing: (() => void) | null = null;
+/** Down a hole and out of sight, until the way through it has been taken. */
+let downHole = false;
+/**
+ * Takes a hole, ladder or door to the way it leads to: fades out, into that scene beside the way there, fades in. Down
+ * a hole the survivor climbs a little way down its ladder first.
+ */
+function takeWay(it: PlacedItem | SceneDoor): void {
+  const door = 'edge' in it ? it : null;
+  const at = world.toView(door ? doorSpot(door) : (it as PlacedItem));
+  if (!it.to || Math.hypot(at.i - actor.i, at.j - actor.j) > (door ? 1.4 : 1.6)) return;
   const to = worldOf(it.to.scene);
-  const end = to?.scene.items.find((o) => o.id === it.to!.id);
+  const end = to && wayIn(to, it.to.id);
   if (!to || !end) return think('think.noWay');
-  if (warp) return;
+  if (warp || climbing) return;
   target = null;
-  warp = { start: performance.now(), gone: false, go: () => {
-    if (world === island) outside = { i: actor.i, j: actor.j };
-    const beside = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([a, b]) => ({ i: end.i + a, j: end.j + b })).find((q) => to.canWalk(q, q));
-    goInto(to, beside ?? end);
-  } };
+  const go = () => {
+    warp = { start: performance.now(), gone: false, go: () => {
+      if (world === island) outside = { i: actor.i, j: actor.j };
+      const beside = [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([a, b]) => ({ i: end.i + a, j: end.j + b })).find((q) => to.canWalk(q, q));
+      goInto(to, beside ?? end);
+    } };
+  };
+  const down = door ? null : world.holeLadder(it as PlacedItem);
+  if (!down) return go();
+  actor.climb(climbDown(down), performance.now());
+  climbing = go;
+}
+/** At a door tapped: through it if it opens, to where it leads if anywhere; a locked one wants a key, a hidden one finding. */
+function atDoor(door: SceneDoor): void {
+  if (door.state === 'hidden') {
+    // shortcut: how hidden doors are found is undecided; for now the hammer breaks through where the wall sounds hollow.
+    if (hand !== 'hammer') return think('think.hollow');
+    actor.emote('use', performance.now());
+    setDoor(door, 'closed');
+    return think('think.doorFound');
+  }
+  if (!openDoor(door)) return think('think.locked');
+  if (door.to) return takeWay(door);
+  walkTo(world.screenOf(...centreOf(farSide(door))));
 }
 /** Walked onto the cave mouth, the survivor goes in; onto the daylight at the cave's open side, out. */
 function throughCave(): void {
@@ -1044,6 +1097,66 @@ function nearSide(at: { i: number; j: number }, gap = 0.5): { i: number; j: numb
   return { i: at.i + ((actor.i - at.i) / d) * gap, j: at.j + ((actor.j - at.j) / d) * gap };
 }
 
+/** The door whose picture is under a ground pixel: across its edge, from its floor up to its top. */
+function doorAt(p: { x: number; y: number }): SceneDoor | null {
+  for (const v of world.viewDoors()) {
+    const mid = v.edge.axis === 'H' ? { i: v.edge.i + 0.5, j: v.edge.j } : { i: v.edge.i, j: v.edge.j + 0.5 };
+    const s = world.screenOf(mid.i, mid.j);
+    // Its edge runs half a tile each way across, sloping half as far down as along.
+    const dx = p.x - s.x, dy = p.y - (s.y + (v.edge.axis === 'H' ? dx / 2 : -dx / 2));
+    if (Math.abs(dx) <= 8 && dy <= 2 && dy >= -v.height * LEVEL_PX) return v.door;
+  }
+  return null;
+}
+/** A door's two cells in the view, the survivor's side first. */
+function sidesOf(door: SceneDoor): [[number, number], [number, number]] {
+  const v = world.viewDoors().find((x) => x.door === door)!;
+  const [a, b] = edgeCells(v.edge);
+  const da = Math.hypot(a[0] + 0.5 - actor.i, a[1] + 0.5 - actor.j), db = Math.hypot(b[0] + 0.5 - actor.i, b[1] + 0.5 - actor.j);
+  return da <= db ? [a, b] : [b, a];
+}
+const centreOf = (c: [number, number]): [number, number] => [c[0] + 0.5, c[1] + 0.5];
+const farSide = (door: SceneDoor) => sidesOf(door)[1];
+/** Where to stand at a door: in the cell on the survivor's side of it, a little short of its middle. */
+function nearSideOf(door: SceneDoor): { i: number; j: number } {
+  const [near, far] = sidesOf(door);
+  return { i: near[0] + 0.5 + (far[0] - near[0]) * 0.2, j: near[1] + 0.5 + (far[1] - near[1]) * 0.2 };
+}
+
+/** The scene a world shows, by the name the ways use. */
+const nameOf = (w: World) => [...visited].find(([, v]) => v === w)?.[0] ?? 'island';
+/** Each door's state as its scene has it, before the game changed any. */
+const doorsAsMade = new WeakMap<SceneDoor, SceneDoor['state']>();
+/** Puts a world's doors in the states the game left them in, the rest as their scene has them. */
+function doorsOf(w: World): void {
+  for (const d of w.scene.doors ?? []) {
+    if (!doorsAsMade.has(d)) doorsAsMade.set(d, d.state);
+    d.state = game.doors[`${nameOf(w)}|${edgeKey(d.edge)}`] ?? doorsAsMade.get(d)!;
+  }
+}
+// The worlds there are from the start, as the save left them.
+for (const w of visited.values()) doorsOf(w);
+/** Sets a door of the world the survivor is in, and keeps it so. */
+function setDoor(door: SceneDoor, state: SceneDoor['state']): void {
+  door.state = state;
+  game.doors[`${nameOf(world)}|${edgeKey(door.edge)}`] = state;
+}
+/**
+ * A door the survivor comes up to on the way: a closed one swings open, a locked one opens with a key from the bag
+ * (which stays in the lock). Says whether it is open now.
+ */
+function openDoor(door: SceneDoor): boolean {
+  if (door.state === 'closed') setDoor(door, 'open');
+  else if (door.state === 'locked' && game.bag.includes('key')) {
+    game.bag.splice(game.bag.indexOf('key'), 1);
+    if (hand === 'key' && !game.bag.includes('key')) hold(null);
+    showBag();
+    setDoor(door, 'open');
+    think('think.unlocked');
+  }
+  return door.state === 'open';
+}
+
 /** Whether a ground pixel is within `r` pixels of a map point's picture, centred `up` pixels above its foot. */
 function near(p: { x: number; y: number }, at: { i: number; j: number }, r: number, up: number): boolean {
   const s = world.screenOf(at.i, at.j);
@@ -1077,6 +1190,7 @@ function arrive(pick: Pick): void {
     return think('think.wallTorch');
   }
   if ('way' in pick) return takeWay(pick.way);
+  if ('door' in pick) return atDoor(pick.door);
   if ('chest' in pick) return openChest(pick.chest);
   // Once on the blanket, the sleep button shows, by day too: sleep then lasts till the next morning.
   if ('blanket' in pick) return;
@@ -1566,15 +1680,33 @@ function frame(ms: number): void {
   let di = 0;
   let dj = 0;
   let run = false;
-  if (target && !paused && !sleeping && !telling()) {
-    if (target.way.length > 1 && Math.hypot(target.way[0].i - actor.i, target.way[0].j - actor.j) < 0.2) target.way.shift();
+  /** A door opened on the way, which the survivor waits at rather than giving the way up. */
+  let doorOpen = false;
+  if (target && !paused && !sleeping && !telling() && !actor.onLadder) {
+    if (target.way.length > 1 && Math.hypot(target.way[0].i - actor.i, target.way[0].j - actor.j) < 0.2) {
+      // At the foot or top of a ladder on the way: up or down it, then on.
+      const at = target.way.shift()!;
+      if (at.climb) actor.climb(at.climb, ms);
+    }
     const next = target.way[0];
     const goal = target.way[target.way.length - 1];
     di = next.i - actor.i;
     dj = next.j - actor.j;
     run = target.run;
+    // A door on the way opens as the survivor comes up to it; one that will not is as far as they get.
+    const door = actor.onLadder ? null : world.doorAhead(actor, next);
+    if (door) {
+      doorOpen = openDoor(door);
+      if (!doorOpen) {
+        think(door.state === 'locked' ? 'think.locked' : 'think.noWay');
+        target = null;
+        di = dj = 0;
+      }
+    }
     // A crab is walked right up to the spot just near enough, not within the usual reach of it.
-    if (target.pick && Math.hypot(goal.i - actor.i, goal.j - actor.j) < ('crab' in target.pick || 'blanket' in target.pick ? 0.12 : REACH)) {
+    if (!target || actor.onLadder) {
+      // Stopped at a door, or climbing.
+    } else if (target.pick && !target.way.some((q) => q.climb) && Math.hypot(goal.i - actor.i, goal.j - actor.j) < ('crab' in target.pick || 'blanket' in target.pick ? 0.12 : REACH)) {
       arrive(target.pick);
       target = null;
       di = dj = 0;
@@ -1583,11 +1715,18 @@ function frame(ms: number): void {
       di = dj = 0;
     }
   }
-  const before = [actor.i, actor.j];
+  const before = [actor.i, actor.j], climbed = actor.onLadder;
   // shortcut: slowness scales the step, so the walk cycle plays at full rate; add a speed to Actor if it reads as sliding.
   actor.update(world, paused || telling() ? 0 : dt * speedOf(game), di, dj, run, ms);
-  // A target that cannot be reached is given up rather than walked against forever.
-  if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising) target = null;
+  // A target that cannot be reached is given up rather than walked against forever (not while climbing, which ends straight up or down).
+  if (target && before[0] === actor.i && before[1] === actor.j && !paused && !actor.rising && !climbed && !actor.onLadder && !doorOpen) target = null;
+  // Down a hole, the way out through it is taken.
+  if (climbing && !actor.onLadder) {
+    const go = climbing;
+    climbing = null;
+    downHole = true;
+    go();
+  }
   throughCave();
 
   if (!paused && !sleeping && !telling() && onIsland()) fleeFire(dt);
@@ -1634,7 +1773,7 @@ function frame(ms: number): void {
   // A cave tried on its own as the island keeps its rock walls.
   if (!islandScene.cave) island.buildings = hutBuild ? [hutBuilding(hutBuild.stage)] : [];
   // The survivor shows as a silhouette where ground in front hides them.
-  const me = present ? { ...actor.thing(world, ms), silhouette: true } : null;
+  const me = present && !downHole ? { ...actor.thing(world, ms), silhouette: true } : null;
   let hutParts = onIsland() ? island.buildingThings(actor) : [];
   // Behind the hut, its walls come down to knee height and the roof off, so the survivor is seen.
   if (hutBuild && onIsland() && hides(hutParts, me)) {

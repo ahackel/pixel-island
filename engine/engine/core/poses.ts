@@ -169,6 +169,13 @@ const LOOK_STEPS: [Pose, string | undefined][] = [
   [toward(1), 'smile'], [toward(1), undefined], [STAND, undefined], [STAND, 'smile'], [STAND, undefined],
 ];
 
+// Climb: up a ladder, seen mostly from behind. One hand reaches high while the other holds at the shoulders, the knee
+// on the same side lifted to the next rung, then the other side; the body hangs a pixel lower between the reaches.
+const climbHalf: PoseSpec[] = [
+  { lean: 4, armL: { swing: 168, bend: 12, out: 6 }, armR: { swing: 115, bend: 45, out: 6 }, legL: { swing: 48, bend: 85 }, legR: { swing: 4, bend: 6 } },
+  { bob: -1, lean: 4, armL: { swing: 145, bend: 30, out: 6 }, armR: { swing: 135, bend: 30, out: 6 }, legL: { swing: 28, bend: 50 }, legR: { swing: 22, bend: 45 } },
+];
+
 export const AUTHORED: Record<string, Clip> = {
   // Standing still. The only movement is a blink every three seconds.
   idle: { name: 'Idle', ...resting(STAND) },
@@ -187,5 +194,6 @@ export const AUTHORED: Record<string, Clip> = {
   // Lying down from sitting and sitting up again: straight from one to the other, held a moment.
   lieDown: { name: 'Lie down', rate: 6, frames: [LIE] },
   sitUp: { name: 'Sit up', rate: 6, frames: [LIE] },
+  climb: { name: 'Climb', rate: 6, frames: withHair([...climbHalf, ...climbHalf.map(mirrored)]) },
   look: { name: 'Look around', rate: 3, frames: LOOK_STEPS.map(([pose]) => pose), faces: LOOK_STEPS.map(([, face]) => face) },
 };

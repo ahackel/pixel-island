@@ -35,7 +35,7 @@ test('a diagonal step past the end of a wall is blocked', () => {
   assert.ok(!cornerBlocked(b, [0, 0], [1, 0]));
 });
 
-test('walls in front of the survivor dissolve a straight run at a time; back walls stand and fences never fade', () => {
+test('walls in front of the survivor, with them behind, dissolve a straight run at a time; back walls stand, walls they stand before stay and fences never fade', () => {
   const m = map(...Array.from({ length: 12 }, () => '222222222222'));
   const walls: FadingWall[] = [];
   const add = (axis: 'H' | 'V', i: number, j: number, kind = 'brick') => walls.push({ edge: { axis, i, j }, kind, fades: kind !== 'fence', top: 7 });
@@ -50,6 +50,11 @@ test('walls in front of the survivor dissolve a straight run at a time; back wal
   assert.deepEqual(going('H', 8), [1, 1, 1, 1, 1, 1]);
   assert.ok(going('H', 2).every((t) => t === 0) && going('V', 2).every((t) => t === 0));
   assert.ok(going('H', 10).every((t) => t === 0));
+  // Outside, before the front wall: it stays, though the floor behind it is near.
+  fade.aim(walls, m, { i: 4, j: 8 });
+  assert.equal(fade.target.size, 0);
+  fade.aim(walls, m, { i: 4, j: 9 });
+  assert.equal(fade.target.size, 0);
   // Far away, nothing fades; without a survivor neither.
   fade.aim(walls, m, { i: 11, j: 0 });
   assert.equal(fade.target.size, 0);

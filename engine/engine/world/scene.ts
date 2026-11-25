@@ -14,8 +14,9 @@ import { decorById, type PlacedDecor } from './decor.ts';
 import { LINKING, nameLink, OWN, propOf, type PlacedItem } from './props.ts';
 import { cleanBuild, type Build } from '../objects/object.ts';
 import { carriedFor, cleanPlacedProp, useCarried, type Carried, type PlacedProp } from './prop.ts';
-import { CUT, defaultShape, SHAPES } from './ground.ts';
+import { CUT, defaultShape, HOLE, SHAPES } from './ground.ts';
 import { edgeKey, type Edge } from './building/building.ts';
+import { cleanDoors, cleanLadders, type SceneDoor, type SceneLadder } from './ways.ts';
 import { BRICK, createHeightMap, generateIsland, isRock, MAX_LEVEL, MINE, MIN_LEVEL, PAINTS, ROCK_LEVEL, SEA_LEVEL, type HeightMap } from './terrain.ts';
 
 export interface PlacedPlant {
@@ -83,6 +84,10 @@ export interface Scene {
   objects?: Record<string, Build>;
   /** Thin walls on cell edges, in scene coordinates (the world turns them with the view), by wall kind (building/walls.ts). */
   walls?: SceneWall[];
+  /** Ladders up a step inside the scene, on the edge between the lower floor and the higher, in scene coordinates (ways.ts). */
+  ladders?: SceneLadder[];
+  /** Doors on cell edges, in scene coordinates (ways.ts); one on a wall's edge stands in the wall's place. */
+  doors?: SceneDoor[];
   /** Anything else standing on the ground, from the props library (engine/world/prop.ts). Missing in older scenes. */
   props?: PlacedProp[];
   /** The painted props and locked pixels it uses, so it draws the same in a game or on another device (see prop.ts). */
@@ -260,6 +265,8 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
     items: kept(scene.items),
     props: kept(scene.props ?? []),
     ...(scene.walls && { walls: cleanWalls(scene.walls.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
+    ...(scene.ladders && { ladders: cleanLadders(scene.ladders.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
+    ...(scene.doors && { doors: cleanDoors(scene.doors.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
     spawn: spot(scene.spawn),
     ...((scene.origin || w !== scene.w || h !== scene.h) && { origin: scene.origin ?? { w: scene.w, h: scene.h } }),
     ...((scene.shift || dx || dy) && { shift: { i: (scene.shift?.i ?? 0) + dx, j: (scene.shift?.j ?? 0) + dy } }),
@@ -353,12 +360,16 @@ export function cleanScene(input: unknown): Scene {
   useCarried(s.carried);
   const props = (Array.isArray(s.props) ? s.props : []).map((p) => cleanPlacedProp(p, w, h)).filter((p): p is PlacedProp => !!p);
   const walls = cleanWalls(s.walls, w, h);
+  const ladders = cleanLadders(s.ladders, w, h);
+  const doors = cleanDoors(s.doors, w, h);
   const scene: Scene = {
     id: typeof s.id === 'string' && s.id ? s.id : newId(),
     name: typeof s.name === 'string' && s.name.trim() ? s.name.trim().slice(0, 40) : s.cave ? 'Cave' : 'Island',
     w, h, levels, paint, plants, decor, animals, people, items, props,
     ...(Object.keys(objects).length && { objects }),
     ...(walls.length && { walls }),
+    ...(ladders.length && { ladders }),
+    ...(doors.length && { doors }),
     spawn: { i: num(s.spawn?.i, 0, w, w / 2), j: num(s.spawn?.j, 0, h, h / 2) },
     ...(s.origin && typeof s.origin === 'object' && Number.isInteger(s.origin.w) && Number.isInteger(s.origin.h) && { origin: { w: clamp(s.origin.w, MIN_SIZE, MAX_SIZE), h: clamp(s.origin.h, MIN_SIZE, MAX_SIZE) } }),
     ...(s.shift && typeof s.shift === 'object' && (Number(s.shift.i) || Number(s.shift.j)) && { shift: { i: Math.round(num(s.shift.i, -MAX_SIZE * 8, MAX_SIZE * 8, 0)), j: Math.round(num(s.shift.j, -MAX_SIZE * 8, MAX_SIZE * 8, 0)) } }),
@@ -390,8 +401,32 @@ export function cleanScene(input: unknown): Scene {
   // Shapes as saved, or for a scene from before shapes, by rule from its ground (with its water line).
   scene.shape = Array.isArray(s.shape) && s.shape.length === w * h && s.shape.every((n) => Number.isInteger(n) && n >= 0 && n < SHAPES)
     ? s.shape.slice() : Array.from(defaultShape(mapOf(scene)));
+  for (const it of scene.items) if (it.item === 'hole') digHole(scene, it);
   refreshLinks(scene, sources);
   return scene;
+}
+
+/**
+ * Makes the cell a hole object stands on a hole (ground.ts `HOLE`): the ground's own pit, the object only the ladder
+ * down it and the way it leads. Holes from before shapes stood on any ground, drawn as a pit of their own; this
+ * upgrades them as they are read, and the scene editor calls it where a hole is put down. The ladder leans on the
+ * floor at the hole's back (its turn), or turns to the next floor round where there is none there.
+ */
+export function digHole(scene: Scene, it: PlacedItem): void {
+  const i = Math.floor(it.i), j = Math.floor(it.j);
+  if (i < 0 || j < 0 || i >= scene.w || j >= scene.h || isRock(scene.levels[j * scene.w + i])) return;
+  if (!scene.shape) scene.shape = Array.from(defaultShape(mapOf(scene)));
+  scene.shape[j * scene.w + i] = HOLE;
+  const floor = (a: number, b: number) => a >= 0 && b >= 0 && a < scene.w && b < scene.h && !isRock(scene.levels[b * scene.w + a]) && scene.shape![b * scene.w + a] !== HOLE;
+  const turn = it.turn ?? 0;
+  for (let k = 0; k < 4; k++) {
+    const t = (turn + k) % 4;
+    const back = [[0, -1], [1, 0], [0, 1], [-1, 0]][t];
+    if (!floor(i + back[0], j + back[1])) continue;
+    if (t) it.turn = t;
+    else delete it.turn;
+    return;
+  }
 }
 
 // ------------------------------------------------------------------ references

@@ -15,10 +15,12 @@ import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
 import { savedProps, type Build } from '../../engine/objects/object.ts';
 import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
-import { findPath } from '../../engine/world/path.ts';
+import { findPath, type Waypoint } from '../../engine/world/path.ts';
 import {
   CAVE_DEFAULTS, CAVE_OPEN, cleanWalls, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
 } from '../../engine/world/scene.ts';
+import { digHole } from '../../engine/world/scene.ts';
+import { doorFits, ladderOn, type Climb, type DoorState } from '../../engine/world/ways.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
 import { bestRamp, CUT, HOLE, RAMP, rampDir, SMOOTH } from '../../engine/world/ground.ts';
@@ -49,7 +51,7 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'walls', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
+const TOOLS = ['move', 'raise', 'lower', 'smooth', 'level', 'shape', 'paint', 'walls', 'ways', 'carve', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit'] as const;
 type Tool = (typeof TOOLS)[number];
 /** A cave's ground is carved out of the rock and has ways out; smoothing, which runs over rock too, is for islands. */
 const CAVE_ONLY: Tool[] = ['carve', 'exit'];
@@ -70,7 +72,7 @@ const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Tool, string> = {
-  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
+  move: 'pointer', raise: 'raise', lower: 'lower', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', carve: 'pickaxe', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag',
 };
 
 interface Prefs {
@@ -82,6 +84,8 @@ interface Prefs {
   shape: ShapePick;
   /** The kind of wall the Walls tool builds (building/walls.ts). */
   wall: string;
+  /** What the Ways tool puts on an edge: a ladder up a step, or a door. */
+  way: 'ladder' | 'door';
   /** Brush size in tiles across, 1 to 7; the brush is round. */
   brush: number;
   plant: string;
@@ -116,7 +120,7 @@ interface Prefs {
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', wall: 'brick', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'raise', paint: 2, shape: 'cut', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, colliders: false, fps: false, bright: false };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
@@ -124,6 +128,7 @@ function loadPrefs(): Prefs {
     if (Number.isInteger(saved?.paint) && saved.paint >= 0 && saved.paint <= PAINTS.length) prefs.paint = saved.paint;
     if (SHAPE_PICKS.some((p) => p.id === saved?.shape)) prefs.shape = saved.shape;
     if (typeof saved?.wall === 'string' && wallById(saved.wall)) prefs.wall = saved.wall;
+    if (saved?.way === 'ladder' || saved?.way === 'door') prefs.way = saved.way;
     if (Number.isInteger(saved?.brush) && saved.brush >= 1 && saved.brush <= BRUSH_MAX) prefs.brush = saved.brush;
     if (plantById(saved?.plant)) prefs.plant = saved.plant;
     if (decorById(saved?.decor)) prefs.decor = saved.decor;
@@ -719,6 +724,10 @@ function linkWays(from: Way, to: LinkEnd): void {
     const item: PlacedItem = { item: from.item.item === 'hole' ? 'ladder' : 'hole', ...to.w.toData({ i: to.tile.i + 0.5, j: to.tile.j + 0.5 }) };
     nameLink(to.scene.items, item);
     to.scene.items.push(item);
+    if (item.item === 'hole') {
+      digHole(to.scene, item);
+      if (to.scene.id === world.scene.id) world.setRotation(world.rot);
+    }
     there = { scene: to.scene, item };
   }
   nameLink(from.scene.items, from.item);
@@ -1168,6 +1177,11 @@ function placeItem(at: { i: number; j: number }): void {
   const placed: PlacedItem = { item: choice.id, ...world.toData({ i: at.i + 0.5, j: at.j + 0.5 }), ...(prefs.itemTurn && { turn: prefs.itemTurn }) };
   nameLink(world.scene.items, placed);
   world.scene.items.push(placed);
+  // A hole is a hole in the ground, with the object its ladder down.
+  if (placed.item === 'hole') {
+    digHole(world.scene, placed);
+    world.setRotation(world.rot);
+  }
 }
 
 /** The way the last prop set down was turned, in eighths: the next one is turned the same way. */
@@ -1501,9 +1515,11 @@ let actor: Actor | null = null;
 let herd: Herd | null = null;
 /** Something that can be picked up in Play: a loose item by its place in `world.loose`, or an animal by its place in the scene. */
 type Pickable = { item: PlacedItem } | { animal: number };
-let target: { i: number; j: number; run: boolean; pick?: Pickable } | null = null;
+let target: { i: number; j: number; run: boolean; pick?: Pickable; climb?: Climb } | null = null;
 /** The way on after `target`, round what is in the way (path.ts). */
-let route: { i: number; j: number }[] = [];
+let route: Waypoint[] = [];
+/** The scene's doors as they were before Play, which opens them: put back on leaving it. */
+let playDoors: { doors: Scene['doors'] } | null = null;
 /** What the character holds, if anything. */
 let held: Pickable | null = null;
 /** How near the character must come to pick something up, in metres. */
@@ -1523,6 +1539,9 @@ function startPlay(): void {
   actor = new Actor(characterLook(), at);
   herd = new Herd(world, performance.now());
   world.loose = structuredClone(world.scene.items);
+  // Doors open as the character walks through them; the scene keeps them as they were.
+  playDoors = { doors: world.scene.doors };
+  if (world.scene.doors) world.scene.doors = world.scene.doors.map((d) => ({ ...d }));
   world.scene.people.forEach((p) => standAtHome(p));
   roaming.clear();
   target = null;
@@ -1752,6 +1771,10 @@ function strokeAt(e: { clientX: number; clientY: number }): void {
     wallStroke(e, gesture);
     return;
   }
+  if (toolNow() === 'ways') {
+    if (!gesture.point) wayAt(e, gesture);
+    return;
+  }
   const tile = tileUnder(e);
   if (!tile) return;
   const key = `${tile.i},${tile.j}`;
@@ -1811,6 +1834,53 @@ function buildWall(view: Edge, g: Extract<Gesture, { kind: 'stroke' }>): boolean
   const rest = walls.filter((x) => x !== there);
   s.walls = g.walls === 'take' ? rest : [...rest, { edge, kind: prefs.wall }];
   return true;
+}
+
+/** The door states the Ways tool steps through, tap by tap; after the last, the door is taken away. */
+const DOOR_NEXT: Record<DoorState, DoorState | null> = { closed: 'open', open: 'locked', locked: 'hidden', hidden: null };
+/**
+ * The Ways tool, on a press: the cell edge nearest the pointer. A ladder goes up a step there (of at least two levels,
+ * between floors), or comes away; a door goes on the edge (floor on both sides, a step apart at most), and each tap
+ * on it after makes it open, locked, hidden, then takes it away.
+ */
+function wayAt(e: { clientX: number; clientY: number }, g: Extract<Gesture, { kind: 'stroke' }>): void {
+  const p = groundPixel(e);
+  const at = pointAt(p.x, p.y);
+  if (!at) return;
+  g.point = { i: Math.floor(at.i), j: Math.floor(at.j) };
+  const fi = at.i - Math.floor(at.i), fj = at.j - Math.floor(at.j);
+  // The cell's four edges, nearest first.
+  const ci = Math.floor(at.i), cj = Math.floor(at.j);
+  const edges: [number, Edge][] = [[fi, { axis: 'V', i: ci, j: cj }], [1 - fi, { axis: 'V', i: ci + 1, j: cj }], [fj, { axis: 'H', i: ci, j: cj }], [1 - fj, { axis: 'H', i: ci, j: cj + 1 }]];
+  edges.sort((a, b) => a[0] - b[0]);
+  const s = world.scene;
+  for (const [, view] of edges) {
+    const edge = world.dataEdge(view);
+    if (!edge) continue;
+    const key = edgeKey(edge);
+    if (prefs.way === 'ladder') {
+      const there = (s.ladders ?? []).find((x) => edgeKey(x.edge) === key);
+      if (there) {
+        s.ladders = s.ladders!.filter((x) => x !== there);
+        if (!s.ladders.length) delete s.ladders;
+      } else if (ladderOn(world.map, view)) s.ladders = [...(s.ladders ?? []), { edge }];
+      else continue;
+    } else {
+      const there = (s.doors ?? []).find((x) => edgeKey(x.edge) === key);
+      if (there) {
+        const next = DOOR_NEXT[there.state];
+        s.doors = next ? s.doors!.map((x) => (x === there ? { ...x, state: next } : x)) : s.doors!.filter((x) => x !== there);
+        if (!s.doors.length) delete s.doors;
+        if (next) say(t(`door.${next}` as Key));
+      } else if (doorFits(world.map, view)) {
+        s.doors = [...(s.doors ?? []), { edge, kind: 'wood', state: 'closed' }];
+        say(t('door.closed'));
+      } else continue;
+    }
+    sceneChanged();
+    return;
+  }
+  say(t(prefs.way === 'ladder' ? 'way.noLadder' : 'way.noDoor'));
 }
 
 /** The tiles from a to b (without a, unless it is b), each next to the one before along i or j. */
@@ -2006,20 +2076,24 @@ function frame(ms: number): void {
         target = null;
         di = dj = 0;
       } else if (Math.hypot(di, dj) < 0.08) {
-        // At a turn of the way, on to the next; at its end, stop.
+        // At a turn of the way, on to the next (up or down a ladder first, if it is one); at its end, stop.
+        if (target.climb) actor.climb(target.climb, ms);
         const next = route.shift();
         target = next ? { ...next, run: target.run } : null;
         di = dj = 0;
       }
     }
-    const before = [actor.i, actor.j];
+    // A closed door on the way swings open as the character comes up to it.
+    const door = target && !actor.onLadder ? world.doorAhead(actor, target) : null;
+    if (door?.state === 'closed') door.state = 'open';
+    const before = [actor.i, actor.j], climbed = actor.onLadder;
     actor.update(world, dt, di, dj, run, ms);
     // The animal being fetched waits to be picked up; the others shy away from the character.
     const fetching = target?.pick && 'animal' in target.pick ? target.pick.animal : undefined;
     herd?.update(world, dt, ms, world.toData(actor), fetching);
     roam(dt, ms);
-    // A target that cannot be reached is given up rather than walked against forever.
-    if (target && before[0] === actor.i && before[1] === actor.j) target = null;
+    // A target that cannot be reached is given up rather than walked against forever (not while climbing, which ends straight up or down).
+    if (target && before[0] === actor.i && before[1] === actor.j && !climbed && !actor.onLadder && !door) target = null;
   } else if (kx || ky) {
     cam.x += (kx * 360 * dt) / zoom;
     cam.y += (ky * 360 * dt) / zoom;
@@ -2419,6 +2493,9 @@ function editOptions(): Node[] {
     const name = (k: WallKind) => (k.builtin ? t(`wall.${k.id}` as Key) : k.name);
     rows.push(field({ words: t('wall') }, choice(t('wall'), kinds.map((k) => ({ id: k.id, words: name(k) })), () => prefs.wall, (id) => set({ wall: id }), 'list')));
   }
+  if (tool === 'ways') {
+    rows.push(field({ words: t('way') }, choice(t('way'), [{ id: 'ladder', icon: 'ladder', words: t('way.ladder') }, { id: 'door', icon: 'door', words: t('way.door') }], () => prefs.way, (id) => set({ way: id as Prefs['way'] }), 'buttons')));
+  }
   if (tool === 'shape') {
     rows.push(field({ words: t('shape') }, choice(t('shape'), SHAPE_PICKS.map((p) => ({ id: p.id, icon: p.icon, words: t(`shape.${p.id}` as Key) })), () => prefs.shape, (id) => set({ shape: id as ShapePick }), 'buttons')));
   }
@@ -2485,6 +2562,11 @@ function set(change: Partial<Prefs>): void {
   if (prefs.mode === 'edit') {
     actor = herd = held = null;
     world.loose = null;
+    if (playDoors) {
+      if (playDoors.doors) world.scene.doors = playDoors.doors;
+      else delete world.scene.doors;
+      playDoors = null;
+    }
   }
   hover = null;
   away = null;

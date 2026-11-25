@@ -4,6 +4,7 @@ import { readStore, writeStore } from '@pixel/shared/files.ts';
 import { hashOf } from '@pixel/shared/random.ts';
 import type { PlacedItem } from '@pixel/engine/world/props.ts';
 import { CARRIED } from '@pixel/engine/world/props.ts';
+import { DOOR_STATES, type DoorState } from '@pixel/engine/world/ways.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BUILDS, BUILD_KINDS, HUT_AT, isBagItem, type BagItem, type Build } from './crafts.ts';
 import { KINDS, QUESTS, type Kind, type Progress } from './quests.ts';
@@ -39,6 +40,8 @@ export interface Game {
   weather: Kind;
   /** Chests opened, by where they stand (`i,j` in their scene): what is still in each, left when the bag was full. */
   chests: Record<string, BagItem[]>;
+  /** Doors opened, unlocked or found, by scene and edge (`scene|H3,4`): the state each is in now. */
+  doors: Record<string, DoorState>;
 }
 
 export interface Lying { item: BagItem; i: number; j: number }
@@ -97,6 +100,8 @@ export function loadGame(size: number, palms: number, island: number): Game | nu
     chests: Object.fromEntries(Object.entries(g.chests && typeof g.chests === 'object' ? g.chests : {})
       .filter(([k, v]) => /^[\d.]+,[\d.]+$/.test(k) && Array.isArray(v))
       .map(([k, v]) => [k, (v as unknown[]).filter(isBagItem)])),
+    doors: Object.fromEntries(Object.entries(g.doors && typeof g.doors === 'object' ? g.doors : {})
+      .filter(([k, v]) => /^[\w-]{1,60}\|[HV]-?\d+,-?\d+$/.test(k) && (DOOR_STATES as readonly unknown[]).includes(v))) as Record<string, DoorState>,
   };
 }
 

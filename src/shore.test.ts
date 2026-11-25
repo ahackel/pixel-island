@@ -15,7 +15,7 @@ const shore: Shore = {
   random: Math.random,
 };
 const game = (more: Partial<Game> = {}): Game => ({
-  day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
+  day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
   at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), weather: 'sunny', ...more,
 });
 

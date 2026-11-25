@@ -25,9 +25,12 @@ import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
 import { CAVE_FLOOR, CAVE_OPEN, mapOf, settingsOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
-import { blocked, BuildingView, cornerBlocked, crosses, edgeBetween, edgeEnds, emptyBuilding, wallEnds, type Building, type EdgeKind, type Part, type PieceKind } from './building/building.ts';
+import { blocked, BuildingView, cornerBlocked, crosses, edgeBetween, edgeEnds, edgeKey, emptyBuilding, wallEnds, type Building, type Edge, type EdgeKind, type Part, type PieceKind } from './building/building.ts';
 import { edgeKindOf, wallById, wallFades } from './building/walls.ts';
 import { WallFade } from './wall-fade.ts';
+import { DOOR_HEIGHT, edgeCells, holeLadder, ladderOn, type LadderView, type SceneDoor } from './ways.ts';
+import { ladderPart } from './building/pieces/ladder.ts';
+import { door as doorKind } from './building/pieces/door.ts';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 /** A lamp for `World.lightField`: where it stands on the map, how far it reaches in tiles, its colour, its strength 0 to 1. */
@@ -246,6 +249,10 @@ export const WADE = 2;
 /** How close, in metres, a walker comes to a wall: enough to keep clear of its planks poking out. */
 const WALL_ROOM = 0.15;
 const NOTHING: Picture = { get: () => null };
+/** How long a door takes to swing open or shut, in ms. */
+const DOOR_SWING_MS = 300;
+/** A scene's door as the view has it: its edge turned, the kind of wall it stands in (if any) and its height. */
+export interface ViewDoor { door: SceneDoor; edge: Edge; wall?: string; height: number }
 /** A building part's picture, kept per part picture so the stamping's packing is kept too. */
 const partPictures = new WeakMap<Uint8ClampedArray, Picture>();
 function partPicture(part: Part): Picture {
@@ -493,76 +500,251 @@ export class World {
   }
 
   private partThings(view: BuildingView, buildings: Building[], at?: { i: number; j: number }): Thing[] {
-    return buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => {
-      // Any spot will do to place the picture; the middle of its footprint, which also decides what ground lies in front of it.
-      const spot = { i: (part.box.x0 + part.box.x1) / 2, j: (part.box.y0 + part.box.y1) / 2, level: 0 };
-      const at0 = footOf(this.ground, spot);
-      return {
-        spot, w: part.w, h: part.h, foot: { x: at0.x - part.x, y: at0.y - part.y },
-        picture: part.hidden ? NOTHING : partPicture(part),
-        box: { ...part.box, key: part.key }, shadow: part.shadow, bases: part.base,
-      };
-    });
+    return buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => this.thingOfPart(part));
+  }
+  private thingOfPart(part: Part): Thing {
+    // Any spot will do to place the picture; the middle of its footprint, which also decides what ground lies in front of it.
+    const spot = { i: (part.box.x0 + part.box.x1) / 2, j: (part.box.y0 + part.box.y1) / 2, level: 0 };
+    const at0 = footOf(this.ground, spot);
+    return {
+      spot, w: part.w, h: part.h, foot: { x: at0.x - part.x, y: at0.y - part.y },
+      picture: part.hidden ? NOTHING : partPicture(part),
+      box: { ...part.box, key: part.key }, shadow: part.shadow, bases: part.base,
+    };
   }
 
-  /** The scene's own walls (`Scene.walls`) in view coordinates: a building per kind, as each kind has its own height. */
-  private walled: { from: Scene['walls']; rot: number; buildings: Building[] } | null = null;
+  /** An edge of the scene in view coordinates. */
+  viewEdge(edge: Edge): Edge | null {
+    const [a, b] = edgeEnds(edge).map(([i, j]) => this.toView({ i, j }));
+    return edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+  }
+  /** An edge in view coordinates back in the scene's. */
+  dataEdge(edge: Edge): Edge | null {
+    const [a, b] = edgeEnds(edge).map(([i, j]) => this.toData({ i, j }));
+    return edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+  }
+
+  /**
+   * The scene's own walls (`Scene.walls`) in view coordinates: a building per kind, as each kind has its own height.
+   * A door on a wall's edge stands in its place (`viewDoors`).
+   */
+  private walled: { from: Scene['walls']; doors: Scene['doors']; rot: number; buildings: Building[] } | null = null;
   viewWalls(): Building[] {
-    if (!this.walled || this.walled.from !== this.scene.walls || this.walled.rot !== this.rot) {
+    const w0 = this.walled;
+    if (!w0 || w0.from !== this.scene.walls || w0.doors !== this.scene.doors || w0.rot !== this.rot) {
       const byKind = new Map<string, Building>();
+      const doors = new Set((this.scene.doors ?? []).map((d) => edgeKey(d.edge)));
       for (const { edge, kind } of this.scene.walls ?? []) {
         const w = wallById(kind);
-        if (!w) continue;
-        const [a, b] = edgeEnds(edge).map(([i, j]) => this.toView({ i, j }));
-        const e = edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+        if (!w || doors.has(edgeKey(edge))) continue;
+        const e = this.viewEdge(edge);
         if (!e) continue;
         const bd = byKind.get(kind) ?? byKind.set(kind, emptyBuilding(w.height)).get(kind)!;
-        bd.edges.set(`${e.axis}${e.i},${e.j}`, { kind, edge: e });
+        bd.edges.set(edgeKey(e), { kind, edge: e });
       }
-      this.walled = { from: this.scene.walls, rot: this.rot, buildings: [...byKind.values()] };
+      this.walled = { from: this.scene.walls, doors: this.scene.doors, rot: this.rot, buildings: [...byKind.values()] };
     }
-    return this.walled.buildings;
-  }
-  /** Everything that stops a walker on an edge: the game's buildings and the scene's walls. */
-  private allBuildings(): Building[] {
-    return [...this.buildings, ...this.viewWalls()];
+    return this.walled!.buildings;
   }
 
+  /**
+   * The scene's doors (`Scene.doors`) in view coordinates, each with the kind of wall it stands in (if any) and its
+   * height: the wall's, or `DOOR_HEIGHT`.
+   */
+  private doored: { from: Scene['doors']; walls: Scene['walls']; rot: number; list: ViewDoor[] } | null = null;
+  viewDoors(): ViewDoor[] {
+    const d0 = this.doored;
+    if (!d0 || d0.from !== this.scene.doors || d0.walls !== this.scene.walls || d0.rot !== this.rot) {
+      const walls = new Map((this.scene.walls ?? []).map((w) => [edgeKey(w.edge), w.kind]));
+      const list: ViewDoor[] = [];
+      for (const door of this.scene.doors ?? []) {
+        const edge = this.viewEdge(door.edge);
+        if (!edge) continue;
+        const wall = walls.get(edgeKey(door.edge));
+        const kind = wall && wallById(wall) ? wall : undefined;
+        list.push({ door, edge, wall: kind, height: kind ? wallById(kind)!.height : DOOR_HEIGHT });
+      }
+      this.doored = { from: this.scene.doors, walls: this.scene.walls, rot: this.rot, list };
+    }
+    return this.doored!.list;
+  }
+  /** The doors that stop a walker, as a building: all but the open ones and those `pass` lets through. */
+  private doorBlocks = new Map<string, Building>();
+  private doorBlock(pass?: (d: SceneDoor) => boolean): Building | null {
+    const doors = this.viewDoors();
+    if (!doors.length) return null;
+    const shut = doors.filter((d) => d.door.state !== 'open' && !pass?.(d.door));
+    const key = `${this.rot}|${shut.map((d) => edgeKey(d.edge)).join(' ')}`;
+    let b = this.doorBlocks.get(key);
+    if (!b) {
+      if (this.doorBlocks.size > 64) this.doorBlocks.clear();
+      b = emptyBuilding(DOOR_HEIGHT);
+      for (const d of shut) b.edges.set(edgeKey(d.edge), { kind: 'door', edge: d.edge });
+      this.doorBlocks.set(key, b);
+    }
+    return b;
+  }
+  /** The door on an edge (in view coordinates), if any. */
+  doorOn(edge: Edge): SceneDoor | null {
+    return this.viewDoors().find((d) => edgeKey(d.edge) === edgeKey(edge))?.door ?? null;
+  }
+  /**
+   * The first door not open that a walker at `from` heading for `to` would meet within `reach` tiles: the one a game
+   * opens (or unlocks) as the walker comes up to it.
+   */
+  doorAhead(from: { i: number; j: number }, to: { i: number; j: number }, reach = 0.9): SceneDoor | null {
+    const d = Math.hypot(to.i - from.i, to.j - from.j);
+    if (d < 1e-6) return null;
+    const k = Math.min(1, reach / d);
+    const end = { x: from.i + (to.i - from.i) * k, y: from.j + (to.j - from.j) * k };
+    let best: SceneDoor | null = null, near = Infinity;
+    for (const v of this.viewDoors()) {
+      if (v.door.state === 'open') continue;
+      const one = emptyBuilding(1);
+      one.edges.set('d', { kind: 'door', edge: v.edge });
+      if (!crosses(one, { x: from.i, y: from.j }, end)) continue;
+      const [c0, c1] = edgeCells(v.edge);
+      const far = Math.hypot((c0[0] + c1[0] + 1) / 2 - from.i, (c0[1] + c1[1] + 1) / 2 - from.j);
+      if (far < near) { near = far; best = v.door; }
+    }
+    return best;
+  }
+
+  /**
+   * The scene's ladders (`Scene.ladders`) as they stand on the ground, in view coordinates: only those with a step of
+   * at least `LADDER_MIN` between two floors under them.
+   */
+  private laddered: { from: Scene['ladders']; ground: TerrainImage; list: LadderView[] } | null = null;
+  viewLadders(): LadderView[] {
+    const l0 = this.laddered;
+    if (!l0 || l0.from !== this.scene.ladders || l0.ground !== this.ground) {
+      const list: LadderView[] = [];
+      for (const { edge } of this.scene.ladders ?? []) {
+        const e = this.viewEdge(edge);
+        const L = e && ladderOn(this.map, e);
+        if (L) list.push(L);
+      }
+      this.laddered = { from: this.scene.ladders, ground: this.ground, list };
+    }
+    return this.laddered!.list;
+  }
+  /** The ladder down a hole object, in view coordinates: on the hole's cell, leaning on the floor at its back. */
+  holeLadder(it: PlacedItem): LadderView | null {
+    if (it.item !== 'hole') return null;
+    const v = this.toView(it);
+    return holeLadder(this.map, Math.floor(v.i), Math.floor(v.j), (it.turn ?? 0) + this.rot);
+  }
+
+  /** Everything that stops a walker on an edge: the game's buildings, the scene's walls and its doors but those open or let through by `pass`. */
+  private allBuildings(pass?: (d: SceneDoor) => boolean): Building[] {
+    const doors = this.doorBlock(pass);
+    return doors ? [...this.buildings, ...this.viewWalls(), doors] : [...this.buildings, ...this.viewWalls()];
+  }
+
+  /**
+   * The doors as buildings to draw, one per height: a door's own piece, or where it is hidden the piece of the wall it
+   * stands in, else of the rock beside it (brick where that is brick, stone otherwise).
+   */
+  private doorDraw: { doors: ViewDoor[]; hidden: string; buildings: Building[] } | null = null;
+  private doorBuildings(): Building[] {
+    const doors = this.viewDoors();
+    const hidden = doors.map((d) => (d.door.state === 'hidden' ? 1 : 0)).join('');
+    if (this.doorDraw?.doors !== doors || this.doorDraw.hidden !== hidden) {
+      const byHeight = new Map<number, Building>();
+      for (const d of doors) {
+        const b = byHeight.get(d.height) ?? byHeight.set(d.height, emptyBuilding(d.height)).get(d.height)!;
+        b.edges.set(edgeKey(d.edge), { kind: d.door.state === 'hidden' ? (d.wall ?? `hidden:${this.rockBeside(d.edge)}`) : 'door', edge: d.edge });
+      }
+      this.doorDraw = { doors, hidden, buildings: [...byHeight.values()] };
+    }
+    return this.doorDraw.buildings;
+  }
+  /** What the rock beside a doorway is built of, for a hidden door to look like it: brick, or stone. */
+  private rockBeside(e: Edge): 'brick' | 'stone' {
+    const [a, b] = edgeCells(e);
+    const side = e.axis === 'H' ? [0, 1] : [1, 0];
+    for (const [ci, cj] of [a, b]) for (const k of [-1, 1]) {
+      const i = ci + side[0] * k, j = cj + side[1] * k;
+      if (inside(this.map, i, j) && isRock(levelAt(this.map, i, j)) && this.map.paint[j * this.map.w + i] === BRICK) return 'brick';
+    }
+    return 'stone';
+  }
+
+  /** How far each door's leaf has swung open, 0 to 1. */
+  private swing = new Map<SceneDoor, number>();
   /** How the scene's walls are drawn and how far each has dissolved. */
   private wallDraw: { view: BuildingView; ground: TerrainImage; kinds: string; fade: WallFade; cell: string; walls: Building[]; ms?: number } | null = null;
+  /** The ladders' pictures, by ground and ladder. */
+  private ladderDraw: { ground: TerrainImage; parts: Map<string, Part> } | null = null;
   /**
-   * The scene's walls as things. Those in front of the player at `at` dissolve over a quarter second, by the frame's
-   * time `ms` (at once without it), a straight run at a time (wall-fade.ts); without a player none do.
+   * The scene's walls, doors and ladders as things. Walls and doors in front of the player at `at` dissolve over a
+   * quarter second, by the frame's time `ms` (at once without it), a straight run at a time (wall-fade.ts); a door in a
+   * wall goes with the wall's run. Without a player none do. Doors swing open or shut by the same clock.
    */
   wallThings(at?: { i: number; j: number }, ms?: number): Thing[] {
-    const buildings = this.viewWalls();
-    if (!buildings.length) return [];
+    const ladders = this.ladderThings(this.viewLadders());
+    const walls = this.viewWalls(), doors = this.doorBuildings();
+    const buildings = [...walls, ...doors];
+    if (!buildings.length) return ladders;
     const dark = settingsOf(this.scene).light === 'dark';
-    const kinds = buildings.map((b) => b.edges.values().next().value!.kind).join('|') + `|${dark}`;
+    const used = new Set(buildings.flatMap((b) => [...b.edges.values()].map((p) => p.kind)));
+    const kinds = [...used].sort().join('|') + `|${dark}`;
     let d = this.wallDraw;
     if (!d || d.ground !== this.ground || d.kinds !== kinds) {
       const pieces: Record<string, EdgeKind> = {};
-      for (const b of buildings) {
-        const kind = b.edges.values().next().value!.kind;
-        pieces[kind] = edgeKindOf(wallById(kind)!, dark);
+      for (const kind of used) {
+        if (kind === 'door') pieces[kind] = doorKind();
+        else if (kind.startsWith('hidden:')) pieces[kind] = edgeKindOf(wallById(kind.slice(7))!, dark);
+        else pieces[kind] = edgeKindOf(wallById(kind)!, dark);
       }
       d = this.wallDraw = { view: new BuildingView(pieces, { map: this.floor, ground: this.ground }), ground: this.ground, kinds, fade: d?.fade ?? new WallFade(), cell: '-', walls: [] };
     }
-    // Where the player stands, as the fade goes by it; walls or ground changed, it is aimed again.
+    // Where the player stands, as the fade goes by it; walls, doors or ground changed, it is aimed again.
     const cell = at ? `${Math.floor(at.i)},${Math.floor(at.j)}` : '';
-    if (d.cell !== cell || d.walls !== buildings) {
-      const fading = buildings.flatMap((b) => [...b.edges.values()].map(({ edge, kind }) => ({
+    if (d.cell !== cell || d.walls.length !== buildings.length || d.walls.some((b, k) => b !== buildings[k])) {
+      const fading = walls.flatMap((b) => [...b.edges.values()].map(({ edge, kind }) => ({
         edge, kind, fades: wallFades(wallById(kind)!), top: Math.max(...wallEnds(this.floor, edge).high) + b.height,
       })));
+      // A door goes with the run of wall it stands in, as that kind; one on its own is a run of its own.
+      for (const v of this.viewDoors()) {
+        const w = v.wall ? wallById(v.wall) : undefined;
+        fading.push({ edge: v.edge, kind: v.wall ?? 'door', fades: w ? wallFades(w) : true, top: Math.max(...wallEnds(this.floor, v.edge).high) + v.height });
+      }
       d.fade.aim(fading, this.floor, at ? { i: Math.floor(at.i), j: Math.floor(at.j) } : null);
       d.cell = cell;
       d.walls = buildings;
     }
-    if (ms === undefined || d.ms === undefined) d.fade.settle();
-    else d.fade.advance(Math.max(0, Math.min(100, ms - d.ms)));
+    const dt = ms === undefined || d.ms === undefined ? null : Math.max(0, Math.min(100, ms - d.ms));
+    if (dt === null) d.fade.settle();
+    else d.fade.advance(dt);
     d.ms = ms;
-    for (const b of buildings) for (const piece of b.edges.values()) piece.fade = d.fade.fadeOf(piece.edge);
-    return this.partThings(d.view, buildings);
+    for (const v of this.viewDoors()) {
+      const to = v.door.state === 'open' ? 1 : 0, now = this.swing.get(v.door) ?? to;
+      const next = dt === null ? to : now + Math.sign(to - now) * Math.min(Math.abs(to - now), dt / DOOR_SWING_MS);
+      this.swing.set(v.door, next);
+    }
+    for (const b of walls) for (const piece of b.edges.values()) piece.fade = d.fade.fadeOf(piece.edge);
+    const doorOf = new Map(this.viewDoors().map((v) => [edgeKey(v.edge), v.door]));
+    for (const b of doors) for (const piece of b.edges.values()) {
+      const door = doorOf.get(edgeKey(piece.edge))!;
+      piece.fade = d.fade.fadeOf(piece.edge);
+      piece.open = Math.round((this.swing.get(door) ?? 0) * 8) / 8;
+      piece.locked = door.state === 'locked';
+    }
+    return [...this.partThings(d.view, buildings), ...ladders];
+  }
+
+  /** Ladders as things, drawn once per ground. */
+  private ladderThings(ladders: LadderView[]): Thing[] {
+    if (!ladders.length) return [];
+    if (this.ladderDraw?.ground !== this.ground) this.ladderDraw = { ground: this.ground, parts: new Map() };
+    const parts = this.ladderDraw.parts;
+    return ladders.map((L) => {
+      const key = `${edgeKey(L.edge)}|${L.foot}|${L.low}|${L.high}|${L.hole}`;
+      let p = parts.get(key);
+      if (!p) parts.set(key, (p = ladderPart({ map: this.floor, ground: this.ground }, L)));
+      return this.thingOfPart(p);
+    });
   }
 
   constructor(scene: Scene, rot = 0) {
@@ -868,6 +1050,9 @@ export class World {
 
   itemThings(): Thing[] {
     return this.viewItems().map((it) => {
+      // A hole is the ground's own (a hole-shaped cell); what stands in it is the ladder down.
+      const down = this.holeLadder(it);
+      if (down) return this.ladderThings([down])[0];
       const spot = { i: it.vi, j: it.vj, level: standingHeight(this.map, it.vi, it.vj) };
       // A catalogue object locked to pixels is drawn from them, until it opens (its frames are drawn by the renderer).
       const locked = it.open ? null : lockedPicture(`object:${it.item}`, ((it.turn ?? 0) + this.rot) * 2);
@@ -1487,8 +1672,12 @@ export class World {
     return via([b[0], a[1]]) || via([a[0], b[1]]);
   }
 
-  /** Whether a walker can stand at a point: land or the shallows, reached without a cliff or too steep a slope, clear of big plants. */
-  canWalk(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
+  /**
+   * Whether a walker can stand at a point: land or the shallows, reached without a cliff or too steep a slope, clear of
+   * big plants, through no wall and no door but an open one or one `pass` lets through (path finding plans through
+   * closed doors, which the walker opens on the way).
+   */
+  canWalk(from: { i: number; j: number }, to: { i: number; j: number }, pass?: (d: SceneDoor) => boolean): boolean {
     const a: [number, number] = [Math.floor(from.i), Math.floor(from.j)];
     const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)], b0 = b;
     if (!inside(this.floor, ...b) || this.water - levelAt(this.floor, ...b) > WADE) return false;
@@ -1515,7 +1704,7 @@ export class World {
       if (itemCovers(it, this.rot, this.scene.objects, to.i, to.j) && !itemCovers(it, this.rot, this.scene.objects, from.i, from.j)) return false;
     }
     // Walls block crossing their edge, and a step past a wall's end at a corner; stepping off one placed on the walker is allowed.
-    for (const b of this.allBuildings()) {
+    for (const b of this.allBuildings(pass)) {
       if (crosses(b, { x: from.i, y: from.j }, { x: to.i, y: to.j }) || cornerBlocked(b, a, b0)) return false;
       if (blocked(b, to.i, to.j, WALL_ROOM) && !blocked(b, from.i, from.j, WALL_ROOM)) return false;
     }
