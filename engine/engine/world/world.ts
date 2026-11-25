@@ -836,7 +836,8 @@ export class World {
     this.water = waterOf(this.map);
     this.floor = seaFloor(this.map);
     setWater(WATER_COLORS.map((k) => ocean[k]));
-    this.shown = withLoneRockFloored(this.map);
+    // With the water hidden (the editor's view), the ground under it is drawn bare.
+    this.shown = withLoneRockFloored(this.waterShown ? this.map : { ...this.map, bare: true });
     // In the dark, stone faces are painted in the cave's tones.
     const dark = settingsOf(this.scene).light === 'dark';
     // Under a cutaway, ground over it is drawn as cut ground at its level.
@@ -975,6 +976,8 @@ export class World {
 
   /** Fish seen through the water, only where water shows, so never on the beach. */
   private drawFish(image: Pixels, view: Rect, ms: number): void {
+    // No water, no fish to see.
+    if (!this.waterShown) return;
     const g = this.ground;
     const d = image.data;
     this.fish.forEach((f, n) => {
@@ -1238,7 +1241,10 @@ export class World {
       const p = gy * g.w + gx, c = g.cell[p];
       const right = gx + 1 < g.w ? g.cell[p + 1] : c;
       const below = gy + 1 < g.h ? g.cell[p + g.w] : c;
-      if (c >= 0 && ((right >= 0 && right !== c) || (below >= 0 && below !== c))) return true;
+      // One pixel wide: the pixel over a change of tile, so a slanted edge is a clean line two pixels a row; a change to
+      // the right only where the edge runs straight down (the tile goes on below, as does the other one beside it).
+      if (c >= 0 && below >= 0 && below !== c) return true;
+      if (c >= 0 && right >= 0 && right !== c && below === c && (gy + 1 >= g.h || gx + 1 >= g.w || g.cell[p + g.w + 1] === right)) return true;
       // A cave's level edges: the line round the whole flat plane, where the next pixel is off the map.
       if (!this.void || c < 0) return false;
       return right < 0 || below < 0 || (gx > 0 && g.cell[p - 1] < 0) || (gy > 0 && g.cell[p - g.w] < 0);
@@ -1259,7 +1265,8 @@ export class World {
       for (let x = 0; x < w; x++) {
         const gx = x + view.x;
         const o = (y * w + x) * 4;
-        if (this.alone && this.beyond(gx, gy)) {
+        // Alone on the desk with the water hidden, nothing but the map's own ground is drawn.
+        if (this.alone && (this.beyond(gx, gy) || (!this.waterShown && !(gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.cell[gy * g.w + gx] >= 0)))) {
           d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
           continue;
         }
@@ -1701,6 +1708,8 @@ export class World {
    * behind and below shows; null for none. Only the drawing changes (`redraw` after setting it), not the map.
    */
   cutaway: number | null = null;
+  /** Whether the water is drawn; the editor can hide it to see the sea floor (`redraw` after setting it). */
+  waterShown = true;
   /** The editor's floor to the cutaway: ground lower than this level is drawn darker, as out of reach; null for none. */
   cutBelow: number | null = null;
   /** Whether a cell's ground stands above the cutaway, so it is drawn cut off. */
