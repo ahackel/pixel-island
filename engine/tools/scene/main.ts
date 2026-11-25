@@ -336,6 +336,7 @@ function show(scene: Scene): void {
   selected = null;
   sceneChanged();
   showOptions();
+  showCut();
 }
 /**
  * One step back or forward: its scenes are kept as they are now on the other list, then put back as they were. The
@@ -1015,6 +1016,12 @@ function groundPixel(e: { clientX: number; clientY: number }): { x: number; y: n
   return { x: (e.clientX - box.left) / zoom + view.x, y: (e.clientY - box.top) / zoom + view.y };
 }
 const tileUnder = (e: { clientX: number; clientY: number }) => {
+  const tile = tileDrawn(e);
+  // Ground cut away is not there to work on.
+  return tile && !world.aboveCut(tile.j * world.map.w + tile.i) ? tile : null;
+};
+/** The tile drawn under the pointer, as the tools take it. */
+function tileDrawn(e: { clientX: number; clientY: number }): { i: number; j: number } | null {
   const p = groundPixel(e);
   const tile = world.tileAt(p.x, p.y);
   if (!tile) return null;
@@ -1029,7 +1036,48 @@ const tileUnder = (e: { clientX: number; clientY: number }) => {
   // Behind two holes, the one whose side the face is on.
   const q = world.planeAt(p.x, p.y, level);
   return Math.abs(q.i - tile.i - 1) < Math.abs(q.j - tile.j - 1) ? holes[0] : holes[1];
-};
+}
+
+// ------------------------------------------------------------------ cutaway
+
+/** Each open scene's cutaway while editing (World.cutaway), by scene id: the level the ground is cut away above. Not saved. */
+const cuts = new Map<string, number>();
+/** The levels a scene can be cut away at: from its lowest floor over the water to one under its highest ground; null if flat. */
+function cutRange(w = world): { lo: number; hi: number } | null {
+  let lo = Infinity, hi = -Infinity;
+  for (const l of w.map.levels) if (!isRock(l)) { lo = Math.min(lo, l); hi = Math.max(hi, l); }
+  lo = Math.max(lo, w.water);
+  return hi - 1 >= lo ? { lo, hi: hi - 1 } : null;
+}
+/** The cutaway in force: the scene's, kept inside its range; none in Play. */
+function cutNow(): number | null {
+  const n = cuts.get(sceneNow().id), r = cutRange();
+  return prefs.mode !== 'edit' || n === undefined || !r ? null : Math.max(r.lo, Math.min(r.hi, n));
+}
+function setCut(n: number | null): void {
+  if (n === null) cuts.delete(sceneNow().id);
+  else cuts.set(sceneNow().id, n);
+  hover = null;
+  version++;
+  showCut();
+}
+/** Page Up and Page Down: the cutaway a level up or down; down from none starts under the highest ground, up past it ends it. */
+function stepCut(by: number): void {
+  const r = cutRange(), now = cutNow();
+  if (!r) return;
+  const next = now === null ? (by < 0 ? r.hi : null) : now + by;
+  setCut(next === null || next > r.hi ? null : Math.max(r.lo, next));
+}
+/** The cutaway's button among the view buttons: all ground, or a level to cut away above; hidden where there is nothing to cut. */
+const cutSlot = h('span');
+function showCut(): void {
+  const r = prefs.mode === 'edit' ? cutRange() : null;
+  cutSlot.hidden = !r;
+  if (!r) return void cutSlot.replaceChildren();
+  const levels = Array.from({ length: r.hi - r.lo + 1 }, (_, k) => String(r.hi - k));
+  const options = [{ id: 'all', icon: 'height', words: t('cut.all') }, ...levels.map((n) => ({ id: n, words: n }))];
+  cutSlot.replaceChildren(choice(t('cut'), options, () => String(cutNow() ?? 'all'), (id) => setCut(id === 'all' ? null : Number(id)), 'list'));
+}
 
 /** The start point, shown while editing: a small flag. */
 const FLAG: Picture = {
@@ -1044,7 +1092,7 @@ let away: { scene: Scene; tile: { i: number; j: number } } | null = null;
 
 function brushCells(at: { i: number; j: number }, tool = toolNow(), w = world): number[] {
   const size = BRUSHED.includes(tool) ? prefs.brush : 1;
-  return roundBrush(size).filter(([di, dj]) => inside(w.map, at.i + di, at.j + dj)).map(([di, dj]) => (at.j + dj) * w.map.w + at.i + di);
+  return roundBrush(size).filter(([di, dj]) => inside(w.map, at.i + di, at.j + dj)).map(([di, dj]) => (at.j + dj) * w.map.w + at.i + di).filter((c) => !w.aboveCut(c));
 }
 
 /** Whether the tool would do nothing on a tile, so the brush shows red there. */
@@ -1334,7 +1382,8 @@ function pullTo(pull: Pull, clientY: number): void {
   // A little past half a level before the first step, so a press that wobbles changes nothing.
   let d = Math.sign(dy) * Math.floor(Math.abs(dy) + 0.4);
   const low = MIN_LEVEL - (pull.from ?? MIN_LEVEL);
-  if (pull.from !== null) d = Math.max(low, Math.min(pull.top - pull.from, d));
+  // Not over a cutaway, where it would be cut away unseen.
+  if (pull.from !== null) d = Math.max(low, Math.min(Math.min(pull.top, world.cutaway ?? Infinity) - pull.from, d));
   if (d === pull.d) return;
   pull.d = d;
   const map = world.map;
@@ -1380,6 +1429,8 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
   const tool = stroke.tool ?? toolNow();
   // The Ways tool lays ramps and holes a cell at a time.
   const cells = stroke.shape ? [at.j * map.w + at.i] : brushCells(at, tool);
+  // Under a cutaway nothing is raised over it, where it would be cut away unseen.
+  const cut = world.cutaway, was = cut === null ? null : cells.map((c) => map.levels[c]);
   const fresh = cells.filter((c) => !stroke.touched.has(c));
   fresh.forEach((c) => stroke.touched.add(c));
   const tile = (c: number): [number, number] => [c % map.w, Math.floor(c / map.w)];
@@ -1483,6 +1534,7 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       world.scene.spawn = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
       break;
   }
+  if (was) cells.forEach((c, k) => { if (!isRock(was[k]) && was[k] <= cut! && !isRock(map.levels[c]) && map.levels[c] > cut!) map.levels[c] = cut!; });
   sceneChanged();
 }
 
@@ -1657,6 +1709,9 @@ function bringItem(it: PlacedItem, from: Scene, to: Scene): void {
   }
 }
 
+/** Whether a view point lies on ground cut away, where what stands is neither shown nor picked. */
+const cutOff = (at: { i: number; j: number }) => inside(world.map, Math.floor(at.i), Math.floor(at.j)) && world.aboveCut(Math.floor(at.j) * world.map.w + Math.floor(at.i));
+
 /** The placed thing under a ground-image pixel, the front-most; decorations lie flat, so they come last. */
 function objectAt(x: number, y: number): Selected | null {
   const s = world.toView(world.scene.spawn);
@@ -1678,9 +1733,10 @@ function objectAt(x: number, y: number): Selected | null {
   if (plant) found.push([{ kind: 'plant', obj: plant }, world.toView(plant), true]);
   let best: Selected | null = null;
   let front = -Infinity;
-  for (const [sel, at, hit] of found) if (hit && at.i + at.j > front) [best, front] = [sel, at.i + at.j];
+  for (const [sel, at, hit] of found) if (hit && !cutOff(at) && at.i + at.j > front) [best, front] = [sel, at.i + at.j];
   if (best) return best;
   const decor = world.viewDecor().findIndex((d) => {
+    if (cutOff({ i: d.vi, j: d.vj })) return false;
     const at = footOf(world.ground, { i: d.vi, j: d.vj, level: heightAt(world.floor, d.vi, d.vj) });
     return Math.abs(x - at.x) <= 3 && Math.abs(y - at.y) <= 3;
   });
@@ -1973,6 +2029,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.metaKey || e.ctrlKey) return;
+  if (prefs.mode === 'edit' && (e.code === 'PageUp' || e.code === 'PageDown')) {
+    e.preventDefault();
+    stepCut(e.code === 'PageUp' ? 1 : -1);
+  }
   if (prefs.mode === 'play' && e.code === 'KeyE') emote('wave');
   if (prefs.mode === 'play' && e.code === 'KeyF') emote('use');
   if (prefs.mode === 'edit' && selected && selected.kind !== 'spawn' && (e.code === 'Delete' || e.code === 'Backspace')) {
@@ -2317,6 +2377,8 @@ const release = (e: PointerEvent) => {
   // An edge dragged nowhere leaves nothing to undo, nor does a Ground pull that came back to where it started.
   if (gesture?.kind === 'edge' && !gesture.changed) { undoStack.pop(); syncUndo(); }
   if (gesture?.kind === 'stroke' && gesture.pull && !gesture.pull.d && prefs.edges === 'keep') { undoStack.pop(); syncUndo(); }
+  // The ground's highest and lowest may have changed, and with them the levels to cut away at.
+  if (gesture?.kind === 'stroke') showCut();
   // Lifting one finger of a pinch does not start painting with the other.
   if (!pointers.size || gesture?.kind === 'pinch') gesture = pointers.size ? { kind: 'pan', x: [...pointers.values()][0].x, y: [...pointers.values()][0].y, cam: { ...cam } } : null;
 };
@@ -2357,6 +2419,11 @@ function frame(ms: number): void {
   last = ms;
   repeatStroke(ms);
   easeZoom(dt);
+  const cut = cutNow();
+  if (world.cutaway !== cut) {
+    world.cutaway = cut;
+    groundDirty = true;
+  }
   if (groundDirty) {
     // shortcut: redraws the whole ground per changed tile; fine up to 64 by 64, draw only the changed rows if it ever lags.
     world.redraw();
@@ -2407,25 +2474,27 @@ function frame(ms: number): void {
   const wind = Math.floor((ms / 1000) * 6) % FRAMES;
   const waves = Math.floor(ms / 100);
   const idle = Math.floor((ms / 1000) * CLIPS.idle.rate);
-  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}`;
+  const key = `${version}|${view.x},${view.y},${vw},${vh}|${wind}|${waves}|${idle}|${hover?.i},${hover?.j}|${prefs.mode}|${prefs.bright}|${prefs.colliders}|${hotEdge}|${away?.scene.id},${away?.tile.i},${away?.tile.j}|${mods.alt},${mods.shift},${mods.pick}|${cut}`;
   if (prefs.mode === 'play' || key !== shown) {
     const begun = performance.now();
     const cave = world.scene.cave;
-    const things: Thing[] = [
+    const all: Thing[] = [
       ...world.plantThings(wind), ...world.decorThings(ms), ...world.animalThings(ms, herd ?? undefined), ...world.itemThings(), ...world.propThings(wind), ...world.scene.people.map((p) => personThing(p, ms)),
       // In Play the rock in front of the character dissolves as they walk; while editing, all rock that hides floor is down to its stub.
       ...(cave ? (prefs.mode === 'play' && actor ? caveThings(world, actor, ms) : caveThings(world)) : []),
       // The scene's walls: in Play those in front of the character dissolve as they walk.
       ...(prefs.mode === 'play' && actor ? world.wallThings(actor, ms) : world.wallThings()),
     ];
-    if (prefs.mode === 'play' && actor) things.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
+    if (prefs.mode === 'play' && actor) all.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
     else {
-      things.push(flagOf(world));
+      all.push(flagOf(world));
       for (const e of cave?.exits ?? []) {
         const v = world.toView(e);
-        things.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: EXIT_MARK, w: 7, h: 7, foot: { x: 3, y: 3 }, shadow: [] });
+        all.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: EXIT_MARK, w: 7, h: 7, foot: { x: 3, y: 3 }, shadow: [] });
       }
     }
+    // What stands on ground cut away goes with it.
+    const things = cut === null ? all : all.filter((x) => !cutOff(x.spot));
     // In Play the key alone does not say whether anyone moved: the picture is the same while every thing shows the same frame in the same place.
     const still = key === shown && things.length === shownThings.length
       && things.every((t, k) => t.picture === shownThings[k].picture && t.spot.i === shownThings[k].spot.i && t.spot.j === shownThings[k].spot.j && t.spot.level === shownThings[k].spot.level);
@@ -2944,6 +3013,7 @@ function render(): void {
   inspect();
   showActions();
   if (brightToggle) brightToggle.hidden = !editing || !isDark(sceneNow());
+  showCut();
   // While editing, the scene lies on the desk; in Play it is seen as in the game, with open sea (or a cave's dark) round it.
   world.alone = editing;
   viewport.style.background = editing ? DESK : settingsOf(sceneNow()).outside === 'void' ? '#000' : ocean.deep;
@@ -3196,6 +3266,7 @@ function mount(): void {
       pixelButton(t('zoom.out'), { icon: 'zoomout' }, () => stepZoom(-1)),
       pixelButton(t('rotate.left'), { icon: 'turnleft' }, () => rotate(-1)),
       pixelButton(t('rotate.right'), { icon: 'turnright' }, () => rotate(1)),
+      cutSlot,
       brightToggle,
       toggle(t('zoom.grid'), { icon: 'grid' }, prefs.grid, (grid) => set({ grid })),
       toggle(t('zoom.colliders'), { icon: 'collider' }, prefs.colliders, (colliders) => set({ colliders })),

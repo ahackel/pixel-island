@@ -839,7 +839,14 @@ export class World {
     this.shown = withLoneRockFloored(this.map);
     // In the dark, stone faces are painted in the cave's tones.
     const dark = settingsOf(this.scene).light === 'dark';
-    if (!this.void && !this.shown.levels.some(isRock)) return renderTerrain(dark ? { ...this.shown, dark } : this.shown);
+    // Under a cutaway, ground over it is drawn as cut ground at its level.
+    const cut = this.cutaway;
+    const sliced = <T extends HeightMap & { shape: Uint8Array }>(m: T): T => (cut === null ? m : {
+      ...m,
+      levels: (m.levels as Int8Array).map((l) => (!isRock(l) && l > cut ? cut : l)),
+      shape: m.shape.map((sh, c) => (!isRock(m.levels[c]) && m.levels[c] > cut ? CUT : sh)),
+    });
+    if (!this.void && !this.shown.levels.some(isRock)) return this.capped(renderTerrain(sliced(dark ? { ...this.shown, dark } : this.shown)));
     // Rock is drawn black on the floor's own plane (cave.ts stands its blocks and walls on it), so nothing slopes off at
     // the edge of the hollow and the editor's grid lies flat across it.
     let flat = Infinity;
@@ -847,14 +854,29 @@ export class World {
     if (flat === Infinity) flat = this.scene.cave ? CAVE_FLOOR : SEA_LEVEL;
     this.flatLevel = flat;
     // Rock drawn so is cut ground; beyond a void's edge lies rock, which the ground beside it does not slope to.
-    return renderTerrain({
-      ...this.shown,
-      levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
-      shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
+    const ground = sliced(this.shown);
+    return this.capped(renderTerrain({
+      ...ground,
+      levels: ground.levels.map((l) => (isRock(l) ? flat : l)),
+      shape: ground.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
       solid: Uint8Array.from(this.shown.levels, (l) => (isRock(l) ? 1 : 0)),
       dark,
       ...(this.void && { outside: ROCK_LEVEL }),
-    });
+    }));
+  }
+
+  /** Marks the caps of ground cut off by the cutaway: darker, with a hatch across, so they read as cut, not as ground. */
+  private capped(image: TerrainImage): TerrainImage {
+    if (this.cutaway === null) return image;
+    const { rgba, cell, tops, w } = image;
+    for (let p = 0; p < cell.length; p++) {
+      if (cell[p] < 0 || !tops[p] || !this.aboveCut(cell[p])) continue;
+      // Half grey, so a cap keeps a hint of its ground, with darker lines across it every few pixels.
+      const hatch = ((p % w) + Math.floor(p / w)) % 6 === 0;
+      const grey = (rgba[p * 4] + rgba[p * 4 + 1] + rgba[p * 4 + 2]) / 3;
+      for (let k = 0; k < 3; k++) rgba[p * 4 + k] = ((rgba[p * 4 + k] + grey) / 2) * (hatch ? 0.6 : 0.85);
+    }
+    return image;
   }
 
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
@@ -1666,6 +1688,16 @@ export class World {
   hotEdge: 'n' | 'e' | 's' | 'w' | null = null;
   /** The level of the plane rock is drawn on (the lowest floor): where a cave's grid, its red edge and its blocks of rock stand. */
   flatLevel = SEA_LEVEL;
+  /**
+   * The editor's cutaway: ground higher than this level is drawn cut off at it, its tops a hatched cap, so what lies
+   * behind and below shows; null for none. Only the drawing changes (`redraw` after setting it), not the map.
+   */
+  cutaway: number | null = null;
+  /** Whether a cell's ground stands above the cutaway, so it is drawn cut off. */
+  aboveCut(c: number): boolean {
+    const level = this.map.levels[c];
+    return this.cutaway !== null && !isRock(level) && level > this.cutaway;
+  }
   private edgeOf: TerrainImage | null = null;
   /** Where a point of the map's border is drawn: on the red edge. */
   edgeScreen(i: number, j: number): { x: number; y: number } {
