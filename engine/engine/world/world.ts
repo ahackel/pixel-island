@@ -9,9 +9,10 @@ import { SHADOW } from '../core/palette.ts';
 import { drew, part } from '../../shared/stats.ts';
 import { cached, has } from '../core/cache.ts';
 import {
-  GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, SLOPE_LEVELS, standingHeight, surfaceAt, underwater,
+  BRICK, GROUNDS, heightAt, frontOf, groundOf, hiddenByGround, inside, isLand, isRock, LEVEL_M, LEVEL_PX, levelAt, renderTerrain, ROCK_LEVEL, SEA_LEVEL, seaFloor, setWater, setLevel, SHADE, SHADE_ALPHA, SHADOW_RUN, MINE, standingHeight, surfaceAt, underwater, waterOf,
   TILE_H, TILE_W, type HeightMap, type TerrainImage,
 } from './terrain.ts';
+import { CUT, defaultShape, edgeWalkable, HOLE, shapeAt, standable, turnShape } from './ground.ts';
 import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, drawAnimal, type Animal, type ClipId } from '../animals/animal.ts';
 import { FACING_VIEWS, turnFacing, type Facing } from '../core/puppet.ts';
 import type { Herd } from './herd.ts';
@@ -23,16 +24,21 @@ import { CLEAR, drawWeather, flashAt, plantWind, shadowLight, weatherSea, type W
 import { itemCovers, itemHalf, itemPicture, type PlacedItem } from './props.ts';
 import { blockRadius, lockedPicture, propKind, propPicture } from './prop.ts';
 import { ocean, rgb, WATER_COLORS } from './ocean.ts';
-import { CAVE_OPEN, mapOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
-import { blocked, BuildingView, crosses, type Building, type Part, type PieceKind } from './building/building.ts';
+import { CAVE_FLOOR, CAVE_OPEN, mapOf, settingsOf, TURNS, type PlacedAnimal, type PlacedPlant, type Scene } from './scene.ts';
+import { blocked, BuildingView, cornerBlocked, crosses, edgeBetween, edgeEnds, edgeKey, emptyBuilding, wallEnds, type Building, type Edge, type EdgeKind, type Part, type PieceKind } from './building/building.ts';
+import { edgeKindOf, wallById, wallFades } from './building/walls.ts';
+import { WallFade } from './wall-fade.ts';
+import { DOOR_HEIGHT, edgeCells, holeLadder, ladderOn, type LadderView, type SceneDoor } from './ways.ts';
+import { ladderPart } from './building/pieces/ladder.ts';
+import { door as doorKind } from './building/pieces/door.ts';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 /** A lamp for `World.lightField`: where it stands on the map, how far it reaches in tiles, its colour, its strength 0 to 1. */
 export interface TileLamp { i: number; j: number; r: number; color?: string; amount?: number }
 /** A lamp of a light field, with how far round walls its light must go to reach each cell (`World.lightField`). */
 export interface LitLamp { i: number; j: number; r: number; rgb: number[]; amount: number; detour: Float32Array }
-/** The lamps' light over the map, and which cells can hold light at all. */
-export interface TileLight { w: number; h: number; open: Uint8Array; lamps: LitLamp[] }
+/** The lamps' light over the map, which cells can hold light at all, and whether beyond the map lies in daylight (the open sea round a dark scene). */
+export interface TileLight { w: number; h: number; open: Uint8Array; lamps: LitLamp[]; outside?: boolean }
 const rgb3 = (hex: string) => [1, 3, 5].map((n) => parseInt(hex.slice(n, n + 2), 16));
 export type { Thing };
 
@@ -73,6 +79,11 @@ const EDGE = '#e0332e';
 const EDGE_HOT = '#ffe066';
 const COLLIDER = '#e0332ee0';
 const ROCK_GRID = 48; // grey of the grid lines on a cave's black rock
+/** The pale tone of the player's silhouette where ground hides them, as a whole pixel (little-endian RGBA). */
+const SILHOUETTE = (() => {
+  const [r, g, b] = rgb('#a7b6dc');
+  return (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+})();
 const GRID_SHADE = 0.2; // how much darker grid lines are than the ground
 const SHADE_RGB = rgb(SHADE);
 /** How deep, in levels, a shadow still shows on the water; it fades out toward there. */
@@ -230,14 +241,18 @@ function waveletAt(x: number, row: number, ms: number): number {
 }
 
 /**
- * The deepest a walker wades: floor two levels under the water line, which with the floor sloping
- * between tiles is up to about half a character's height. Deeper water blocks.
+ * The deepest a walker wades, in levels under the water line, by the sea floor as drawn (per tile): which with the floor
+ * sloping between tiles is up to about half a character's height. Deeper water blocks.
  */
-export const WADE = SEA_LEVEL - 2;
+export const WADE = 2;
 
 /** How close, in metres, a walker comes to a wall: enough to keep clear of its planks poking out. */
 const WALL_ROOM = 0.15;
 const NOTHING: Picture = { get: () => null };
+/** How long a door takes to swing open or shut, in ms. */
+const DOOR_SWING_MS = 300;
+/** A scene's door as the view has it: its edge turned, the kind of wall it stands in (if any) and its height. */
+export interface ViewDoor { door: SceneDoor; edge: Edge; wall?: string; height: number }
 /** A building part's picture, kept per part picture so the stamping's packing is kept too. */
 const partPictures = new WeakMap<Uint8ClampedArray, Picture>();
 function partPicture(part: Part): Picture {
@@ -296,16 +311,20 @@ export const grows = (map: HeightMap, plant: string, i: number, j: number) => {
   return !!entry && inside(map, Math.floor(i), Math.floor(j)) && HOMES[entry.category].includes(surfaceAt(map, Math.floor(i), Math.floor(j)));
 };
 
-/** A copy of a map where each cell under the water line with land on all four sides stands as high as the lowest of them. */
-function withLoneRockFloored<M extends HeightMap>(map: M): M {
+/** A copy of a map where each cell of rock with floor on all four sides (a stalagmite) stands as high as the lowest of them. */
+function withLoneRockFloored<M extends HeightMap & { shape: Uint8Array }>(map: M): M {
   const levels = Int8Array.from(map.levels);
+  const shape = Uint8Array.from(map.shape);
   const at = (i: number, j: number) => map.levels[j * map.w + i];
   for (let j = 1; j < map.h - 1; j++) for (let i = 1; i < map.w - 1; i++) {
-    if (at(i, j) >= SEA_LEVEL) continue;
-    const round = Math.min(at(i + 1, j), at(i - 1, j), at(i, j + 1), at(i, j - 1));
-    if (round >= SEA_LEVEL) levels[j * map.w + i] = round;
+    if (!isRock(at(i, j))) continue;
+    const round = [at(i + 1, j), at(i - 1, j), at(i, j + 1), at(i, j - 1)];
+    if (round.some(isRock)) continue;
+    // Flat, at the lowest floor round it.
+    levels[j * map.w + i] = Math.min(...round);
+    shape[j * map.w + i] = CUT;
   }
-  return { ...map, levels };
+  return { ...map, levels, shape };
 }
 
 /** Smooths tiles (`j * w + i`): each takes the rounded mean of itself and its eight neighbours, all read before any change. */
@@ -367,7 +386,7 @@ export class World {
   /** Quarter turns, 0 to 3. */
   rot: number;
   /** The ground as seen: the scene's ground turned by `rot`. Edits go here and are copied back by `redraw`. */
-  map: HeightMap & { paint: Uint8Array };
+  map: HeightMap & { paint: Uint8Array; shape: Uint8Array };
   ground!: TerrainImage;
   /** The ground as drawn: the map, with the sea floor sloping gently from every coast. Walkers wade on it. */
   floor!: HeightMap;
@@ -394,14 +413,15 @@ export class World {
   /**
    * Light from lamps, as the old isometric games lit their dungeons but without their steps: for each lamp, how much
    * further than straight the light has to go to reach each cell (its detour round walls, which it does not pass, and,
-   * in a `void` world, round cells that are nothing). The light at a point is then its straight distance plus the
+   * round rock). The light at a point is then its straight distance plus the
    * detour blended from the cells round it, so pools are round and smooth, yet stop at walls.
    */
   lightField(lamps: readonly TileLamp[]): TileLight {
     const { w, h } = this.map;
     const open = new Uint8Array(w * h);
-    for (let c = 0; c < w * h; c++) open[c] = this.void && this.shown.levels[c] < SEA_LEVEL ? 0 : 1;
-    const walled = (a: { x: number; y: number }, b: { x: number; y: number }) => this.buildings.some((bd) => crosses(bd, a, b));
+    for (let c = 0; c < w * h; c++) open[c] = isRock(this.shown.levels[c]) ? 0 : 1;
+    const all = this.allBuildings();
+    const walled = (a: { x: number; y: number }, b: { x: number; y: number }) => all.some((bd) => crosses(bd, a, b));
     const out: LitLamp[] = [];
     for (const lamp of lamps) {
       const ci = Math.floor(lamp.i), cj = Math.floor(lamp.j);
@@ -439,19 +459,21 @@ export class World {
       }
       out.push({ i: lamp.i, j: lamp.j, r: lamp.r, rgb: rgb3(lamp.color ?? '#ffb060'), amount: lamp.amount ?? 1, detour });
     }
-    return { w, h, open, lamps: out };
+    return { w, h, open, lamps: out, outside: !this.void };
   }
 
-  /** Beyond the map, open sea; or, for an inside such as a cave, nothing: black, and the cells under the water line too, so a cave's floor can have any outline. */
+  /** Beyond the map, open sea; or, for an inside such as a cave, nothing: black (`SceneSettings.outside`). */
   void = false;
+  /** The water line of the ground in view (terrain.ts `waterOf`): `DRY` where there is no water. */
+  water = SEA_LEVEL;
   /**
    * Drawn on its own, as one of several scenes laid side by side (the scene editor's desk): beyond the map's outline at
    * the water line nothing is drawn, no sea and no dark, so what lies behind shows; only ground rising above the water
    * line and what stands there reach past it. Those pixels are left fully transparent.
    */
   alone = false;
-  /** The map the ground is drawn from: `map`, but in a `void` world a lone cell of nothing is drawn as floor, for what stands there (a cave's stalagmite) to stand on. */
-  private shown!: HeightMap & { paint: Uint8Array };
+  /** The map the ground is drawn from: `map`, but a lone cell of rock is drawn as floor, for what stands there (a cave's stalagmite) to stand on. */
+  private shown!: HeightMap & { paint: Uint8Array; shape: Uint8Array };
   /** How much darker than outside shadows fall: more in a cave, where little else lights the ground. */
   shadowDepth = 1;
   /** Fish under the water, in view coordinates on `floor`; the game moves them (see fish.ts). */
@@ -474,22 +496,261 @@ export class World {
     if (!b || b.ground !== this.ground || b.kinds !== this.pieceKinds) {
       this.builtWith = { view: new BuildingView(this.pieceKinds, { map: this.floor, ground: this.ground }), ground: this.ground, kinds: this.pieceKinds };
     }
-    const view = this.builtWith!.view;
-    return this.buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => {
-      // Any spot will do to place the picture; the middle of its footprint, which also decides what ground lies in front of it.
-      const spot = { i: (part.box.x0 + part.box.x1) / 2, j: (part.box.y0 + part.box.y1) / 2, level: 0 };
-      const at0 = footOf(this.ground, spot);
-      return {
-        spot, w: part.w, h: part.h, foot: { x: at0.x - part.x, y: at0.y - part.y },
-        picture: part.hidden ? NOTHING : partPicture(part),
-        box: { ...part.box, key: part.key }, shadow: part.shadow, bases: part.base,
-      };
+    return this.partThings(this.builtWith!.view, this.buildings, at);
+  }
+
+  private partThings(view: BuildingView, buildings: Building[], at?: { i: number; j: number }): Thing[] {
+    return buildings.flatMap((building) => view.parts(building, at && { x: at.i, y: at.j })).map((part) => this.thingOfPart(part));
+  }
+  private thingOfPart(part: Part): Thing {
+    // Any spot will do to place the picture; the middle of its footprint, which also decides what ground lies in front of it.
+    const spot = { i: (part.box.x0 + part.box.x1) / 2, j: (part.box.y0 + part.box.y1) / 2, level: 0 };
+    const at0 = footOf(this.ground, spot);
+    return {
+      spot, w: part.w, h: part.h, foot: { x: at0.x - part.x, y: at0.y - part.y },
+      picture: part.hidden ? NOTHING : partPicture(part),
+      box: { ...part.box, key: part.key }, shadow: part.shadow, bases: part.base,
+    };
+  }
+
+  /** An edge of the scene in view coordinates. */
+  viewEdge(edge: Edge): Edge | null {
+    const [a, b] = edgeEnds(edge).map(([i, j]) => this.toView({ i, j }));
+    return edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+  }
+  /** An edge in view coordinates back in the scene's. */
+  dataEdge(edge: Edge): Edge | null {
+    const [a, b] = edgeEnds(edge).map(([i, j]) => this.toData({ i, j }));
+    return edgeBetween([Math.round(a.i), Math.round(a.j)], [Math.round(b.i), Math.round(b.j)]);
+  }
+
+  /**
+   * The scene's own walls (`Scene.walls`) in view coordinates: a building per kind, as each kind has its own height.
+   * A door on a wall's edge stands in its place (`viewDoors`).
+   */
+  private walled: { from: Scene['walls']; doors: Scene['doors']; rot: number; buildings: Building[] } | null = null;
+  viewWalls(): Building[] {
+    const w0 = this.walled;
+    if (!w0 || w0.from !== this.scene.walls || w0.doors !== this.scene.doors || w0.rot !== this.rot) {
+      const byKind = new Map<string, Building>();
+      const doors = new Set((this.scene.doors ?? []).map((d) => edgeKey(d.edge)));
+      for (const { edge, kind } of this.scene.walls ?? []) {
+        const w = wallById(kind);
+        if (!w || doors.has(edgeKey(edge))) continue;
+        const e = this.viewEdge(edge);
+        if (!e) continue;
+        const bd = byKind.get(kind) ?? byKind.set(kind, emptyBuilding(w.height)).get(kind)!;
+        bd.edges.set(edgeKey(e), { kind, edge: e });
+      }
+      this.walled = { from: this.scene.walls, doors: this.scene.doors, rot: this.rot, buildings: [...byKind.values()] };
+    }
+    return this.walled!.buildings;
+  }
+
+  /**
+   * The scene's doors (`Scene.doors`) in view coordinates, each with the kind of wall it stands in (if any) and its
+   * height: the wall's, or `DOOR_HEIGHT`.
+   */
+  private doored: { from: Scene['doors']; walls: Scene['walls']; rot: number; list: ViewDoor[] } | null = null;
+  viewDoors(): ViewDoor[] {
+    const d0 = this.doored;
+    if (!d0 || d0.from !== this.scene.doors || d0.walls !== this.scene.walls || d0.rot !== this.rot) {
+      const walls = new Map((this.scene.walls ?? []).map((w) => [edgeKey(w.edge), w.kind]));
+      const list: ViewDoor[] = [];
+      for (const door of this.scene.doors ?? []) {
+        const edge = this.viewEdge(door.edge);
+        if (!edge) continue;
+        const wall = walls.get(edgeKey(door.edge));
+        const kind = wall && wallById(wall) ? wall : undefined;
+        list.push({ door, edge, wall: kind, height: kind ? wallById(kind)!.height : DOOR_HEIGHT });
+      }
+      this.doored = { from: this.scene.doors, walls: this.scene.walls, rot: this.rot, list };
+    }
+    return this.doored!.list;
+  }
+  /** The doors that stop a walker, as a building: all but the open ones and those `pass` lets through. */
+  private doorBlocks = new Map<string, Building>();
+  private doorBlock(pass?: (d: SceneDoor) => boolean): Building | null {
+    const doors = this.viewDoors();
+    if (!doors.length) return null;
+    const shut = doors.filter((d) => d.door.state !== 'open' && !pass?.(d.door));
+    const key = `${this.rot}|${shut.map((d) => edgeKey(d.edge)).join(' ')}`;
+    let b = this.doorBlocks.get(key);
+    if (!b) {
+      if (this.doorBlocks.size > 64) this.doorBlocks.clear();
+      b = emptyBuilding(DOOR_HEIGHT);
+      for (const d of shut) b.edges.set(edgeKey(d.edge), { kind: 'door', edge: d.edge });
+      this.doorBlocks.set(key, b);
+    }
+    return b;
+  }
+  /** The door on an edge (in view coordinates), if any. */
+  doorOn(edge: Edge): SceneDoor | null {
+    return this.viewDoors().find((d) => edgeKey(d.edge) === edgeKey(edge))?.door ?? null;
+  }
+  /**
+   * The first door not open that a walker at `from` heading for `to` would meet within `reach` tiles: the one a game
+   * opens (or unlocks) as the walker comes up to it.
+   */
+  doorAhead(from: { i: number; j: number }, to: { i: number; j: number }, reach = 0.9): SceneDoor | null {
+    const d = Math.hypot(to.i - from.i, to.j - from.j);
+    if (d < 1e-6) return null;
+    const k = Math.min(1, reach / d);
+    const end = { x: from.i + (to.i - from.i) * k, y: from.j + (to.j - from.j) * k };
+    let best: SceneDoor | null = null, near = Infinity;
+    for (const v of this.viewDoors()) {
+      if (v.door.state === 'open') continue;
+      const one = emptyBuilding(1);
+      one.edges.set('d', { kind: 'door', edge: v.edge });
+      if (!crosses(one, { x: from.i, y: from.j }, end)) continue;
+      const [c0, c1] = edgeCells(v.edge);
+      const far = Math.hypot((c0[0] + c1[0] + 1) / 2 - from.i, (c0[1] + c1[1] + 1) / 2 - from.j);
+      if (far < near) { near = far; best = v.door; }
+    }
+    return best;
+  }
+
+  /**
+   * The scene's ladders (`Scene.ladders`) as they stand on the ground, in view coordinates: only those with a step of
+   * at least `LADDER_MIN` between two floors under them.
+   */
+  private laddered: { from: Scene['ladders']; ground: TerrainImage; list: LadderView[] } | null = null;
+  viewLadders(): LadderView[] {
+    const l0 = this.laddered;
+    if (!l0 || l0.from !== this.scene.ladders || l0.ground !== this.ground) {
+      const list: LadderView[] = [];
+      for (const { edge } of this.scene.ladders ?? []) {
+        const e = this.viewEdge(edge);
+        const L = e && ladderOn(this.map, e);
+        if (L) list.push(L);
+      }
+      this.laddered = { from: this.scene.ladders, ground: this.ground, list };
+    }
+    return this.laddered!.list;
+  }
+  /** The ladder down a hole object, in view coordinates: on the hole's cell, leaning on the floor at its back. */
+  holeLadder(it: PlacedItem): LadderView | null {
+    if (it.item !== 'hole') return null;
+    const v = this.toView(it);
+    return holeLadder(this.map, Math.floor(v.i), Math.floor(v.j), (it.turn ?? 0) + this.rot);
+  }
+
+  /** Everything that stops a walker on an edge: the game's buildings, the scene's walls and its doors but those open or let through by `pass`. */
+  private allBuildings(pass?: (d: SceneDoor) => boolean): Building[] {
+    const doors = this.doorBlock(pass);
+    return doors ? [...this.buildings, ...this.viewWalls(), doors] : [...this.buildings, ...this.viewWalls()];
+  }
+
+  /**
+   * The doors as buildings to draw, one per height: a door's own piece, or where it is hidden the piece of the wall it
+   * stands in, else of the rock beside it (brick where that is brick, stone otherwise).
+   */
+  private doorDraw: { doors: ViewDoor[]; hidden: string; buildings: Building[] } | null = null;
+  private doorBuildings(): Building[] {
+    const doors = this.viewDoors();
+    const hidden = doors.map((d) => (d.door.state === 'hidden' ? 1 : 0)).join('');
+    if (this.doorDraw?.doors !== doors || this.doorDraw.hidden !== hidden) {
+      const byHeight = new Map<number, Building>();
+      for (const d of doors) {
+        const b = byHeight.get(d.height) ?? byHeight.set(d.height, emptyBuilding(d.height)).get(d.height)!;
+        b.edges.set(edgeKey(d.edge), { kind: d.door.state === 'hidden' ? (d.wall ?? `hidden:${this.rockBeside(d.edge)}`) : 'door', edge: d.edge });
+      }
+      this.doorDraw = { doors, hidden, buildings: [...byHeight.values()] };
+    }
+    return this.doorDraw.buildings;
+  }
+  /** What the rock beside a doorway is built of, for a hidden door to look like it: brick, or stone. */
+  private rockBeside(e: Edge): 'brick' | 'stone' {
+    const [a, b] = edgeCells(e);
+    const side = e.axis === 'H' ? [0, 1] : [1, 0];
+    for (const [ci, cj] of [a, b]) for (const k of [-1, 1]) {
+      const i = ci + side[0] * k, j = cj + side[1] * k;
+      if (inside(this.map, i, j) && isRock(levelAt(this.map, i, j)) && this.map.paint[j * this.map.w + i] === BRICK) return 'brick';
+    }
+    return 'stone';
+  }
+
+  /** How far each door's leaf has swung open, 0 to 1. */
+  private swing = new Map<SceneDoor, number>();
+  /** How the scene's walls are drawn and how far each has dissolved. */
+  private wallDraw: { view: BuildingView; ground: TerrainImage; kinds: string; fade: WallFade; cell: string; walls: Building[]; ms?: number } | null = null;
+  /** The ladders' pictures, by ground and ladder. */
+  private ladderDraw: { ground: TerrainImage; parts: Map<string, Part> } | null = null;
+  /**
+   * The scene's walls, doors and ladders as things. Walls and doors in front of the player at `at` dissolve over a
+   * quarter second, by the frame's time `ms` (at once without it), a straight run at a time (wall-fade.ts); a door in a
+   * wall goes with the wall's run. Without a player none do. Doors swing open or shut by the same clock.
+   */
+  wallThings(at?: { i: number; j: number }, ms?: number): Thing[] {
+    const ladders = this.ladderThings(this.viewLadders());
+    const walls = this.viewWalls(), doors = this.doorBuildings();
+    const buildings = [...walls, ...doors];
+    if (!buildings.length) return ladders;
+    const dark = settingsOf(this.scene).light === 'dark';
+    const used = new Set(buildings.flatMap((b) => [...b.edges.values()].map((p) => p.kind)));
+    const kinds = [...used].sort().join('|') + `|${dark}`;
+    let d = this.wallDraw;
+    if (!d || d.ground !== this.ground || d.kinds !== kinds) {
+      const pieces: Record<string, EdgeKind> = {};
+      for (const kind of used) {
+        if (kind === 'door') pieces[kind] = doorKind();
+        else if (kind.startsWith('hidden:')) pieces[kind] = edgeKindOf(wallById(kind.slice(7))!, dark);
+        else pieces[kind] = edgeKindOf(wallById(kind)!, dark);
+      }
+      d = this.wallDraw = { view: new BuildingView(pieces, { map: this.floor, ground: this.ground }), ground: this.ground, kinds, fade: d?.fade ?? new WallFade(), cell: '-', walls: [] };
+    }
+    // Where the player stands, as the fade goes by it; walls, doors or ground changed, it is aimed again.
+    const cell = at ? `${Math.floor(at.i)},${Math.floor(at.j)}` : '';
+    if (d.cell !== cell || d.walls.length !== buildings.length || d.walls.some((b, k) => b !== buildings[k])) {
+      const fading = walls.flatMap((b) => [...b.edges.values()].map(({ edge, kind }) => ({
+        edge, kind, fades: wallFades(wallById(kind)!), top: Math.max(...wallEnds(this.floor, edge).high) + b.height,
+      })));
+      // A door goes with the run of wall it stands in, as that kind; one on its own is a run of its own.
+      for (const v of this.viewDoors()) {
+        const w = v.wall ? wallById(v.wall) : undefined;
+        fading.push({ edge: v.edge, kind: v.wall ?? 'door', fades: w ? wallFades(w) : true, top: Math.max(...wallEnds(this.floor, v.edge).high) + v.height });
+      }
+      d.fade.aim(fading, this.floor, at ? { i: Math.floor(at.i), j: Math.floor(at.j) } : null);
+      d.cell = cell;
+      d.walls = buildings;
+    }
+    const dt = ms === undefined || d.ms === undefined ? null : Math.max(0, Math.min(100, ms - d.ms));
+    if (dt === null) d.fade.settle();
+    else d.fade.advance(dt);
+    d.ms = ms;
+    for (const v of this.viewDoors()) {
+      const to = v.door.state === 'open' ? 1 : 0, now = this.swing.get(v.door) ?? to;
+      const next = dt === null ? to : now + Math.sign(to - now) * Math.min(Math.abs(to - now), dt / DOOR_SWING_MS);
+      this.swing.set(v.door, next);
+    }
+    for (const b of walls) for (const piece of b.edges.values()) piece.fade = d.fade.fadeOf(piece.edge);
+    const doorOf = new Map(this.viewDoors().map((v) => [edgeKey(v.edge), v.door]));
+    for (const b of doors) for (const piece of b.edges.values()) {
+      const door = doorOf.get(edgeKey(piece.edge))!;
+      piece.fade = d.fade.fadeOf(piece.edge);
+      piece.open = Math.round((this.swing.get(door) ?? 0) * 8) / 8;
+      piece.locked = door.state === 'locked';
+    }
+    return [...this.partThings(d.view, buildings), ...ladders];
+  }
+
+  /** Ladders as things, drawn once per ground. */
+  private ladderThings(ladders: LadderView[]): Thing[] {
+    if (!ladders.length) return [];
+    if (this.ladderDraw?.ground !== this.ground) this.ladderDraw = { ground: this.ground, parts: new Map() };
+    const parts = this.ladderDraw.parts;
+    return ladders.map((L) => {
+      const key = `${edgeKey(L.edge)}|${L.foot}|${L.low}|${L.high}|${L.hole}`;
+      let p = parts.get(key);
+      if (!p) parts.set(key, (p = ladderPart({ map: this.floor, ground: this.ground }, L)));
+      return this.thingOfPart(p);
     });
   }
 
   constructor(scene: Scene, rot = 0) {
     this.scene = scene;
     this.rot = ((rot % 4) + 4) % 4;
+    this.void = settingsOf(scene).outside === 'void';
     this.map = this.viewMap();
     this.ground = this.draw();
   }
@@ -521,23 +782,27 @@ export class World {
     return Math.floor(d.j) * this.scene.w + Math.floor(d.i);
   }
 
-  private viewMap(): HeightMap & { paint: Uint8Array } {
+  private viewMap(): HeightMap & { paint: Uint8Array; shape: Uint8Array } {
     const w = this.rot % 2 ? this.scene.h : this.scene.w;
     const h = this.rot % 2 ? this.scene.w : this.scene.h;
     // The scene's shift as a step in this view.
     const at = this.toView({ i: 0, j: 0 }), to = this.toView(this.scene.shift ?? { i: 0, j: 0 });
     const base = this.scene.origin ?? this.scene;
     const seed = { i: to.i - at.i, j: to.j - at.j, x: (this.rot % 2 ? base.w : base.h) * (TILE_W / 2) + 8 };
-    const map = { ...mapOf(this.scene), seed };
+    const data = { ...mapOf(this.scene), seed };
+    const map = { ...data, shape: data.shape ?? defaultShape(data) };
     if (!this.rot) return map;
     const levels = new Int8Array(w * h);
     const paint = new Uint8Array(w * h);
+    const shape = new Uint8Array(w * h);
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const c = this.dataCell(i, j);
       levels[j * w + i] = map.levels[c];
       paint[j * w + i] = map.paint[c];
+      // A ramp turns with the view.
+      shape[j * w + i] = turnShape(map.shape[c], this.rot);
     }
-    return { w, h, levels, paint, seed };
+    return { ...map, w, h, levels, paint, shape };
   }
 
   /** Turns the view; the scene itself does not change. */
@@ -563,28 +828,41 @@ export class World {
 
   /** Draws the ground with the sea's current water colours. */
   private draw(): TerrainImage {
+    this.water = waterOf(this.map);
     this.floor = seaFloor(this.map);
     setWater(WATER_COLORS.map((k) => ocean[k]));
-    this.shown = this.void ? withLoneRockFloored(this.map) : this.map;
-    if (!this.void) return renderTerrain(this.shown);
-    // A cave's rock is drawn on the floor's own plane, so nothing slopes off at the edge of the hollow and the editor's grid lies flat across it.
-    let flat = 127;
-    for (const l of this.shown.levels) if (l >= SEA_LEVEL && l < flat) flat = l;
-    if (flat === 127) flat = SEA_LEVEL;
+    this.shown = withLoneRockFloored(this.map);
+    // In the dark, stone faces are painted in the cave's tones.
+    const dark = settingsOf(this.scene).light === 'dark';
+    if (!this.void && !this.shown.levels.some(isRock)) return renderTerrain(dark ? { ...this.shown, dark } : this.shown);
+    // Rock is drawn black on the floor's own plane (cave.ts stands its blocks and walls on it), so nothing slopes off at
+    // the edge of the hollow and the editor's grid lies flat across it.
+    let flat = Infinity;
+    for (const l of this.shown.levels) if (l >= this.water && !isRock(l) && l < flat) flat = l;
+    if (flat === Infinity) flat = this.scene.cave ? CAVE_FLOOR : SEA_LEVEL;
     this.flatLevel = flat;
-    return renderTerrain({ ...this.shown, levels: this.shown.levels.map((l) => (l < SEA_LEVEL ? flat : l)), outside: flat });
+    // Rock drawn so is cut ground; beyond a void's edge lies rock, which the ground beside it does not slope to.
+    return renderTerrain({
+      ...this.shown,
+      levels: this.shown.levels.map((l) => (isRock(l) ? flat : l)),
+      shape: this.shown.shape.map((sh, c) => (isRock(this.shown.levels[c]) ? CUT : sh)),
+      solid: Uint8Array.from(this.shown.levels, (l) => (isRock(l) ? 1 : 0)),
+      dark,
+      ...(this.void && { outside: ROCK_LEVEL }),
+    });
   }
 
   /** Copies edits of the ground back to the scene, so what is saved is up to date. */
   commit(): void {
+    const shape = (this.scene.shape ??= new Array(this.scene.w * this.scene.h).fill(0));
     for (let j = 0; j < this.map.h; j++) for (let i = 0; i < this.map.w; i++) {
       const c = this.dataCell(i, j);
       const at = j * this.map.w + i;
-      if (this.scene.cave) this.scene.paint[c] = this.map.levels[at] >= SEA_LEVEL ? this.map.paint[at] || CAVE_OPEN : 0;
-      else {
-        this.scene.levels[c] = this.map.levels[at];
-        this.scene.paint[c] = this.map.paint[at];
-      }
+      const level = this.map.levels[at], paint = this.map.paint[at];
+      this.scene.levels[c] = level;
+      shape[c] = turnShape(this.map.shape[at], -this.rot);
+      // In a cave the world paints unpainted floor as its own stone (see `mapOf`); rock is stone but where it is built of brick or mine.
+      this.scene.paint[c] = this.scene.cave && (paint === CAVE_OPEN || (isRock(level) && paint !== BRICK && paint !== MINE)) ? 0 : paint;
     }
   }
 
@@ -639,7 +917,7 @@ export class World {
       const level = heightAt(this.floor, item.vi, item.vj);
       const at = footOf(g, { i: item.vi, j: item.vj, level });
       if (at.x < view.x - 8 || at.y < view.y - 8 || at.x > view.x + view.w + 8 || at.y > view.y + view.h + 8) continue;
-      const wet = underwater(SEA_LEVEL - level);
+      const wet = underwater(this.water - level);
       if (wet <= 0) continue;
       for (const px of decorPixels(kind)) {
         const gx = at.x + px.x;
@@ -660,9 +938,9 @@ export class World {
     const g = this.ground;
     const d = image.data;
     this.fish.forEach((f, n) => {
-      const at = footOf(g, { i: f.i, j: f.j, level: SEA_LEVEL });
+      const at = footOf(g, { i: f.i, j: f.j, level: this.water });
       // Out in deep water a fish is lost in the blue.
-      if (underwater(SEA_LEVEL - heightAt(this.floor, f.i, f.j)) <= 0) return;
+      if (underwater(this.water - heightAt(this.floor, f.i, f.j)) <= 0) return;
       if (at.x < view.x - 8 || at.y < view.y - 8 || at.x > view.x + view.w + 8 || at.y > view.y + view.h + 8) return;
       const dir = Math.round(f.a / (Math.PI / 4));
       for (const px of fishPixels(Math.floor(ms / 150 + n * 0.37), dir, f.kind)) {
@@ -684,7 +962,7 @@ export class World {
     let best: Fish | null = null;
     let bestD = r;
     for (const f of this.fish) {
-      const at = footOf(this.ground, { i: f.i, j: f.j, level: SEA_LEVEL });
+      const at = footOf(this.ground, { i: f.i, j: f.j, level: this.water });
       const dist = Math.hypot(p.x - at.x, p.y - at.y);
       if (dist <= bestD) [best, bestD] = [f, dist];
     }
@@ -772,6 +1050,9 @@ export class World {
 
   itemThings(): Thing[] {
     return this.viewItems().map((it) => {
+      // A hole is the ground's own (a hole-shaped cell); what stands in it is the ladder down.
+      const down = this.holeLadder(it);
+      if (down) return this.ladderThings([down])[0];
       const spot = { i: it.vi, j: it.vj, level: standingHeight(this.map, it.vi, it.vj) };
       // A catalogue object locked to pixels is drawn from them, until it opens (its frames are drawn by the renderer).
       const locked = it.open ? null : lockedPicture(`object:${it.item}`, ((it.turn ?? 0) + this.rot) * 2);
@@ -899,8 +1180,9 @@ export class World {
           d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
           continue;
         }
-        // In a void world, nothing but the open cells: not their slopes down to the cells below the water line either.
-        if (this.void && (gy < 0 || gx < 0 || gy >= g.h || gx >= g.w || g.cell[gy * g.w + gx] < 0 || g.depth[gy * g.w + gx] > 0 || this.shown.levels[g.cell[gy * g.w + gx]] < SEA_LEVEL)) {
+        // Rock is black, and in a void world so is everything beyond the map.
+        const on = gy >= 0 && gx >= 0 && gy < g.h && gx < g.w, cell = on ? g.cell[gy * g.w + gx] : -1;
+        if ((cell >= 0 && isRock(this.shown.levels[cell])) || (this.void && cell < 0)) {
           d[o] = d[o + 1] = d[o + 2] = 0; d[o + 3] = 255;
           // The rock shows the grid too, in the editor, so you see where hollow space can be carved.
           if (grid && gy >= 0 && gx >= 0 && gy < g.h && gx < g.w && g.tops[gy * g.w + gx] > 0 && onGrid(gx, gy)) d[o] = d[o + 1] = d[o + 2] = ROCK_GRID;
@@ -938,15 +1220,19 @@ export class World {
     }
   }
 
-  /** For an `alone` world: whether a pixel of the ground image lies beyond the map, neither inside its outline at the water line nor on ground higher than it. */
+  /**
+   * For an `alone` world: whether a pixel of the ground image lies beyond the map, neither inside its outline at the
+   * water line (in a void world, on the plane its rock is drawn on) nor on ground higher than it.
+   */
   private beyond(gx: number, gy: number): boolean {
     const g = this.ground;
-    const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2), b = (gy + 0.5 - g.origin.y) / (TILE_H / 2);
+    const base = this.void ? this.flatLevel : this.water;
+    const a = (gx + 0.5 - g.origin.x) / (TILE_W / 2), b = (gy + 0.5 + base * LEVEL_PX - g.origin.y) / (TILE_H / 2);
     const i = (a + b) / 2, j = (b - a) / 2;
     if (i >= 0 && j >= 0 && i < this.map.w && j < this.map.h) return false;
     if (gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) return true;
     const p = gy * g.w + gx;
-    return g.cell[p] < 0 || g.height[p] <= SEA_LEVEL;
+    return g.cell[p] < 0 || g.height[p] <= base;
   }
 
   /**
@@ -1042,6 +1328,7 @@ export class World {
     this.prints = this.prints.filter((f) => ms - f.ms < PRINT_MS);
     // Overlapping prints do not add up: each pixel takes the darkest print on it.
     const pressed = new Map<number, number>();
+    const water = this.water;
     for (const f of this.prints) {
       const at = footOf(g, f);
       const strength = PRINT_DEPTH * (1 - (ms - f.ms) / PRINT_MS);
@@ -1050,7 +1337,7 @@ export class World {
         const x = gx - view.x, y = gy - view.y;
         if (x < 0 || y < 0 || x >= w || y >= h || gx < 0 || gy < 0 || gx >= g.w || gy >= g.h) continue;
         // Nearer, higher ground drawn over the spot hides the print, as with shadows.
-        if (Math.abs(Math.max(SEA_LEVEL, g.height[gy * g.w + gx]) - f.level) > 0.5) continue;
+        if (Math.abs(Math.max(water, g.height[gy * g.w + gx]) - f.level) > 0.5) continue;
         const o = (y * w + x) * 4;
         pressed.set(o, Math.max(pressed.get(o) ?? 0, strength));
       }
@@ -1095,18 +1382,23 @@ export class World {
       const p = gy * g.w + gx;
       return diags[p] > diag && highs[p] > limit;
     };
+    const px = new Uint32Array(image.data.buffer, image.data.byteOffset, w * h);
     for (const t of paintOrder(placed)) {
       // Where no ground in a thing's box stands higher than it, no pixel of it needs asking whether ground hides it.
       // A wall's pixels stand at heights of their own: none can be hidden if its lowest cannot.
-      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(SEA_LEVEL, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
+      const diag = Math.floor(t.spot.i) + Math.floor(t.spot.j), limit = Math.max(this.water, t.bases ? this.lowest(t.bases) : t.spot.level) + 0.4;
       const hides = this.groundAbove(t.dx + view.x, t.dy + view.y, t.w, t.h, diag, limit);
-      if (!spots && !t.bases) {
+      const outline = t.silhouette && hides;
+      if (!spots && !t.bases && !outline) {
         stamp(image, t.picture, t.w, t.h, t.dx, t.dy, hides ? (x, y) => behind(x, y, diag, limit) : undefined);
         continue;
       }
       stamp(image, t.picture, t.w, t.h, t.dx, t.dy, (x, y) => {
-        const hidden = hides && behind(x, y, diag, t.bases ? Math.max(SEA_LEVEL, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
-        if (!hidden && spots) {
+        const hidden = hides && behind(x, y, diag, t.bases ? Math.max(this.water, t.bases[(y - t.dy) * t.w + x - t.dx]) + 0.4 : limit);
+        // Hidden, every other pixel of a silhouette's shows in one pale tone, on a pattern that stays put as the view moves.
+        const traced = hidden && outline && ((x + view.x + y + view.y) & 1) === 0;
+        if (traced) px[y * w + x] = SILHOUETTE;
+        if ((!hidden || traced) && spots) {
           const b = t.box;
           if (b) {
             // A wall is long: each column of it is lit by the light at its own place along the wall, not all by its middle's.
@@ -1173,9 +1465,10 @@ export class World {
     if (this.shore?.ground === g) return this.shore.dist;
     const dist = new Uint8Array(g.w * g.h).fill(255);
     for (let p = 0; p < dist.length; p++) if (g.depth[p] > 0) dist[p] = 0;
+    const wet = this.water + 0.5;
     for (let k = 1; k <= WASH_RUN; k++) {
       for (let p = 0; p < dist.length; p++) {
-        if (dist[p] !== 255 || !g.tops[p] || g.height[p] > SEA_LEVEL + 0.5) continue;
+        if (dist[p] !== 255 || !g.tops[p] || g.height[p] > wet) continue;
         const x = p % g.w;
         if ((x > 0 && dist[p - 1] === k - 1) || (x < g.w - 1 && dist[p + 1] === k - 1) || (p >= g.w && dist[p - g.w] === k - 1) || (p + g.w < dist.length && dist[p + g.w] === k - 1)) dist[p] = k;
       }
@@ -1229,7 +1522,7 @@ export class World {
         if (c < 0) continue;
         const block = blocks[Math.floor(p / g.w / 16) * bw + Math.floor((p % g.w) / 16)];
         const d = (c % this.map.w) + Math.floor(c / this.map.w);
-        const high = Math.max(SEA_LEVEL, g.height[p]);
+        const high = Math.max(this.water, g.height[p]);
         let k = 0;
         while (k < block.length && block[k] !== d) k += 2;
         if (k === block.length) block.push(d, high);
@@ -1295,14 +1588,14 @@ export class World {
       // No shadows off the map, nor on water too deep for them to show.
       if (!inside(this.map, Math.floor(i), Math.floor(j))) continue;
       const ground = height(i, j);
-      if (SEA_LEVEL - ground >= SHADOW_DEPTH) continue;
-      const level = Math.max(SEA_LEVEL, ground);
+      if (this.water - ground >= SHADOW_DEPTH) continue;
+      const level = Math.max(this.water, ground);
       // footOf, without making a point per pixel.
       const ax = Math.round(g.origin.x + ((i - j) * TILE_W) / 2), ay = Math.round(g.origin.y + (((i + j) * TILE_H) / 2 - level * LEVEL_PX));
       if (ax < 0 || ay < 0 || ax >= g.w || ay >= g.h) continue;
       const p = ay * g.w + ax;
       // Nearer, higher ground drawn over that point hides the shadow there.
-      if (Math.abs(Math.max(SEA_LEVEL, g.height[p]) - level) > 0.5) continue;
+      if (Math.abs(Math.max(this.water, g.height[p]) - level) > 0.5) continue;
       if (!marked[p]) marked[p] = 1, hit.push(p);
     }
     const pixels = Int32Array.from(hit);
@@ -1316,8 +1609,8 @@ export class World {
   private edge: { x: number; y: number; spot: Spot; side: 'n' | 'e' | 's' | 'w' }[] = [];
   /** The side of the red edge to draw lit (the editor's resize handle under the pointer), or none. */
   hotEdge: 'n' | 'e' | 's' | 'w' | null = null;
-  /** In a cave, the level of the plane its rock is drawn on: where its grid and its red edge lie. */
-  private flatLevel = SEA_LEVEL;
+  /** The level of the plane rock is drawn on (the lowest floor): where a cave's grid, its red edge and its blocks of rock stand. */
+  flatLevel = SEA_LEVEL;
   private edgeOf: TerrainImage | null = null;
   /** Where a point of the map's border is drawn: on the red edge. */
   edgeScreen(i: number, j: number): { x: number; y: number } {
@@ -1366,15 +1659,32 @@ export class World {
     }
   }
 
-  /** Whether a walker can stand at a point: land or the shallows, reached without a cliff, clear of big plants. */
-  canWalk(from: { i: number; j: number }, to: { i: number; j: number }): boolean {
+  /**
+   * Whether a walker can step from one cell to the next (ground.ts): across an edge whose ends are within a level on
+   * both sides, onto ground that is no rock, hole or too steep a slope; diagonally by way of a cell beside both.
+   */
+  private stepOk(a: [number, number], b: [number, number]): boolean {
+    const f = this.floor;
+    const di = b[0] - a[0], dj = b[1] - a[1];
+    if (Math.abs(di) > 1 || Math.abs(dj) > 1) return true;
+    if (!di || !dj) return edgeWalkable(f, ...a, ...b);
+    const via = (m: [number, number]) => standable(f, ...m) && edgeWalkable(f, ...a, ...m) && edgeWalkable(f, ...m, ...b);
+    return via([b[0], a[1]]) || via([a[0], b[1]]);
+  }
+
+  /**
+   * Whether a walker can stand at a point: land or the shallows, reached without a cliff or too steep a slope, clear of
+   * big plants, through no wall and no door but an open one or one `pass` lets through (path finding plans through
+   * closed doors, which the walker opens on the way).
+   */
+  canWalk(from: { i: number; j: number }, to: { i: number; j: number }, pass?: (d: SceneDoor) => boolean): boolean {
     const a: [number, number] = [Math.floor(from.i), Math.floor(from.j)];
-    const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)];
-    if (!inside(this.floor, ...b) || levelAt(this.floor, ...b) < WADE) return false;
-    // In a cave all but the carved floor is rock, whatever the smoothed sea floor beside it says.
-    if (this.void && levelAt(this.map, ...b) < SEA_LEVEL) return false;
-    // A step of more than a slope is a cliff, on land or under the water.
-    if ((a[0] !== b[0] || a[1] !== b[1]) && Math.abs(levelAt(this.floor, ...a) - levelAt(this.floor, ...b)) > SLOPE_LEVELS) return false;
+    const b: [number, number] = [Math.floor(to.i), Math.floor(to.j)], b0 = b;
+    if (!inside(this.floor, ...b) || this.water - levelAt(this.floor, ...b) > WADE) return false;
+    if (isRock(levelAt(this.map, ...b)) || shapeAt(this.map, ...b) === HOLE) return false;
+    // Onto a cell (not about in the one stood on, so nobody is stuck on a slope they were set down on): not too steep, and
+    // across no step, on land or under the water.
+    if ((a[0] !== b[0] || a[1] !== b[1]) && (!standable(this.floor, ...b) || !this.stepOk(a, b))) return false;
     for (const p of this.viewPlants()) {
       const r = BLOCK[plantById(p.plant)!.category] * p.size;
       if (!r) continue;
@@ -1393,9 +1703,9 @@ export class World {
     for (const it of this.viewItems()) {
       if (itemCovers(it, this.rot, this.scene.objects, to.i, to.j) && !itemCovers(it, this.rot, this.scene.objects, from.i, from.j)) return false;
     }
-    // Walls block crossing their edge; stepping off one placed on the walker is allowed.
-    for (const b of this.buildings) {
-      if (crosses(b, { x: from.i, y: from.j }, { x: to.i, y: to.j })) return false;
+    // Walls block crossing their edge, and a step past a wall's end at a corner; stepping off one placed on the walker is allowed.
+    for (const b of this.allBuildings(pass)) {
+      if (crosses(b, { x: from.i, y: from.j }, { x: to.i, y: to.j }) || cornerBlocked(b, a, b0)) return false;
       if (blocked(b, to.i, to.j, WALL_ROOM) && !blocked(b, from.i, from.j, WALL_ROOM)) return false;
     }
     return true;
@@ -1427,7 +1737,7 @@ export class World {
       const [a, b] = itemHalf(it, this.rot, this.scene.objects);
       loop([[it.vi - a, it.vj - b], [it.vi + a, it.vj - b], [it.vi + a, it.vj + b], [it.vi - a, it.vj + b]]);
     }
-    for (const b of this.buildings) {
+    for (const b of this.allBuildings()) {
       for (const { edge: e } of b.edges.values()) line([e.i, e.j], e.axis === 'H' ? [e.i + 1, e.j] : [e.i, e.j + 1]);
     }
   }
@@ -1437,7 +1747,7 @@ export class World {
     let best = { i, j };
     let bestD = Infinity;
     for (let cj = 0; cj < this.map.h; cj++) for (let ci = 0; ci < this.map.w; ci++) {
-      if (levelAt(this.map, ci, cj) < SEA_LEVEL) continue;
+      if (!isLand(this.map, ci, cj)) continue;
       const d = Math.hypot(ci + 0.5 - i, cj + 0.5 - j);
       if (d < bestD) { bestD = d; best = { i: ci + 0.5, j: cj + 0.5 }; }
     }

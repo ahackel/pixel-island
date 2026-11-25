@@ -454,5 +454,25 @@
  "think.chestEmpty": {
   "en": "The chest is empty.",
   "de": "Die Truhe ist leer."
+ },
+ "key": {
+  "en": "Key",
+  "de": "Schlüssel"
+ },
+ "think.locked": {
+  "en": "Locked. I need a key.",
+  "de": "Verschlossen. Ich brauche einen Schlüssel."
+ },
+ "think.unlocked": {
+  "en": "The key turns. It's open.",
+  "de": "Der Schlüssel dreht sich. Sie ist offen."
+ },
+ "think.hollow": {
+  "en": "The wall sounds hollow here… Something heavy might break through.",
+  "de": "Die Wand klingt hier hohl… Mit etwas Schwerem käme ich vielleicht durch."
+ },
+ "think.doorFound": {
+  "en": "A hidden door! It was behind the wall all along.",
+  "de": "Eine versteckte Tür! Sie war die ganze Zeit hinter der Wand."
  }
 }

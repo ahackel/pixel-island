@@ -1022,6 +1022,17 @@
   ".x.....x.",
   "xxxxxxxxx"
  ],
+ "ladder": [
+  ".x.....x.",
+  ".xxxxxxx.",
+  ".x.....x.",
+  ".x.....x.",
+  ".xxxxxxx.",
+  ".x.....x.",
+  ".x.....x.",
+  ".xxxxxxx.",
+  ".x.....x."
+ ],
  "turnleft": [
   "xxx.xxx..",
   "xx.x...x.",

@@ -2,7 +2,7 @@
 // now and then, runs to a spot near where it was placed, and rests again. They keep to dry land and to slopes a walker
 // can take. Positions are in scene (data) coordinates, so turning the view does not move them.
 import type { ClipId } from '../animals/animal.ts';
-import { heightAt, SEA_LEVEL } from './terrain.ts';
+import { heightAt, waterOf } from './terrain.ts';
 import { facingOf, TURN_MS, turnToward } from './actor.ts';
 import type { Facing } from '../core/puppet.ts';
 import type { World } from './world.ts';
@@ -135,5 +135,5 @@ function play(a: State, clip: ClipId, ms: number): void {
 function dry(world: World, from: { i: number; j: number }, to: { i: number; j: number }): boolean {
   const a = world.toView(from);
   const b = world.toView(to);
-  return world.canWalk(a, b) && heightAt(world.floor, b.i, b.j) >= SEA_LEVEL;
+  return world.canWalk(a, b) && heightAt(world.floor, b.i, b.j) >= waterOf(world.floor);
 }

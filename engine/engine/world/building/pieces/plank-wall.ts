@@ -3,7 +3,7 @@
 // its own width, height, lean, knot and nails, poking past the ends by up to `overhang` pixels.
 import { hashOf, rng } from '../../../../shared/random.ts';
 import { LEVEL_PX } from '../../terrain.ts';
-import { endHeights, HALF_H, HALF_W, hex, mul, shadowAt, TONE, type Box, type EdgeKind } from '../building.ts';
+import { dissolved, HALF_H, HALF_W, hex, mul, shadowAt, STUB_PX, TONE, wallEnds, type Box, type EdgeKind } from '../building.ts';
 
 const WOOD = ['#b0824f', '#9e7142', '#bd9060', '#8f6439'].map(hex);
 const NAIL = [74, 58, 48];
@@ -19,9 +19,10 @@ export interface PlankWallOptions {
 export function plankWall(opt: PlankWallOptions): EdgeKind {
   return {
     on: 'edge',
-    draw(site, e, height, { cut, cap }) {
+    draw(site, e, height, { cut, cap, fade = 0 }) {
       const { map, ground } = site;
-      const [h0, h1] = endHeights(map, e);
+      // Its height counts from the higher side; down a step it reaches to the lower.
+      const { foot: low, high: [h0, h1] } = wallEnds(map, e);
       const oh = opt.overhang;
       // One tile for every edge; a tile painted per edge would put its id in this seed.
       const random = rng(hashOf(`plank|${opt.seed}`));
@@ -32,13 +33,14 @@ export function plankWall(opt: PlankWallOptions): EdgeKind {
       const w = 16 + 2 * pad;
       const topMax = Math.max(h0, h1) + height;
       const y0 = Math.floor(sy - (topMax + 1) * LEVEL_PX) - 8;
-      const y1 = Math.ceil(sy + HALF_H - Math.min(h0, h1) * LEVEL_PX) + 6;
+      const y1 = Math.ceil(sy + HALF_H - Math.min(...low) * LEVEL_PX) + 6;
       const h = y1 - y0;
       const rgba = new Uint8ClampedArray(w * h * 4);
       const base = new Float32Array(w * h);
       const x0 = xmin - pad;
       const tOf = (c: number) => (e.axis === 'H' ? (c + 0.5) / 16 : 1 - (c + 0.5) / 16);
       const lvl = (t: number) => h0 + (h1 - h0) * t;
+      const footOf = (t: number) => low[0] + (low[1] - low[0]) * t;
       const rowAt = (t: number, level: number) => Math.round(sy + HALF_H * t - level * LEVEL_PX);
       const tone = e.axis === 'H' ? TONE['+j'] : TONE['+i'];
       const put = (lx: number, ly: number, rgb: number[], level: number) => {
@@ -67,8 +69,10 @@ export function plankWall(opt: PlankWallOptions): EdgeKind {
         const flatTop = Math.max(h0, h1) + height;
         for (let cc = cs; cc < ce; cc++) {
           const t = tOf(cc);
-          const level = lvl(t);
-          const bottom = rowAt(t, level) + sink;
+          const level = lvl(t), foot = footOf(t);
+          const bottom = rowAt(t, foot) + sink;
+          // Dissolving, it goes down to a stub a level over the higher side.
+          const stub = rowAt(t, level) - STUB_PX;
           const topLevel = opt.top === 'slope' ? level + height : opt.top === 'stepped' ? steppedTop : flatTop;
           const slantPx = slant && ce - cs > 1 ? Math.round((slant * (cc - cs)) / (ce - cs - 1)) : 0;
           let top = cut ? bottom - Math.round((height * LEVEL_PX) / 2) : Math.min(bottom - 3, rowAt(t, topLevel) - jag + slantPx);
@@ -85,7 +89,8 @@ export function plankWall(opt: PlankWallOptions): EdgeKind {
             if (knot && cc === knot[0] && y === bottom - knot[1]) px = mul(col, 0.62);
             const nail = [bottom - Math.round(span * 0.28), bottom - Math.round(span * 0.74)];
             if (cc === Math.floor(mid) && nail.includes(y) && ce - cs > 2) px = NAIL;
-            put(cc + shift + pad, y - y0, px, level);
+            if (y < stub && dissolved(x0 + cc + shift + pad, y, fade)) continue;
+            put(cc + shift + pad, y - y0, px, foot);
           }
         }
       }
@@ -94,7 +99,7 @@ export function plankWall(opt: PlankWallOptions): EdgeKind {
       const shadow: number[] = [];
       for (let s = 0; s <= 1; s += 1 / 48) {
         const g = h0 + (h1 - h0) * s;
-        const tall = cut ? height / 2 : cap !== undefined ? Math.min(height, cap - g) : height;
+        const tall = (cut ? height / 2 : cap !== undefined ? Math.min(height, cap - g) : height) * (1 - fade) + fade;
         const [x, y] = e.axis === 'H' ? [e.i + s, e.j] : [e.i, e.j + s];
         for (let up = 0; up <= tall; up += 1 / 10) shadowAt(site, shadow, x, y, g, up);
       }

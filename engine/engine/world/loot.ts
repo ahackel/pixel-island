@@ -14,4 +14,5 @@ export const LOOT: { id: string; en: string; de: string }[] = [
   { id: 'log', en: 'Log', de: 'Stamm' },
   { id: 'hammer', en: 'Hammer', de: 'Hammer' },
   { id: 'lantern', en: 'Lantern', de: 'Laterne' },
+  { id: 'key', en: 'Key', de: 'Schlüssel' },
 ];

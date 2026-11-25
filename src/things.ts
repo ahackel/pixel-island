@@ -236,6 +236,18 @@ export const LANTERN: Rows = {
   fx: { x: 4, y: 6, system: 'lantern' },
 };
 
+/** An old iron key: a ring for a bow, a long shank and two teeth, with a glint on the bow. */
+export const KEY: Rows = {
+  rows: [
+    '.kkk.......',
+    'kl..k......',
+    'k...kkkkkkk',
+    'k...k...d.d',
+    '.kkk....d.d',
+  ],
+  colors: { k: '#6a6e78', l: '#c8ccd4', d: '#4a4e58' },
+};
+
 /** The arch of a cave mouth, upright, before it is laid on the cliff face. */
 const ARCH = ['...rrrr...', '..rddddr..', '.rddddddr.', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr', 'rddddddddr'];
 /**

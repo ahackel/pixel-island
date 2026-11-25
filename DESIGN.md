@@ -282,7 +282,7 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
 | Skeleton | A bone-white rig preset with all the character animations and the wardrobe, placeable as a frozen frame; the skull detaches as a loose prop. |
 | Dialogue UI | Speech bubbles for other characters, and 2–3 tappable replies (pixel-ui). |
 | Build mode UI | A top-down grid overlay, a palette of pieces showing their costs, and tap to place. |
-| More pieces | Doors, floors, and a kitchen corner (fire pit and pot), alongside the plank wall and thatch roof. |
+| More pieces | Floors and a kitchen corner (fire pit and pot), alongside the plank wall and thatch roof. Doors are in (scene doors on cell edges). |
 | Companion | An animal that follows a character, lies down with it, and takes go, stay and fetch orders; built on the herd and path code. |
 | Context menu | Tapping a creature shows a small menu of commands (the dog's). |
 | Ground marks | Dig marks, and dug holes that stay in the ground. |
@@ -294,7 +294,7 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
   - Carve drags open floor with the brush size, where size 1 is one cell. Fill drags rock back.
   - Rock walls appear by themselves on the edges the camera looks at, with their black caps. The front of a room has no walls and just ends at black.
   - Undo covers carve and fill.
-- **Flat floor for now,** at one level. Steps and ramps come later.
+- **Heights:** floors at any level, and rock is high ground (see **Heights, walls and ways**). The Raise, Lower, Shape and Material tools work in a cave as on an island.
 - **Auto-dress:** rubble appears along the wall foot as you carve. Stalagmites, boulders, crystals and mushrooms are placed by hand.
   - Placing uses the existing Plant and Decor tools.
   - Crystals and mushrooms move from the game into engine decor: they glow, and they light the cells around them.
@@ -303,6 +303,18 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
 - **Edit view:** lit as in the game, with a Bright toggle that lights everything evenly while carving. Play walks it with the lantern.
 - **Settings:** size, darkness and tint (how dark and what colour the unlit cave is), and rubble amount.
 - **The game loads its cave from an exported cave scene,** instead of generating it in `caveScene()`.
+
+**Heights, walls and ways (built).** One model for islands and caves:
+- **Height:** every cell has a whole level. Rock is ground at the rock level, so a cave is rock with floor carved out of it. Each scene has its own water line (none in a dry cave).
+- **Shape:** each cell is smooth (it shares its corners with its smooth neighbours, so hills stay soft), cut (flat, with hard steps to what is beside it), a ramp (rising evenly over its run of ramp cells from one floor to the next) or a hole. A walker steps across an edge whose ends are within a level, onto ground that is not too steep.
+- **Material:** sand, grass, stone, cave stone, dirt, brick or mine shoring. It gives a cell its top and its step faces, and on a cave's rock, its walls.
+- **Rock in front of the survivor:** rock with only rock between it and the camera is never drawn. Rock that stands in front of the survivor and hides floor near them dissolves down to a stub, a whole joined mass of one material at a time.
+- **Thin walls** stand on cell edges: plank, brick, stone or a fence. A wall counts its height from the higher side of a step. Walls the survivor stands behind dissolve, a straight run at a time; fences never do.
+- **Ways:**
+  - A **ladder** goes up a step of two levels or more; the survivor climbs it on the way.
+  - A **hole** is a hole in the ground with a ladder down its back face, leading to another scene or another place in the same one.
+  - A **door** stands on an edge, in a wall's place if there is one. It is closed (opened on the way), open, locked (it needs a key, used up) or hidden (it looks like the wall or the rock beside it; for now the hammer breaks through where the wall sounds hollow). The game saves each door's state.
+- **The smuggler cave** shows all of it: the main room with a ledge reached by a ramp and a ladder, a fence along the ledge, a hole as a shaft down to a lower side room (the chest with the key, and the ladder up to the island), and a brick store behind a locked door.
 
 **Objects and the treasure chest (spec).** For the scene editor's Object tool and the game:
 - **What can be placed:** every object preset (log, trough, hay, cabinet, cars and the rest) and the objects made in the object editor, in one picker, as the Animal tool offers saved animals and presets.
