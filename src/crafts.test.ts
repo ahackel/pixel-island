@@ -73,7 +73,7 @@ test('the items as data give the bag, the loose things, the fish and the food th
     crab: { fills: 0.5, label: 'eatCrab', yum: 'think.yumCrab' },
     fishSoup: { fills: 0.8, label: 'eatSoup', yum: 'think.yumSoup' },
   });
-  assert.deepEqual(RECIPES.map((r) => [r.needs, r.makes]), [[['wood', 'stone'], 'spear'], [['wood', 'stone', 'vine'], 'axe']]);
+  assert.deepEqual(RECIPES.map((r) => [r.needs, r.makes]), [[['wood', 'stone'], 'spear'], [['wood', 'stone', 'vine'], 'axe'], [['wood', 'flint'], 'fire']]);
 });
 
 test('bad items and recipes are caught', () => {
@@ -100,4 +100,16 @@ test('taking a thing out of the bag takes the first, by item or group, and says 
   assert.equal(takeOne(bag, 'pot'), 'pot');
   assert.equal(takeOne(bag, 'crab'), null);
   assert.deepEqual(bag, ['stone', 'fish']);
+});
+
+test('a stick and flint make a torch, the way to a fire on an island with no lightning', () => {
+  assert.equal(recipeFor('wood', 'flint', ['wood', 'flint'])?.makes, 'fire');
+  assert.equal(recipeFor('flint', 'wood', ['flint', 'wood'])?.makes, 'fire');
+  // A stone is not flint: a stick and a stone still make a spear.
+  assert.equal(recipeFor('wood', 'stone', ['wood', 'stone', 'flint'])?.makes, 'spear');
+  assert.equal(recipeFor('stone', 'flint', ['stone', 'flint']), null);
+  const bag: BagItem[] = ['wood', 'stone', 'flint'];
+  const r = recipeFor('wood', 'flint', bag)!;
+  takeFrom(bag, r.needs);
+  assert.deepEqual(bag, ['stone']);
 });

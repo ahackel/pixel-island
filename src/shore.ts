@@ -3,6 +3,7 @@
 // comes in as a few questions (`Shore`), so the tests can use it without a page or the engine.
 import type { Game } from './save.ts';
 import { BUILDS, finished, HUT_AT, isLoose, lacking, type BagItem, type Build, type BuildKind } from './crafts.ts';
+import { questsOf } from './islands.ts';
 import { stonesOut } from './quests.ts';
 
 type Spot = { i: number; j: number };
@@ -100,7 +101,7 @@ export function morningGifts(s: Shore, g: Game): void {
 
 /** Once a quest has brought stones there are always STONES_OUT to find, lying about or in the bag (one in a spear or axe is used up). */
 export function topUpStones(s: Shore, g: Game): void {
-  if (!stonesOut(g.quest.quest) || !s.beach.length) return;
+  if (!stonesOut(g.quest.quest, questsOf(g)) || !s.beach.length) return;
   for (let n = lyingCount(g, 'stone') + g.bag.filter((it) => it === 'stone').length; n < STONES_OUT; n++) lay(g, 'stone', onBeach(s));
 }
 

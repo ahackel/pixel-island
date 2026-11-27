@@ -7,7 +7,8 @@ import { CARRIED } from '@pixel/engine/world/props.ts';
 import { DOOR_STATES, type DoorState } from '@pixel/engine/world/ways.ts';
 import { cleanState, type State } from '@pixel/engine/character/character.ts';
 import { BUILDS, BUILD_KINDS, HUT_AT, isBagItem, type BagItem, type Build } from './crafts.ts';
-import { KINDS, QUESTS, type Kind, type Progress } from './quests.ts';
+import { bundleOf, isStory } from './islands.ts';
+import { KINDS, type Kind, type Progress } from './quests.ts';
 import { kindFor } from './weather.ts';
 
 export const BAG_SLOTS = 6;
@@ -36,6 +37,8 @@ export interface Game {
   who: State;
   /** Where the story stands (quests.ts). */
   quest: Progress;
+  /** Which island's story the game is on (islands.ts): the quests `quest` counts in. */
+  story: string;
   /** The weather, set when the quest started and the same every day until the next one begins (weather.ts). */
   weather: Kind;
   /** Chests opened, by where they stand (`i,j` in their scene): what is still in each, left when the bag was full. */
@@ -69,8 +72,10 @@ export function loadGame(size: number, palms: number, island: number): Game | nu
   if (!g || (g.island !== undefined && g.island !== island)) return null;
   if (![4, 5, VERSION].includes(g.v) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.items)) return null;
+  const story = isStory(g.story) ? g.story : 'first';
+  const quests = bundleOf(story).quests;
   const q = g.quest;
-  if (!q || !int(q.quest, 0, QUESTS.length - 1) || !int(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
+  if (!q || !int(q.quest, 0, quests.length - 1) || !int(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
   return {
     day: Math.floor(g.day),
     hunger: g.hunger,
@@ -95,8 +100,9 @@ export function loadGame(size: number, palms: number, island: number): Game | nu
     hat: spot(g.hat, size) ? { i: g.hat.i, j: g.hat.j } : null,
     who: cleanState(g.who),
     quest: { quest: q.quest, count: q.count, done: q.done },
+    story,
     // Saves from before the weather lasted get the one their quest would have brought.
-    weather: KINDS.includes(g.weather) ? g.weather : kindFor(q.quest, g.day),
+    weather: KINDS.includes(g.weather) ? g.weather : kindFor(quests, q.quest, g.day),
     chests: Object.fromEntries(Object.entries(g.chests && typeof g.chests === 'object' ? g.chests : {})
       .filter(([k, v]) => /^[\d.]+,[\d.]+$/.test(k) && Array.isArray(v))
       .map(([k, v]) => [k, (v as unknown[]).filter(isBagItem)])),

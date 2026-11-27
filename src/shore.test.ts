@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSpot, headSide, HALF_BODY, layStones, lyingCount, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
 import { HUT_AT } from './crafts.ts';
-import { QUESTS, startProgress } from './quests.ts';
+import { FIRST } from './islands.ts';
+import { startProgress } from './quests.ts';
+
+const QUESTS = FIRST.quests;
 import type { Game } from './save.ts';
 
 // A square of land, 4 to 16 on each side, with its edge rows beach; everything else sea.
@@ -16,7 +19,7 @@ const shore: Shore = {
 };
 const game = (more: Partial<Game> = {}): Game => ({
   day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
-  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), weather: 'sunny', ...more,
+  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), story: 'first', weather: 'sunny', ...more,
 });
 
 test('the sea never leaves more wood than its limits, however many mornings', () => {

@@ -1,4 +1,5 @@
 [
  { "needs": ["wood", "stone"], "makes": "spear", "thought": "think.spear" },
- { "needs": ["wood", "stone", "vine"], "makes": "axe", "thought": "think.axe" }
+ { "needs": ["wood", "stone", "vine"], "makes": "axe", "thought": "think.axe" },
+ { "needs": ["wood", "flint"], "makes": "fire", "thought": "think.flintTorch" }
 ]

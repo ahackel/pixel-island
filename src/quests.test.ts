@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { advance, checkContent, ITEM_GOALS, knownGoals, next, QUESTS, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
+import { advance, checkContent, ITEM_GOALS, knownGoals, next, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
 import { RULES } from './interactions.ts';
+import { FIRST } from './islands.ts';
 import { LOOSE } from './crafts.ts';
 
-const REPORTED = reportedGoals(RULES);
+const QUESTS = FIRST.quests;
+const REPORTED = reportedGoals(FIRST.rules);
 
 test('the shipped quests and texts are valid, and every goal a quest waits for is reported by something', () => {
   assert.deepEqual(checkContent(QUESTS, loca, ['crate', ...LOOSE], REPORTED), []);
@@ -55,8 +57,8 @@ test('what a task needs only comes with its own quest', () => {
   assert.equal(brings('vine'), of('axe'));
   assert.equal(brings('cloth'), of('raft'));
   assert.equal(brings('crate'), of('crate'));
-  assert.equal(stonesOut(of('fish') - 1), false);
-  assert.equal(stonesOut(of('fish')), true);
+  assert.equal(stonesOut(of('fish') - 1, QUESTS), false);
+  assert.equal(stonesOut(of('fish'), QUESTS), true);
   assert.equal(QUESTS.findIndex((q) => q.start?.some((e) => 'strike' in e)), of('fire'));
   // Crabs come out only on windy days: the crab quest's, and none before it.
   assert.equal(QUESTS.findIndex((q) => weatherOf(q) === 'windy'), of('crab'));

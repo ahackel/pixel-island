@@ -4,7 +4,8 @@
 import type { Game } from './save.ts';
 import { finished, HUT_AT } from './crafts.ts';
 import type { Key } from './i18n.ts';
-import { QUESTS, type Kind } from './quests.ts';
+import { questsOf } from './islands.ts';
+import type { Kind } from './quests.ts';
 import { lay, spotsNear, type Shore } from './shore.ts';
 
 type Spot = { i: number; j: number };
@@ -29,13 +30,13 @@ export const HUT_FIRE = 3;
 export const byHut = (at: Spot) => dist(at, HUT_AT) <= HUT_FIRE;
 export const fireByHut = (g: Pick<Game, 'fires'>) => g.fires.some(byHut);
 /** The fire quest is under way: after that storm the survivor does not sleep again until a campfire burns by the hut. */
-export const wantsFire = (g: Pick<Game, 'quest'>) => QUESTS[g.quest.quest].goal === 'campfire' && !g.quest.done;
+export const wantsFire = (g: Pick<Game, 'quest' | 'story'>) => questsOf(g)[g.quest.quest].goal === 'campfire' && !g.quest.done;
 
 /**
  * Why the survivor will not lie down on the blanket now, if they will not: in the rain they sleep only under the hut's
  * roof, and after the storm night they lie awake until a campfire burns by the hut.
  */
-export function sleepRefused(g: Pick<Game, 'builds' | 'fires' | 'quest'>, at: Spot, weather: { rain: number }): Key | null {
+export function sleepRefused(g: Pick<Game, 'builds' | 'fires' | 'quest' | 'story'>, at: Spot, weather: { rain: number }): Key | null {
   if (weather.rain > 0.4 && !sheltered(g, at)) return 'think.rainSleep';
   if (wantsFire(g) && !fireByHut(g)) return 'think.needFire';
   return null;

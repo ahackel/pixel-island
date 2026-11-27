@@ -1,5 +1,5 @@
-// Island 2's first three quests, written as the content they should be (content/drafts/island2/) and checked with the
-// game's own checks. The game cannot do all of it yet, and the checks say exactly what it cannot: GAPS below is that
+// What of Island 2 is still to come after its first two quests (content/islands/rocky): the third, the smuggler, written
+// as the content it should be (content/drafts/island2/) and checked with the game's own checks. The game cannot do all of it yet, and the checks say exactly what it cannot: GAPS below is that
 // list. It is meant to shrink: when the vocabulary grows to cover a line, this test fails until the line is removed, and
 // when the list is empty the draft is ready to move out of drafts/ into the game.
 import { test } from 'node:test';
@@ -7,15 +7,17 @@ import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
 import loca2 from './content/drafts/island2/loca.json' with { type: 'json' };
 import quests2 from './content/drafts/island2/quests.json' with { type: 'json' };
+import { ROCKY } from './islands.ts';
 import rules2 from './content/drafts/island2/interactions.json' with { type: 'json' };
 import dialogues2 from './content/drafts/island2/dialogues.json' with { type: 'json' };
 import { checkEffects, type Known } from './effects.ts';
-import { checkRules, RULES } from './interactions.ts';
+import { checkRules } from './interactions.ts';
 import { checkContent, knownGoals, reportedGoals } from './quests.ts';
 import { LOOSE } from './crafts.ts';
 
-const texts = { ...loca, ...loca2 };
-const quests = quests2 as any[];
+const texts = { ...loca, ...ROCKY.loca, ...loca2 };
+/** The rocky island's chain so far, then the draft's quests. */
+const quests = [...ROCKY.quests, ...(quests2 as any[])];
 const rules = rules2 as any[];
 
 /** What the game cannot do yet, as the checks say it: one line each, grouped by what is missing. */
@@ -30,7 +32,7 @@ const GAPS = [
 ];
 
 test('the Island 2 draft needs exactly what the game cannot do yet', () => {
-  const goals = reportedGoals([...RULES, ...rules]);
+  const goals = reportedGoals([...ROCKY.rules, ...rules]);
   const found = [
     ...checkContent(quests, texts, ['crate', ...LOOSE], goals),
     ...checkRules(rules, texts, knownGoals(quests)),

@@ -2,13 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BLANKET, burning, burnPalm, byFire, canSail, fireNear, FIRE_FEAR, onBlanket, sheltered, sleepRefused, stormWakes, TORCH_FEAR } from './camp.ts';
 import { BUILDS, HUT_AT, type Build } from './crafts.ts';
-import { QUESTS, startProgress } from './quests.ts';
+import { FIRST } from './islands.ts';
+import { startProgress } from './quests.ts';
+
+const QUESTS = FIRST.quests;
 import type { Shore } from './shore.ts';
 import type { Game } from './save.ts';
 
 const game = (more: Partial<Game> = {}): Game => ({
   day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
-  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), weather: 'sunny', ...more,
+  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), story: 'first', weather: 'sunny', ...more,
 });
 const hut = (stage: number = BUILDS.hut.stages.length): Build => ({ kind: 'hut', ...HUT_AT, stage });
 const raft = (stage: number = BUILDS.raft.stages.length): Build => ({ kind: 'raft', i: 3, j: 3, stage });

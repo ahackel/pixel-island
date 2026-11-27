@@ -42,7 +42,8 @@ import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from '
 import { t, type Key } from './i18n.ts';
 import { idle, run, type Doer, type Handler } from './effects.ts';
 import { HAS, hasRule, ruleFor, type StaticCondition, type Target } from './interactions.ts';
-import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
+import { advance, KINDS, next, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
+import { FIRST, ROCKY } from './islands.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
@@ -60,7 +61,9 @@ import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt } from './fire.ts';
 
 /** The debug options in the address (options.ts); a tryout ends when a new game is started from the menu. */
-const opts = optionsOf(location.search, QUESTS.length);
+// Which island's story is played: the rocky island's with `?island=2` (or `?cave`), else the first's.
+const bundle = optionsOf(location.search, 1).island2 ? ROCKY : FIRST;
+const opts = optionsOf(location.search, bundle.quests.length);
 /** A new game from the menu is a real one: the first quest, saved, and the tryout's `?quest` gone from the address. */
 function endTryout(): void {
   if (!opts.tryout) return;
@@ -151,7 +154,7 @@ function newGame(who = firstWho()): Game {
   const quest: Progress = { ...startProgress(), quest: opts.startQuest };
   const g: Game = {
     day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
-    builds: [], at, hat, who, quest, weather: kindFor(opts.startQuest, 1),
+    builds: [], at, hat, who, quest, story: bundle.id, weather: kindFor(bundle.quests, opts.startQuest, 1),
   };
   if (opts.island2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
@@ -161,7 +164,7 @@ function newGame(who = firstWho()): Game {
   // What the quests so far brought (in a tryout, all those before the one it starts at): their start effects, as far as
   // they lie on the island; a strike before then has burnt its palm.
   for (let k = 0; k <= opts.startQuest; k++) {
-    run(QUESTS[k].start ?? [], { ...idle, washUp: (items) => washUp(isle, g, items), stones: (n) => layStones(isle, g, n), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
+    run(bundle.quests[k].start ?? [], { ...idle, washUp: (items) => washUp(isle, g, items), stones: (n) => layStones(isle, g, n), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
   }
   return g;
 }
@@ -407,9 +410,9 @@ function clearVeil(): void {
 }
 // ------------------------------------------------------------------ quests
 
-const questNow = () => QUESTS[game.quest.quest];
+const questNow = () => bundle.quests[game.quest.quest];
 /** Done, with the next quest waiting for the morning: then the survivor should rest. */
-const resting = () => !!waiting(game.quest);
+const resting = () => !!waiting(game.quest, bundle.quests);
 const questThought = () => (resting() ? 'quest.rest' : questNow().thought);
 let questShown = '';
 /** The quest's picture beside the bars, or the moon once it is done and the next waits for the morning. */
@@ -425,9 +428,9 @@ function showQuest(): void {
 /** `goal` happened: the current quest counts it, if it is its own; a next quest that says `now` starts at once. */
 function reach(goal: Goal): void {
   const before = game.quest;
-  game.quest = advance(game.quest, goal);
+  game.quest = advance(game.quest, goal, bundle.quests);
   if (game.quest === before) return;
-  const after = next(game.quest, false);
+  const after = next(game.quest, false, bundle.quests);
   if (after !== game.quest) tell(startQuest(after));
   showQuest();
 }
@@ -435,7 +438,7 @@ function reach(goal: Goal): void {
 function startQuest(p: Progress): string {
   game.quest = p;
   // A fair day's weather, unless a `weather` effect of the quest says otherwise.
-  game.weather = kindFor(p.quest, game.day);
+  game.weather = kindFor(bundle.quests, p.quest, game.day);
   run(questNow().start ?? [], doer());
   showQuest();
   return questNow().thought;
@@ -444,8 +447,8 @@ function startQuest(p: Progress): string {
 const kindNow = () => weatherCheat ?? game.weather;
 /** Tomorrow's, toward which the afternoon sky turns: unchanged, unless a new quest starts in the morning. */
 const kindTomorrow = () => {
-  const after = next(game.quest, true);
-  return weatherCheat ?? (after === game.quest ? game.weather : kindFor(after.quest, game.day + 1));
+  const after = next(game.quest, true, bundle.quests);
+  return weatherCheat ?? (after === game.quest ? game.weather : kindFor(bundle.quests, after.quest, game.day + 1));
 };
 
 function startNew(who: State): void {
@@ -669,7 +672,7 @@ function press(p: { x: number; y: number }, start: boolean): void {
     const stump = game.struck === null ? null : palms[game.struck];
     if (stump && near(p, stump, 10, 11)) return goTo(nearSide(stump), false, { stump: true });
     // A lit campfire, if what is in hand can be done to it (cooking): walked up to.
-    const fire = hasRule('campfire', hand) ? game.fires.find((f) => near(p, f, 8, 5)) : undefined;
+    const fire = hasRule('campfire', hand, bundle.rules) ? game.fires.find((f) => near(p, f, 8, 5)) : undefined;
     if (fire) return goTo(nearSide(fire), false, { campfire: fire });
     const lo = game.lying.find((l) => near(p, l, ...(PICK_NEAR[l.item] ?? [6, 2])));
     if (lo) return goTo(lo, false, { loose: lo });
@@ -968,7 +971,7 @@ const doer = (subject: Subject = null): Doer => ({
 
 /** The hand on a thing: the first rule in content/interactions.json that fits is done. False if none fits. */
 function interact(on: Target, subject: Subject): boolean {
-  const rule = ruleFor(on, hand, (c) => (c.startsWith(HAS) ? holds(game.bag, c.slice(HAS.length)) : IS[c as StaticCondition](subject)));
+  const rule = ruleFor(on, hand, (c) => (c.startsWith(HAS) ? holds(game.bag, c.slice(HAS.length)) : IS[c as StaticCondition](subject)), bundle.rules);
   if (rule) run(rule.do, doer(subject));
   return !!rule;
 }
@@ -1170,7 +1173,7 @@ function sleep(fainted: boolean, anywhere = false): void {
   actor.lieDown(performance.now(), true, SLEEPS);
   clearVeil();
   // A done quest whose next one starts in the night (the storm) wakes the survivor in it, the new quest begun.
-  const night = !!waiting(game.quest)?.night;
+  const night = !!waiting(game.quest, bundle.quests)?.night;
   sleeping = { start: performance.now() + LIE_MS, fainted, woken: false, wakes: wakes || night, night };
 }
 
@@ -1195,7 +1198,7 @@ function morning(fainted: boolean): void {
   crabs = [];
   crabsOut = 0;
   // A done quest gives way to the next, which brings what it needs; else the morning's own thought.
-  const after = next(game.quest, true);
+  const after = next(game.quest, true, bundle.quests);
   const thought = after !== game.quest ? startQuest(after) : morningThought();
   topUpStones(isle, game);
   showQuest();
@@ -1241,7 +1244,7 @@ function fadeAt(ms: number): number {
     }
     // The next quest wakes the survivor, deep in the night.
     else if (sleeping.night) {
-      const thought = startQuest(next(game.quest, true));
+      const thought = startQuest(next(game.quest, true, bundle.quests));
       time = Math.max(time, DAY_S + DUSK_S + 60);
       // Half a night's sleep.
       game.energy = Math.max(game.energy, 0.6);

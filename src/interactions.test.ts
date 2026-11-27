@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
 import { checkRules, hasRule, ruleFor, RULES, type Condition, type Rule } from './interactions.ts';
 import { HANDLERS, idle, run, type Doer } from './effects.ts';
-import { knownGoals, QUESTS } from './quests.ts';
+import { BUNDLES } from './islands.ts';
+import { knownGoals } from './quests.ts';
 import type { BagItem } from './crafts.ts';
 
 /** Every goal that exists: the game's own, and those quests wait for. */
-const GOALS = knownGoals(QUESTS);
+const GOALS = knownGoals(BUNDLES.flatMap((b) => b.quests));
 
 const none = () => false;
 /** What a rule does, as a list of lines. `full`: the bag has no room. */

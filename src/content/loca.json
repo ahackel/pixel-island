@@ -506,5 +506,9 @@
  "think.potEmpty": {
   "en": "An empty pot isn’t much of a meal. I need a fish.",
   "de": "Ein leerer Topf ist kein Essen. Ich brauche einen Fisch."
+ },
+ "think.flintTorch": {
+  "en": "Sparks! The stick catches: a torch.",
+  "de": "Funken! Der Stock fängt Feuer: eine Fackel."
  }
 }

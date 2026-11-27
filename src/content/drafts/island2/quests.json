@@ -1,5 +1,3 @@
 [
- { "id": "wreck", "goal": "got:pot", "icon": "pot", "thought": "i2.wreck", "start": [{ "weather": "sunny" }, { "washUp": ["pot", "flint"] }] },
- { "id": "meal", "goal": "made:fishSoup", "now": true, "icon": "pot", "thought": "i2.meal" },
- { "id": "smuggler", "goal": "talked:smuggler", "now": true, "icon": "talk", "thought": "i2.smell", "start": [{ "show": "smuggler" }] }
+ {"id": "smuggler", "goal": "talked:smuggler", "now": true, "icon": "talk", "thought": "i2.smell", "start": [{"show": "smuggler"}]}
 ]

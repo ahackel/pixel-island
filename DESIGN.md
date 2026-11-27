@@ -121,7 +121,7 @@ Decided per tool: the generic editors live in pixel-engine and load and save JSO
 
 ## First week
 
-The demo is a chain of quests (`src/content/quests.json`), one at a time, each teaching one thing; the survivor's thought says what to do, and a picture by the bars keeps it in mind (no on-screen tutorial). A quest counts only what happens while it is the current one and brings what its task needs, so nothing can be done ahead of it. A finished quest gives way to the next the following morning (the storm comes in the night already).
+The demo is a chain of quests (`src/content/islands/first/quests.json`), one at a time, each teaching one thing; the survivor's thought says what to do, and a picture by the bars keeps it in mind (no on-screen tutorial). A quest counts only what happens while it is the current one and brings what its task needs, so nothing can be done ahead of it. A finished quest gives way to the next the following morning (the storm comes in the night already).
 
 | # | Quest | Weather | What it brings | Done when |
 |---|-------|---------|----------------|-----------|
@@ -359,9 +359,9 @@ What the draft showed is missing, most useful first:
 | **Conditions with a value** | "the bag holds a fish" | **Done:** `has:<item or group>` (`has:fish` is any fish) beside `tall`, `byHut`, `wantsFire` |
 | **Effects** | using up what is in the hand, a person turning up, talking | `take` is **done** (an item or a group out of the bag). `show` (a person placed hidden in the scene appears) and `talk` (starts a dialogue) wait for the smuggler scene |
 | **Dialogue** | the smuggler's first words | a graph of nodes in `dialogues.json`: each says one text, then offers 2–3 replies, goes on, or ends, and a node's `do` is the same effects. `src/island2-draft.test.ts` already checks one (texts exist, every reply goes somewhere, every node is reachable). The UI is `talk.ts`'s story box with reply buttons. Ink only if the branching outgrows this |
-| **Island scoping** | Island 2's own quest chain and rules | each island a bundle in `content/islands/<id>/` (quests, interactions, dialogues, texts); `QUESTS` becomes the current island's, and a save says which island it is on. `byHut` and `HUT_AT` are the first island's, and become scene markers |
+| **Island scoping** | Island 2's own quest chain and rules | **Done.** Each island is a bundle (`src/islands.ts`, content in `content/islands/<island>/`): its quests, its own rules (before the shared ones, so it can override) and its texts. A game says which story it is on (`Game.story`, kept in the save, `first` for older saves), and the quests, weather, camp and stone rules all read the bundle. `?island=2` plays the rocky island's chain. `byHut` and `HUT_AT` are still the first island's, and become scene markers |
 
-Suggested order: items as data and the item events, `campfire`, `has:` and `take` (all done: the pot cooks fish soup at a lit campfire in the real game, rules in `interactions.json`), then island bundles, and the dialogue UI last, once the smuggler scene is there to try it in.
+Suggested order: items as data and the item events, `campfire`, `has:` and `take` (all done: the pot cooks fish soup at a lit campfire in the real game, rules in `interactions.json`), island bundles (done: the rocky island's first two quests are in the game), and the dialogue UI last, once the smuggler scene is there to try it in.
 
 ## Survivor
 
