@@ -29,21 +29,25 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 ## Layout
 
-- `src/main.ts` — the page, input and the game loop: wires the modules below together.
-- `src/camp.ts` — sleeping (blanket, the hut's shelter, rain, the fire quest, storms), what burns and frightens animals, the lightning's palm, when the raft sails, as plain rules (tested in `camp.test.ts`).
-- `src/places.ts` — chests and doors as the save keeps them: what a chest still holds, a door's state by scene and edge, unlocking (tested in `places.test.ts`).
-- `src/bag-ui.ts` — the bag's slots: tap to eat or hold, drag onto another to tie (crafts.ts `recipeOnto`, `partsOf`), drag out to put down.
+- `src/main.ts` — the game's state and how it is played: input, picking things up, sleeping and the morning, going between scenes, the cheats; its frame runs in named steps (`live`, `walk`, `stir`, `skyNow`, `sceneThings`, `draw`, `showPage`). It wires the modules below together.
+- `src/options.ts` — the debug options in the address, below (tested in `options.test.ts`).
 - `src/clock.ts` — day phases and survival needs as plain numbers (tested in `clock.test.ts`).
+- `src/sky.ts` — the time of day's tint, nightfall, and how the weather is seen and lights the world (tested in `sky.test.ts`).
+- `src/weather.ts` — the weather: set when a quest starts (its own, else a fair one) and the same every day until the next quest begins.
+- `src/quests.ts` — the quests from `src/content/quests.json`, how they advance, and the content checks (tested in `quests.test.ts`).
+- `src/crafts.ts` — the bag's items, food, what can be tied together (and which slots a drag lights), the hut and raft built in stages, as plain data and rules (tested in `crafts.test.ts`, which also checks every bag item has its text).
+- `src/shore.ts` — what the island gives (coconuts, wood, stones, wash-ups), where the hut and raft can be built, and where the survivor washes up and which way they lie (tested in `shore.test.ts`).
+- `src/camp.ts` — sleeping (blanket, the hut's shelter, rain, the fire quest, storms), what burns and frightens animals, the lightning's palm, when the raft sails (tested in `camp.test.ts`).
+- `src/places.ts` — chests and doors as the save keeps them: what a chest still holds, a door's state by scene and edge, unlocking (tested in `places.test.ts`).
+- `src/throw.ts` — where a thing thrown from the bag lands and its arc (tested in `throw.test.ts`).
 - `src/island.ts` — the islands: the saved scenes in `src/content/scenes/` (a scene that fails the checks stops the game rather than being replaced; `scenes.test.ts` reads them all), else made from a seed, and the sea bed shelving away round them.
 - `src/save.ts` — the saved game, written on waking and checked when read back; it remembers its island's fingerprint, so an edited island starts a new game.
-- `src/crafts.ts` — the bag's items, what can be tied together, and the hut and raft built in stages, as plain data and rules (tested in `crafts.test.ts`).
-- `src/rows.ts`, `src/things.ts`, `src/fire.ts`, `src/fishing.ts` — the game's small hand-drawn pictures (rows of letters): the week's new things and the hut, fire and the burnt stump, the spear, fish and crabs.
-- `src/shore.ts` — what the island gives (coconuts, wood, stones, wash-ups) and where the hut and raft can be built, as plain rules (tested in `shore.test.ts`).
-- `src/ui.ts` — the interface as pixel art (HUD, buttons, bag slots), on the engine's `shared/pixel-font.ts` and `shared/pixel-ui.ts`.
-- `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.
-- `src/quests.ts` — the quests from `src/content/quests.json`, how they advance, and the content checks (tested in `quests.test.ts`).
-- `src/weather.ts` — the weather: set when a quest starts (its own, else a fair one) and the same every day until the next quest begins.
 - `src/shark.ts` — the sharks in the deep water and the fin that shows of them.
+- `src/bag-ui.ts`, `src/talk.ts`, `src/menu.ts` — the page's parts, on the engine's pixel UI (`shared/game-ui.ts`): the bag's slots (tap to eat or hold, drag to tie or put down), the thought bubble and story box, the menu and settings.
+- `src/pictures.ts`, `src/rows.ts`, `src/things.ts`, `src/fire.ts`, `src/fishing.ts` — the game's small hand-drawn pictures (rows of letters): the bag's things in their slots and on the ground, the quests' pictures, the week's new things and the hut, fire and the burnt stump, the spear, fish and crabs.
+- `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.
+
+Tests are `node:test` files beside what they test; `npm test` runs them with `scripts/pixel-alias.mjs`, which resolves the `@pixel` alias, so a module that imports the engine can be tested as long as it touches no page and no `import.meta.glob` when loaded.
 
 ## Publishing
 
