@@ -86,6 +86,7 @@ async function pickUp(item, skip = () => false) {
     if (!spots.length) await fail(`no ${item} lying anywhere to pick up`);
     const before = count(s, item);
     const had = [...s.bag];
+    if (tries > 0 && !lone(spots[Math.min(tries, spots.length - 1)])) { await clearAround(spots[Math.min(tries, spots.length - 1)], 1.2); continue; }
     await T('hold', null);
     await T('tap', spots[Math.min(tries, spots.length - 1)].i, spots[Math.min(tries, spots.length - 1)].j);
     await idle(`picking up ${item}`);
@@ -102,17 +103,37 @@ async function pickUp(item, skip = () => false) {
   }
   await fail(`could not pick up ${item}; after each try the bag and thought were:\n  ${seen.join('\n  ')}`);
 }
+let dumps = 0;
 /** Drags things out of the bag onto the sand far from the work (the beach corner furthest from the hut), so they do not lie where they would take the taps meant for other things; and back. */
 async function dump(items) {
   if (!items.length) return;
   const s = await S();
-  const corner = [...s.beach].sort((a, b) => dist(b, s.hut) - dist(a, s.hut))[0];
+  // Each dump to another spot of the far beach, so the things do not lie in one pile (a tap takes the first in reach).
+  const far = [...s.beach].sort((a, b) => dist(b, s.hut) - dist(a, s.hut)).slice(0, 24);
+  const corner = far[(dumps++ * 3) % far.length];
   await T('place', corner.i, corner.j);
   for (const item of items) {
     const k = (await S()).bag.indexOf(item);
     if (k >= 0) { await T('hold', null); await T('drop', k, corner.i + 0.8, corner.j + 0.4); await wait(1500); }
   }
   await T('place', s.at.i, s.at.j);
+}
+/** Picks up whatever lies within `r` metres of a spot and puts it out of the way, so a tap on that spot takes what it was meant for. */
+async function clearAround(spot, r = 1.4) {
+  for (let n = 0; n < 8; n++) {
+    const s = await S();
+    const near = s.lying.filter((l) => dist(l, spot) < r);
+    if (!near.length) return;
+    const had = [...s.bag];
+    await T('hold', null);
+    await T('tap', near[0].i, near[0].j);
+    await idle('clearing the way');
+    const now = await S();
+    const taken = [...now.bag];
+    for (const it of had) { const k = taken.indexOf(it); if (k >= 0) taken.splice(k, 1); }
+    if (!taken.length) return;
+    await dump(taken);
+  }
 }
 /** Makes room in the bag as the player does: eats what is food, drags the rest out onto the sand (the bag holds six things). */
 async function tidy(keep = []) {
@@ -219,7 +240,8 @@ await step('quest 5, crate: smashed with a stone', async () => {
   const s0 = await questIs('crate')('after the night');
   if (!s0.crates.some((c) => c.item === 'crate')) await fail('no crate washed up');
   await pickUp('stone'); await T('hold', 'stone');
-  // A thing lying beside the crate takes a tap on its foot (loose things come first), so tap it higher up, as a player would.
+  // A thing lying beside the crate takes the tap (loose things come first): put such things out of the way, then tap it higher up.
+  await clearAround((await S()).crates.find((c) => c.item === 'crate'));
   for (const up of [8, 13, 16, 10, 15]) {
     const s = await S();
     if (s.quest.done) break;

@@ -117,3 +117,18 @@ test('what is left near the survivor lies on the beach near them, and anywhere o
   layStones(shore, all, 40);
   assert.ok(all.lying.some((l) => l.i < 8) && all.lying.some((l) => l.i > 12));
 });
+
+test('the sea leaves nothing at a palm\'s foot, where it could not be walked up to, if there is other beach', () => {
+  const g = game();
+  // A palm on the first beach tile: everything washes up on the other.
+  const palmy: Shore = { ...shore, palms: [{ plant: 'plant-palms-0', i: 4.5, j: 4.5 }] };
+  washUp(palmy, g, Array.from({ length: 30 }, () => 'vine'));
+  assert.equal(g.lying.length, 30);
+  assert.ok(g.lying.every((l) => Math.hypot(l.i - 4.5, l.j - 4.5) >= 0.8), 'none within reach of the trunk');
+  assert.ok(g.lying.every((l) => Math.hypot(l.i - 15.5, l.j - 15.5) < 0.6), 'all on the far tile');
+  // With no other beach they still wash up somewhere rather than nowhere.
+  const only: Shore = { ...palmy, beach: [{ i: 4.5, j: 4.5 }] };
+  const h = game();
+  washUp(only, h, ['vine']);
+  assert.equal(h.lying.length, 1);
+});

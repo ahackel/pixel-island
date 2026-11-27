@@ -28,6 +28,8 @@ export const WOOD_LYING = 4;
 export const DRIFT_LYING = 3;
 /** How many stones there should always be on the island, once a quest has brought them. */
 export const STONES_OUT = 2;
+/** How far from a palm's middle the sea leaves things, in metres: its trunk stands in the way of anyone walking up to them. */
+const TRUNK_CLEAR = 0.8;
 /** How near the hut's middle the survivor builds it, in metres: inside it or just outside its walls. */
 const HUT_REACH = 2.2;
 
@@ -65,7 +67,8 @@ function onBeach(s: Shore, around?: Around): Spot {
   for (let n = 0; n < 50; n++) {
     const b = pool[Math.floor(s.random() * pool.length)];
     at = { i: b.i - 0.3 + s.random() * 0.6, j: b.j - 0.3 + s.random() * 0.6 };
-    if (s.aboveWater(at)) break;
+    // Clear of a palm's trunk too: a thing lying at its foot cannot be walked up to (the playthrough found a vine so).
+    if (s.aboveWater(at) && !s.palms.some((q) => Math.hypot(q.i - at.i, q.j - at.j) < TRUNK_CLEAR)) break;
   }
   return at;
 }
