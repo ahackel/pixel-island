@@ -45,11 +45,12 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
+import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
+import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -324,7 +325,7 @@ let target: { way: Waypoint[]; run: boolean; pick?: Pick; replans?: number } | n
 /** How often a way that stalls is planned again from where the survivor stands before it is given up. */
 const REPLANS = 3;
 /** The doors a way may go through: closed ones, which the survivor opens on the way, and locked ones while a key is in the bag. */
-const passable = (d: SceneDoor) => d.state === 'closed' || (d.state === 'locked' && game.bag.includes('key'));
+const passable = (d: SceneDoor) => canPass(d.state, game.bag);
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
   const way = findPath(world, actor, at, passable);
   target = way.length ? { way, run, pick } : null;
@@ -948,7 +949,6 @@ function walkTo(p: { x: number; y: number }): void {
 }
 
 /** Where a chest stands, as the save knows it. */
-const chestKey = (it: PlacedItem) => `${it.i},${it.j}`;
 /** Chests opening, and when they began to: the lid swings up a frame at a time. */
 const opening = new Map<PlacedItem, number>();
 const LID_MS = 150;
@@ -956,12 +956,8 @@ const LID_MS = 150;
 /** Opens a chest: its lid swings up, and what is in it goes into the bag as far as there is room; the rest stays for later. */
 function openChest(it: PlacedItem): void {
   const key = chestKey(it);
-  const first = !(key in game.chests);
+  const { first, took } = takeFromChest(game, key, it.loot, BAG_SLOTS);
   if (first) opening.set(it, performance.now());
-  const inside = first ? (it.loot ?? []).filter(isBagItem) : game.chests[key];
-  const took = inside.slice(0, Math.max(0, BAG_SLOTS - game.bag.length));
-  game.bag.push(...took);
-  game.chests[key] = inside.slice(took.length);
   actor.emote('use', performance.now());
   showBag();
   if (game.chests[key].length) return think('think.full');
@@ -1128,11 +1124,13 @@ function nearSideOf(door: SceneDoor): { i: number; j: number } {
 const nameOf = (w: World) => [...visited].find(([, v]) => v === w)?.[0] ?? 'island';
 /** Each door's state as its scene has it, before the game changed any. */
 const doorsAsMade = new WeakMap<SceneDoor, SceneDoor['state']>();
+/** A door's key in the save (`scene|edge`). */
+const doorKeyOf = (w: World, d: SceneDoor) => doorKey(nameOf(w), edgeKey(d.edge));
 /** Puts a world's doors in the states the game left them in, the rest as their scene has them. */
 function doorsOf(w: World): void {
   for (const d of w.scene.doors ?? []) {
     if (!doorsAsMade.has(d)) doorsAsMade.set(d, d.state);
-    d.state = game.doors[`${nameOf(w)}|${edgeKey(d.edge)}`] ?? doorsAsMade.get(d)!;
+    d.state = doorState(game, doorKeyOf(w, d), doorsAsMade.get(d)!);
   }
 }
 // The worlds there are from the start, as the save left them.
@@ -1140,22 +1138,21 @@ for (const w of visited.values()) doorsOf(w);
 /** Sets a door of the world the survivor is in, and keeps it so. */
 function setDoor(door: SceneDoor, state: SceneDoor['state']): void {
   door.state = state;
-  game.doors[`${nameOf(world)}|${edgeKey(door.edge)}`] = state;
+  game.doors[doorKeyOf(world, door)] = state;
 }
 /**
  * A door the survivor comes up to on the way: a closed one swings open, a locked one opens with a key from the bag
  * (which stays in the lock). Says whether it is open now.
  */
 function openDoor(door: SceneDoor): boolean {
-  if (door.state === 'closed') setDoor(door, 'open');
-  else if (door.state === 'locked' && game.bag.includes('key')) {
-    game.bag.splice(game.bag.indexOf('key'), 1);
+  const { state, unlocked } = openDoorRule(game, doorKeyOf(world, door), door.state);
+  door.state = state;
+  if (unlocked) {
     if (hand === 'key' && !game.bag.includes('key')) hold(null);
     showBag();
-    setDoor(door, 'open');
     think('think.unlocked');
   }
-  return door.state === 'open';
+  return state === 'open';
 }
 
 /** Whether a ground pixel is within `r` pixels of a map point's picture, centred `up` pixels above its foot. */

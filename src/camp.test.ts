@@ -10,8 +10,8 @@ const game = (more: Partial<Game> = {}): Game => ({
   day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
   at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), weather: 'sunny', ...more,
 });
-const hut = (stage = BUILDS.hut.stages.length): Build => ({ kind: 'hut', ...HUT_AT, stage });
-const raft = (stage = BUILDS.raft.stages.length): Build => ({ kind: 'raft', i: 3, j: 3, stage });
+const hut = (stage: number = BUILDS.hut.stages.length): Build => ({ kind: 'hut', ...HUT_AT, stage });
+const raft = (stage: number = BUILDS.raft.stages.length): Build => ({ kind: 'raft', i: 3, j: 3, stage });
 const DRY = { rain: 0 };
 const RAIN = { rain: 0.8 };
 const campfireQuest = QUESTS.findIndex((q) => q.goal === 'campfire');
