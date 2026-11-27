@@ -347,7 +347,7 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
 
 ### Can the story be finished?
 
-`src/story.ts` answers it from the data alone, for every island, in `npm test`: it walks the quests in order and, at each, works out what can be had by then and whether the quest's goal can be reached with it. Moving a quest, dropping a wash-up or changing a weather in the content shows up as "quest 6 "hut": the goal "hut" cannot be reached: nothing gives hammer". What it does not know: how many (four logs, four leaves), what is used up, and anything `main.ts` does that its small model leaves out (`HANDLER_YIELDS`, what each goal the code reports takes). A playthrough of the real game in a browser is the check for those; there is none yet.
+`src/story.ts` answers it from the data alone, for every island, in `npm test`: it walks the quests in order and, at each, works out what can be had by then and whether the quest's goal can be reached with it. Moving a quest, dropping a wash-up or changing a weather in the content shows up as "quest 6 "hut": the goal "hut" cannot be reached: nothing gives hammer". What it does not know: how many (four logs, four leaves), what is used up, and anything `main.ts` does that its small model leaves out (`HANDLER_YIELDS`, what each goal the code reports takes). `npm run playthrough` is the check for those: it plays the first island's tutorial in a real browser, from the first coconut to the raft sailing off (see the README).
 
 ### Island 2 as data (a spike)
 

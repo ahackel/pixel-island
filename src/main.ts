@@ -1596,3 +1596,43 @@ if (opts.cave && cave) {
   started = true;
   setPaused(false);
 }
+
+// The dev server's test hook, for scripts/playthrough.mjs: the game's own state to read, and its own handlers to call
+// (a tap, holding or tying things in the bag, sleeping, building, sailing). Nothing here changes a rule; the published
+// build has none of it.
+if (import.meta.env.DEV) {
+  const at = (p: { i: number; j: number }) => ({ i: Math.round(p.i * 100) / 100, j: Math.round(p.j * 100) / 100 });
+  (window as any).__test = {
+    state: () => ({
+      story: bundle.id, day: game.day, hunger: game.hunger, energy: game.energy, weather: game.weather,
+      bag: [...game.bag], hand,
+      quest: { n: game.quest.quest, id: questNow().id, goal: questNow().goal, count: game.quest.count, done: game.quest.done },
+      at: at(actor), walking: !!target, sleeping: !!sleeping, warping: !!warp, telling: telling(), thinking: thinking(), ended: ended !== null, paused, present,
+      lying: game.lying.map((l) => ({ item: l.item, ...at(l) })), crates: game.items.map((it) => ({ item: it.item, ...at(it) })),
+      fires: game.fires.map(at), struck: game.struck, felled: [...game.felled],
+      palms: palms.map((p, k) => ({ k, ...at(p), tall: isTall(p), felled: game.felled.includes(k), struck: game.struck === k })),
+      builds: game.builds.map((b) => ({ kind: b.kind, stage: b.stage, ...at(b) })),
+      fish: island.fish.map(at), crabs: crabs.map(at), beach: beach.map(at),
+      blanket: at(BLANKET), hut: at(HUT_AT), canBuild: { hut: !!buildable('hut'), raft: !!buildable('raft') }, canSail: canSail(game, actor, kindNow()),
+    }),
+    /** A tap on the map spot `i`, `j`, `up` pixels over its foot: the game's own `press`. */
+    tap: (i: number, j: number, up = 0) => { const s = world.screenOf(i, j); press({ x: s.x, y: s.y - up }, true); },
+    hold: (item: BagItem | null) => hold(item),
+    /** Ties bag slot `a` onto slot `b`, as a drag does. Whether it made something. */
+    tie: (a: number, b: number) => {
+      const recipe = game.bag[a] && game.bag[b] ? recipeFor(game.bag[a], game.bag[b], game.bag) : null;
+      if (recipe) make(recipe);
+      return !!recipe;
+    },
+    eat: (slot: number) => eat(slot),
+    /** Drags bag slot `n` out onto the map spot `i`, `j`. */
+    drop: (n: number, i: number, j: number) => { const s = world.screenOf(i, j); putDown(n, { x: s.x, y: s.y }); },
+    sleep: () => sleep(false),
+    build: (kind: BuildKind) => build(kind),
+    sail: () => setSail(),
+    /** Stands the survivor somewhere (to reach a fish or a crab that will not wait), and stops their walk. */
+    place: (i: number, j: number) => { target = null; Object.assign(actor, { i, j }); },
+    /** Hunger and energy full, as the FULL cheat. */
+    fill: () => Object.assign(game, { hunger: 1, energy: 1 }),
+  };
+}

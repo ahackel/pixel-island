@@ -51,6 +51,8 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 - `src/pictures.ts`, `src/rows.ts`, `src/things.ts`, `src/fire.ts`, `src/fishing.ts` — the game's small hand-drawn pictures (rows of letters): the bag's things in their slots and on the ground, the quests' pictures, the week's new things and the hut, fire and the burnt stump, the spear, fish and crabs.
 - `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.
 
+`npm run playthrough` plays the first island's whole tutorial in a real browser, from the first coconut to setting sail on the raft, through the game's own handlers (`scripts/playthrough.mjs`; it starts the dev server itself and needs Playwright with a Chromium installed). It takes about four minutes, fails with the game's state and a screenshot (`playthrough-failure.png`) where it gets stuck, and is not part of `npm test`. It uses the dev server's test hook, `window.__test`, set at the end of `src/main.ts` (state to read, and the game's own handlers to call: a tap, holding or tying in the bag, sleeping, building, sailing); the published build has none of it. Two things are not walked: a fish and a crab are reached by standing next to them, and hunger and energy are topped up now and then.
+
 Tests are `node:test` files beside what they test; `npm test` runs them with `scripts/pixel-alias.mjs`, which resolves the `@pixel` alias, so a module that imports the engine can be tested as long as it touches no page and no `import.meta.glob` when loaded.
 
 ## Publishing
