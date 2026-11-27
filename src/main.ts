@@ -40,6 +40,7 @@ import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
+import { ruleFor, run, type Condition, type Handler, type Target } from './interactions.ts';
 import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
@@ -907,6 +908,44 @@ function pocket(item: BagItem): void {
   showBag();
 }
 
+/** What a rule may act on: a crate, a palm's index, driftwood on the ground, or nothing (the stump). */
+type Subject = PlacedItem | number | Lying | null;
+
+/** The questions a rule's `when` and `unless` ask. */
+const IS: Record<Condition, (s: Subject) => boolean> = {
+  tall: (s) => isTall(palms[s as number]),
+  byHut: (s) => byHut(s as Lying),
+  wantsFire: () => wantsFire(game),
+};
+
+/** What only the game can do, for the rules' `call` effects (see interactions.ts). */
+const DO: Record<Handler, (s: Subject) => void> = {
+  smashCrate: (s) => breakCrate(s as PlacedItem, true),
+  priseCrate: (s) => breakCrate(s as PlacedItem, false),
+  removeItem: (s) => void game.items.splice(game.items.indexOf(s as PlacedItem), 1),
+  fell: (s) => fell(s as number),
+  // A stick in hand held to the burning stump catches: a torch.
+  lightTorch: () => {
+    game.bag[game.bag.indexOf('wood')] = 'fire';
+    hold('fire');
+  },
+  // The torch in hand lights driftwood where it lies: a campfire.
+  lightFire: (s) => {
+    const at = s as Lying;
+    game.lying = game.lying.filter((l) => l !== at);
+    game.fires.push({ i: at.i, j: at.j });
+    game.bag.splice(game.bag.indexOf('fire'), 1);
+    hold(null);
+  },
+};
+
+/** The hand on a thing: the first rule in content/interactions.json that fits is done. False if none fits. */
+function interact(on: Target, subject: Subject): boolean {
+  const rule = ruleFor(on, hand, (c) => IS[c](subject));
+  if (rule) run(rule, { think, reach, give: pocket, full: bagFull, call: (h) => DO[h](subject) });
+  return !!rule;
+}
+
 // Whatever is picked up, the survivor reaches for it.
 function arrive(pick: Pick): void {
   if ('crab' in pick) {
@@ -939,39 +978,11 @@ function arrive(pick: Pick): void {
     feel();
     return think('think.hat');
   }
-  // A stone or the hammer smashes the crate, the axe prises it open; with empty hands it goes into the bag.
-  if ('item' in pick) {
-    if (hand === 'stone' || hand === 'axe' || hand === 'hammer') return openCrate(pick.item, hand !== 'axe');
-    if (hand) return think('think.crate');
-    if (bagFull()) return think('think.full');
-    game.items.splice(game.items.indexOf(pick.item), 1);
-    pocket('crate');
-    return think('think.crateTaken');
-  }
-  if ('palm' in pick) {
-    if (hand === 'axe') return isTall(palms[pick.palm]) ? fell(pick.palm) : think('think.tooSmall');
-    if (bagFull()) return think('think.full');
-    pocket('leaf');
-    return think('think.leaf');
-  }
-  // A stick in hand held to the burning stump catches: a torch.
-  if ('stump' in pick) {
-    if (hand === 'fire') return think('think.haveFire');
-    if (hand !== 'wood') return think('think.needStick');
-    game.bag[game.bag.indexOf('wood')] = 'fire';
-    hold('fire');
-    return think('think.gotFire');
-  }
-  // The torch in hand lights driftwood where it lies: a campfire. Only one by the hut is one to sleep by.
-  if ('loose' in pick && pick.loose.item === 'drift' && hand === 'fire') {
-    game.lying = game.lying.filter((l) => l !== pick.loose);
-    game.fires.push({ i: pick.loose.i, j: pick.loose.j });
-    game.bag.splice(game.bag.indexOf('fire'), 1);
-    hold(null);
-    const atHut = byHut(pick.loose);
-    think(!atHut && wantsFire(game) ? 'think.fireFar' : 'think.campfire');
-    return atHut ? reach('campfire') : undefined;
-  }
+  // What a hand does to a crate, a palm, the burning stump or driftwood is in content/interactions.json.
+  if ('item' in pick) return void interact('crate', pick.item);
+  if ('palm' in pick) return void interact('palm', pick.palm);
+  if ('stump' in pick) return void interact('stump', null);
+  if ('loose' in pick && pick.loose.item === 'drift' && interact('drift', pick.loose)) return;
   if (bagFull()) return think('think.full');
   const { item } = pick.loose;
   game.lying = game.lying.filter((l) => l !== pick.loose);
@@ -1015,7 +1026,7 @@ function catchCrab(crab: Crab): void {
 }
 
 /** The axe prises the crate open, or a stone or the hammer smashes it to boards: rope from the ship, laid beside it. */
-function openCrate(crate: PlacedItem, smashed: boolean): void {
+function breakCrate(crate: PlacedItem, smashed: boolean): void {
   actor.emote('use', performance.now());
   game.items.splice(game.items.indexOf(crate), 1);
   const beside = () => spotNear(isle, crate, 0.4, 0.5) ?? { i: crate.i, j: crate.j };
@@ -1024,8 +1035,6 @@ function openCrate(crate: PlacedItem, smashed: boolean): void {
   if (smashed) for (let n = 0; n < 2; n++) lay(game, 'drift', beside());
   const foot = world.screenOf(crate.i, crate.j);
   if (smashed) bursts.push(new Burst({ x: foot.x, y: foot.y - 6 }, foot.y, performance.now(), [PALETTE.wood.base, PALETTE.wood.shade, PALETTE.bark.shade, PALETTE.wood.light]));
-  think(smashed ? 'think.smashed' : 'think.opened');
-  reach('open');
 }
 
 /** The axe cuts a palm down: two logs where it stood, no more coconuts from it. Hard work. */
@@ -1038,7 +1047,6 @@ function fell(k: number): void {
     reach('log');
   }
   game.energy = Math.max(0, game.energy - 0.08);
-  think('think.felled');
 }
 
 /** The hut or raft, as far as it is built. */

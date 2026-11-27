@@ -1,0 +1,18 @@
+[
+ { "on": "crate", "hand": ["stone", "hammer"], "do": [{ "call": "smashCrate" }, { "think": "think.smashed" }, { "reach": "open" }] },
+ { "on": "crate", "hand": "axe", "do": [{ "call": "priseCrate" }, { "think": "think.opened" }, { "reach": "open" }] },
+ { "on": "crate", "hand": "empty", "do": [{ "room": true }, { "call": "removeItem" }, { "give": "crate" }, { "think": "think.crateTaken" }] },
+ { "on": "crate", "do": [{ "think": "think.crate" }] },
+
+ { "on": "palm", "hand": "axe", "when": "tall", "do": [{ "call": "fell" }, { "think": "think.felled" }] },
+ { "on": "palm", "hand": "axe", "do": [{ "think": "think.tooSmall" }] },
+ { "on": "palm", "do": [{ "room": true }, { "give": "leaf" }, { "think": "think.leaf" }] },
+
+ { "on": "stump", "hand": "fire", "do": [{ "think": "think.haveFire" }] },
+ { "on": "stump", "hand": "wood", "do": [{ "call": "lightTorch" }, { "think": "think.gotFire" }] },
+ { "on": "stump", "do": [{ "think": "think.needStick" }] },
+
+ { "on": "drift", "hand": "fire", "when": "byHut", "do": [{ "call": "lightFire" }, { "think": "think.campfire" }, { "reach": "campfire" }] },
+ { "on": "drift", "hand": "fire", "when": "wantsFire", "unless": "byHut", "do": [{ "call": "lightFire" }, { "think": "think.fireFar" }] },
+ { "on": "drift", "hand": "fire", "do": [{ "call": "lightFire" }, { "think": "think.campfire" }] }
+]
