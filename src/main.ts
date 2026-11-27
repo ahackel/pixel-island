@@ -41,7 +41,6 @@ import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
-import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
@@ -50,6 +49,7 @@ import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, 
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
+import { menuView, wordButton } from './menu.ts';
 import { BAG_PICTURES, LYING, PICK_NEAR, QUEST_PICTURES } from './pictures.ts';
 import { flight, landed, landing, type Thrown } from './throw.ts';
 import { talkView } from './talk.ts';
@@ -305,8 +305,6 @@ questButton.addEventListener('click', (e) => {
 hudBox.append(status.canvas, questButton);
 
 const buttons = el('div', 'buttons');
-/** A button that says its text. */
-const wordButton = (key: string, on: () => void) => pixelButton(t(key), { words: t(key) }, on);
 const sleepButton = pixelButton(t('sleep'), { icon: 'moon', words: t('sleep'), dark: true }, () => sleep(false));
 const buildButtons = Object.fromEntries(BUILD_KINDS.map((k) => [k, wordButton(`build.${k}`, () => build(k))])) as Record<BuildKind, HTMLButtonElement>;
 const sailButton = wordButton('setSail', () => setSail());
@@ -471,8 +469,16 @@ function startNew(who: State): void {
   hold(null);
 }
 
-// The menu, which is also the pause: the name, play on or start over, and before the first step the language.
-const menuBox = el('div', 'menu');
+// The menu, which is also the pause (menu.ts).
+const menu = menuView({
+  state: () => ({ editing, present, ended: !!ended, started }),
+  play,
+  // Over the editor, play goes on once the survivor is made and the screen is fading to the island.
+  backToEditor: () => { menuBox.hidden = true; editor!.hidden = false; if (editor!.inert) setPaused(false); },
+  newGame: () => { endTryout(); present = false; showMenu(); },
+  createCharacter: makeCharacter,
+});
+const menuBox = menu.el;
 /** Whether the player has played since the page loaded. */
 let started = false;
 function play(): void {
@@ -505,54 +511,10 @@ function makeCharacter(): void {
   // Under the menu button and the veil, so it fades to black with everything else.
   buttons.before(editor);
 }
-/** A flag for each language, the one in use bright. */
-function flags(): HTMLElement {
-  const row = el('div', 'langs');
-  row.append(...LANGS.map((l) => {
-    const b = pixelButton(l.name, { icon: l.id }, () => {
-      if (l.id === currentLang()) return;
-      setLang(l.id);
-      location.reload();
-    });
-    if (l.id !== currentLang()) b.classList.add('off');
-    return b;
-  }));
-  return row;
-}
-/** The game's name, large; its shadow (style.css) falls as far as the buttons', not a large pixel. */
-function titleLabel(words: string): HTMLCanvasElement {
-  const c = label(words, C.paper, S * 3);
-  c.className = 'title';
-  return c;
-}
 function showMenu(): void {
-  // Over the editor: back to it, or the settings; the editor is a new game already.
-  // The editor steps aside meanwhile, so the two do not show through each other.
+  // Over the editor, it steps aside meanwhile, so the two do not show through each other.
   if (editing) editor!.hidden = true;
-  menuBox.replaceChildren(
-    titleLabel('PIXEL ISLAND'),
-    ...(editing
-      // Once the survivor is made and the screen is fading to the island, play goes on.
-      ? [wordButton('continue', () => { menuBox.hidden = true; editor!.hidden = false; if (editor!.inert) setPaused(false); })]
-      : [
-        ...(present && !ended ? [wordButton('continue', play)] : []),
-        // A new game starts over at the first menu, out at sea; the old one stays saved until a survivor is made.
-        present
-          ? wordButton('newGame', () => { endTryout(); present = false; showMenu(); })
-          : wordButton('createCharacter', makeCharacter),
-      ]),
-    wordButton('settings', showSettings),
-  );
-}
-/** Settings, in place of the menu: the language for now. */
-function showSettings(): void {
-  menuBox.replaceChildren(
-    label(caps(t('settings')), C.paper, S * 2),
-    flags(),
-    // The page is built in one language, so a change reloads it, back to the last save: the morning.
-    ...(started ? [label(caps(t('settings.langLoses')), C.paper, S)] : []),
-    wordButton('back', showMenu),
-  );
+  menu.show();
 }
 
 app.append(hudBox, buttons, actions, bag, bubble, dialog, veil, menuBox);
