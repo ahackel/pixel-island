@@ -48,7 +48,7 @@ import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fis
 import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
-import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
+import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
@@ -135,43 +135,17 @@ const firstWho = (): State => {
   return who;
 };
 
-/**
- * A spot `d` metres to the side on screen from `p`: lying, the body lies across the screen, and +i -j is screen
- * right. `side` -1 is left, 1 right.
- */
-const sideways = (p: { i: number; j: number }, side: number, d: number) => ({ i: p.i + (side * d) / Math.SQRT2, j: p.j - (side * d) / Math.SQRT2 });
-/** Half of head to feet, in metres: the lying sprite is some 26 pixels long, and a tile's 32 pixels across are 1.4 metres. */
-const HALF_BODY = 0.6;
-/** The side of the screen the head goes, lying here: on dry ground, the feet (if one side must be) toward the water. */
-function headSide(p: { i: number; j: number }): -1 | 1 {
-  // Near the body first, then a metre further out: with both ends dry, the head goes inland, the feet toward the sea.
-  const score = (side: number) =>
-    [HALF_BODY, 1.2].reduce((n, d, k) => n + (k ? 1 : 3) * ((dry(sideways(p, side, d)) ? 2 : 0) + (dry(sideways(p, -side, d)) ? 0 : 1)), 0);
-  return score(1) > score(-1) ? 1 : -1;
-}
 /** Turns the survivor so that, lying down, the head is on the dry side (see `headSide`). */
 function faceToLie(): void {
   // Facing 0 lies with the head to the left, 1 to the right (the engine mirrors facings 1, 2, 5 and 6).
-  const right = headSide(actor) === 1;
+  const right = headSide(dry, actor) === 1;
   actor.facing = right ? 1 : 0;
   actor.lookAt(right ? 0 : 1, right ? 1 : 0);
 }
 
 function newGame(who = firstWho()): Game {
-  // The survivor wakes washed ashore: on the beach nearest the island's middle with the sea beside it on screen, so
-  // they lie along the water's edge, the feet toward the sea, all of them on the sand.
-  const seaSide = (b: { i: number; j: number }) => [-1, 1].find((side) => !dry(sideways(b, side, 0.9)) && dry(sideways(b, -side, 0.9)));
-  const far = (b: { i: number; j: number }) => Math.hypot(b.i - scene.spawn.i, b.j - scene.spawn.j);
-  const shore = beach.filter((b) => seaSide(b) !== undefined).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
-  const side = seaSide(shore);
-  let at = { ...shore };
-  // Up the sand from the sea until head and feet are both on dry ground, with a little to spare.
-  const ends = HALF_BODY + 0.4;
-  if (side) for (let d = 0.05; d < 1.5 && !(dry(sideways(at, side, ends)) && dry(sideways(at, -side, ends))); d += 0.05) at = sideways(shore, -side, d);
-  if (!dry(at)) at = { ...shore };
-  // The hat came off in the sea and lies on the sand beyond their head.
-  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(isle, at, 0.6, 0.3);
-  const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
+  // Washed ashore along the water's edge, the hat on the sand beyond their head (shore.ts).
+  const { at, hat } = washedUp(isle, scene.spawn, dry, !!who.worn.hat);
   const quest: Progress = { ...startProgress(), quest: opts.startQuest };
   const g: Game = {
     day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
