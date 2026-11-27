@@ -40,13 +40,14 @@ import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
-import { ruleFor, run, type Condition, type Handler, type Target } from './interactions.ts';
+import { idle, run, type Doer, type Handler } from './effects.ts';
+import { ruleFor, type Condition, type Target } from './interactions.ts';
 import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
 import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
-import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washWood, type Shore } from './shore.ts';
+import { buildSpot, dropCoconuts, headSide, lay, layStones, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washUp, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
@@ -157,10 +158,10 @@ function newGame(who = firstWho()): Game {
   for (let n = 0; n < 2; n++) dropCoconuts(isle, g);
   washWood(isle, g);
   washWood(isle, g);
-  // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
+  // What the quests so far brought (in a tryout, all those before the one it starts at): their start effects, as far as
+  // they lie on the island; a strike before then has burnt its palm.
   for (let k = 0; k <= opts.startQuest; k++) {
-    bring(isle, g, k);
-    if (QUESTS[k].strike && k < opts.startQuest) burnPalm(isle, g, at);
+    run(QUESTS[k].start ?? [], { ...idle, washUp: (items) => washUp(isle, g, items), stones: (n) => layStones(isle, g, n), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
   }
   return g;
 }
@@ -428,12 +429,12 @@ function reach(goal: Goal): void {
   if (after !== game.quest) tell(startQuest(after));
   showQuest();
 }
-/** Starts a quest: its weather sets in, what it brings is on the beach, its lightning waits to strike. Its thought, to tell. */
+/** Starts a quest: its start effects are done (its weather sets in, what it brings is on the beach, its lightning waits to strike). Its thought, to tell. */
 function startQuest(p: Progress): string {
   game.quest = p;
+  // A fair day's weather, unless a `weather` effect of the quest says otherwise.
   game.weather = kindFor(p.quest, game.day);
-  bring(isle, game, p.quest);
-  if (questNow().strike) strikeNow = true;
+  run(questNow().start ?? [], doer());
   showQuest();
   return questNow().thought;
 }
@@ -939,10 +940,23 @@ const DO: Record<Handler, (s: Subject) => void> = {
   },
 };
 
+/** What effects do in the game (effects.ts): the same for an interaction and a quest's start. `subject`: what a rule acts on. */
+const doer = (subject: Subject = null): Doer => ({
+  think,
+  reach,
+  give: pocket,
+  full: bagFull,
+  call: (h) => DO[h](subject),
+  weather: (kind) => void (game.weather = kind),
+  washUp: (items) => washUp(isle, game, items),
+  stones: (n) => layStones(isle, game, n),
+  strike: () => void (strikeNow = true),
+});
+
 /** The hand on a thing: the first rule in content/interactions.json that fits is done. False if none fits. */
 function interact(on: Target, subject: Subject): boolean {
   const rule = ruleFor(on, hand, (c) => IS[c](subject));
-  if (rule) run(rule, { think, reach, give: pocket, full: bagFull, call: (h) => DO[h](subject) });
+  if (rule) run(rule.do, doer(subject));
   return !!rule;
 }
 

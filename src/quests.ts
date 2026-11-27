@@ -3,13 +3,14 @@
 // done before its quest. A finished quest hands over to the next one the following morning, or at once if the next
 // says `now`, or in the night before if it says `night`. Plain data and rules, no page or engine code, so the tests can use it.
 import data from './content/quests.json' with { type: 'json' };
+import { checkEffects, goalsOf, KINDS, LOCA_ID, type Effect, type Kind } from './effects.ts';
 
-export const KINDS = ['sunny', 'cloudy', 'windy', 'fog', 'rain', 'storm'] as const;
-export type Kind = (typeof KINDS)[number];
+export { KINDS, type Kind };
 
-/** What a quest waits for; the game reports each as it happens. */
-export const GOALS = ['eat', 'sleep', 'fish', 'crab', 'open', 'hut', 'stormSleep', 'campfire', 'log', 'sail'] as const;
-export type Goal = (typeof GOALS)[number];
+/** What a quest waits for: any name that something reports as it happens (see `CODE_GOALS`, and `reach` in interactions.json). */
+export type Goal = string;
+/** The goals the game's own code reports (main.ts); the others are reached by interaction rules. */
+export const CODE_GOALS = ['eat', 'sleep', 'fish', 'crab', 'hut', 'stormSleep', 'log', 'sail'] as const;
 
 /** The pictures a quest can show in the corner (see main.ts). */
 export const QUEST_ICONS = ['coconut', 'moon', 'fish', 'crab', 'crate', 'hammer', 'storm', 'fire', 'axe', 'raft'] as const;
@@ -24,14 +25,11 @@ export interface Quest {
   now?: boolean;
   /** Starts in the night after the quest before is done: the survivor is woken by it (the storm). */
   night?: boolean;
-  /** The weather on every day the quest runs (else a fair one). */
-  weather?: Kind;
-  /** What the sea leaves on the beach when the quest starts. */
-  washUps?: string[];
-  /** Stones laid on the beach when it starts; from then on there is always one to find. */
-  stones?: number;
-  /** Lightning strikes a palm when it starts: the first fire. */
-  strike?: boolean;
+  /**
+   * What happens as it starts, as effects (effects.ts): its weather (on every day it runs; else a fair one), what the sea
+   * leaves on the beach, stones laid (from then on there is always one to find), lightning for a palm (the first fire).
+   */
+  start?: Effect[];
   icon: QuestIcon;
   /** Said when it starts, and again at a tap on its icon: a loca id. */
   thought: string;
@@ -68,15 +66,22 @@ export function waiting(p: Progress, quests: readonly Quest[] = QUESTS): Quest |
   return p.done && after && !after.now ? after : null;
 }
 
+/** The weather a quest brings when it starts, if it brings its own. */
+export const weatherOf = (q: Quest | undefined): Kind | undefined => q?.start?.flatMap((e) => ('weather' in e ? [e.weather] : []))[0];
+
 /** Whether a quest that brings stones has started: then a stone is always to be found. */
-export const stonesOut = (quest: number, quests: readonly Quest[] = QUESTS) => quests.slice(0, quest + 1).some((q) => q.stones);
+export const stonesOut = (quest: number, quests: readonly Quest[] = QUESTS) => quests.slice(0, quest + 1).some((q) => q.start?.some((e) => 'stones' in e));
+
+/** Every goal something reports: the game's own, and those interaction rules reach. */
+export const reportedGoals = (rules: readonly { do: readonly Effect[] }[]): string[] => [...CODE_GOALS, ...rules.flatMap((r) => goalsOf(r.do))];
+/** Every goal a quest waits for. */
+export const wantedGoals = (quests: readonly Quest[]): string[] => quests.map((q) => q.goal);
 
 /** A text in every language, by id. A missing language falls back to English. */
 export type Loca = Record<string, { en: string; de?: string }>;
-export const LOCA_ID = /^[A-Za-z][\w.-]*$/;
 
-/** What is wrong with the quests and texts, as lines; empty when they are fine. `items` are the known wash-up ids. */
-export function checkContent(quests: unknown, loca: unknown, items: readonly string[]): string[] {
+/** What is wrong with the quests and texts, as lines; empty when they are fine. `items` are the known wash-up ids, `reported` the goals something reports (`reportedGoals`). */
+export function checkContent(quests: unknown, loca: unknown, items: readonly string[], reported: readonly string[]): string[] {
   const out: string[] = [];
   if (!loca || typeof loca !== 'object' || Array.isArray(loca)) return ['texts: not an object'];
   for (const [id, e] of Object.entries(loca as Record<string, any>)) {
@@ -90,15 +95,11 @@ export function checkContent(quests: unknown, loca: unknown, items: readonly str
     if (!q || typeof q !== 'object') return void out.push(`${w}: not an object`);
     if (typeof q.id !== 'string' || ids.has(q.id)) out.push(`${w}: missing or repeated id`);
     ids.add(q.id);
-    if (!GOALS.includes(q.goal)) out.push(`${w}: unknown goal "${q.goal}"`);
+    if (!reported.includes(q.goal)) out.push(`${w}: nothing reports the goal "${q.goal}"`);
     if (q.count !== undefined && !(Number.isInteger(q.count) && q.count >= 1 && q.count <= 20)) out.push(`${w}: count must be 1–20`);
-    if (q.weather !== undefined && !KINDS.includes(q.weather)) out.push(`${w}: unknown weather "${q.weather}"`);
-    if (q.stones !== undefined && !(Number.isInteger(q.stones) && q.stones >= 0 && q.stones <= 10)) out.push(`${w}: stones must be 0–10`);
+    if (q.start !== undefined) out.push(...checkEffects(q.start, 'start', w, { loca: loca as object, goals: reported, items }));
     if (!QUEST_ICONS.includes(q.icon)) out.push(`${w}: unknown icon "${q.icon}"`);
     if (typeof q.thought !== 'string' || !(q.thought in (loca as object))) out.push(`${w}: unknown text "${q.thought}"`);
-    if (q.washUps !== undefined && (!Array.isArray(q.washUps) || q.washUps.some((it: unknown) => typeof it !== 'string' || !items.includes(it)))) {
-      out.push(`${w}: unknown wash-up in ${JSON.stringify(q.washUps)}`);
-    }
   });
   return out;
 }

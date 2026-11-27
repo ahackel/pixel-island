@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSpot, headSide, HALF_BODY, lyingCount, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
+import { buildSpot, headSide, HALF_BODY, layStones, lyingCount, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
 import { HUT_AT } from './crafts.ts';
 import { QUESTS, startProgress } from './quests.ts';
 import type { Game } from './save.ts';
@@ -35,6 +35,16 @@ test('a coconut falls only once the last one is eaten, and never from a felled p
   const felled = game({ felled: [0] });
   morningGifts(shore, felled);
   assert.equal(lyingCount(felled, 'coconut'), 0);
+});
+
+test('a quest\'s stones are laid on the beach, as many as it says, and none where there is no beach', () => {
+  const g = game();
+  layStones(shore, g, 3);
+  assert.equal(lyingCount(g, 'stone'), 3);
+  assert.ok(g.lying.every((l) => shore.surface(l) === 'beach'));
+  const none = game();
+  layStones({ ...shore, beach: [] }, none, 3);
+  assert.equal(lyingCount(none, 'stone'), 0);
 });
 
 test('stones are topped up only once a quest has brought them, counting those in the bag', () => {

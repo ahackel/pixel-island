@@ -1,15 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { checkRules, HANDLERS, ruleFor, RULES, run, type Condition, type Doer, type Rule } from './interactions.ts';
+import { checkRules, ruleFor, RULES, type Condition, type Rule } from './interactions.ts';
+import { HANDLERS, idle, run, type Doer } from './effects.ts';
+import { CODE_GOALS, QUESTS, wantedGoals } from './quests.ts';
 import type { BagItem } from './crafts.ts';
+
+/** Every goal that exists: the game's own, and those quests wait for. */
+const GOALS = [...CODE_GOALS, ...wantedGoals(QUESTS)];
 
 const none = () => false;
 /** What a rule does, as a list of lines. `full`: the bag has no room. */
 function doing(rule: Rule, full = false): string[] {
   const log: string[] = [];
-  const d: Doer = { think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), full: () => full, call: (h) => log.push(`call ${h}`) };
-  run(rule, d);
+  const d: Doer = { ...idle, think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), full: () => full, call: (h) => log.push(`call ${h}`) };
+  run(rule.do, d);
   return log;
 }
 const on = (target: Rule['on'], hand: BagItem | null, yes: Condition[] = []) => {
@@ -18,7 +23,7 @@ const on = (target: Rule['on'], hand: BagItem | null, yes: Condition[] = []) => 
 };
 
 test('the shipped interactions are valid', () => {
-  assert.deepEqual(checkRules(RULES, loca), []);
+  assert.deepEqual(checkRules(RULES, loca, GOALS), []);
 });
 
 test('every handler is used by a rule, so none is left over', () => {
@@ -30,11 +35,15 @@ test('bad interactions are caught', () => {
   const bad = checkRules(
     [{ on: 'door', do: [{ think: 'think.crate' }] }, { on: 'crate', hand: 'sword', do: [{ think: 'nope' }, { reach: 'dance' }, { give: 'gold' }, { call: 'explode' }, { room: 1 }, { think: 'think.crate', reach: 'eat' }, { wave: 1 }] }, { on: 'palm', when: 'rainy', do: [] }, 5],
     loca,
+    GOALS,
   );
-  for (const part of ['target "door"', 'hand "sword"', 'text "nope"', 'goal "dance"', 'item "gold"', 'handler "explode"', 'room is written as true', 'exactly one', 'effect "wave"', 'condition "rainy"', '"do"', 'not an object']) {
+  for (const part of ['target "door"', 'hand "sword"', 'text "nope"', 'goal "dance"', 'item "gold"', 'handler "explode"', 'room is written as true', 'exactly one', 'effect "wave"', 'condition "rainy"', 'list of effects', 'not an object']) {
     assert.ok(bad.some((l) => l.includes(part)), part);
   }
-  assert.deepEqual(checkRules('nope', loca), ['interactions: not a list']);
+  assert.deepEqual(checkRules('nope', loca, GOALS), ['interactions: not a list']);
+  // What belongs to a quest's start is not for a hand on a thing.
+  const start = checkRules([{ on: 'crate', do: [{ weather: 'rain' }, { washUp: ['crate'] }, { stones: 2 }, { strike: true }] }], loca, GOALS);
+  assert.equal(start.filter((l) => l.includes('is not for an interaction')).length, 4);
 });
 
 test('a rule an earlier one always wins over is caught', () => {
@@ -47,7 +56,7 @@ test('a rule an earlier one always wins over is caught', () => {
     { on: 'stump', hand: 'wood', when: 'tall', do: [{ think: 'think.haveFire' }] },
     { on: 'stump', hand: 'wood', do: [{ think: 'think.needStick' }] },
   ];
-  const lines = checkRules(rules, loca);
+  const lines = checkRules(rules, loca, GOALS);
   assert.deepEqual(lines.map((l) => l.slice(0, 14)), ['interaction 2:', 'interaction 4:', 'interaction 5:']);
 });
 

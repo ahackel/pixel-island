@@ -3,7 +3,7 @@
 // comes in as a few questions (`Shore`), so the tests can use it without a page or the engine.
 import type { Game } from './save.ts';
 import { BUILDS, finished, HUT_AT, isLoose, lacking, type BagItem, type Build, type BuildKind } from './crafts.ts';
-import { QUESTS, stonesOut } from './quests.ts';
+import { stonesOut } from './quests.ts';
 
 type Spot = { i: number; j: number };
 
@@ -87,11 +87,9 @@ export function washWood(s: Shore, g: Game): void {
   if (lyingCount(g, 'drift') < DRIFT_LYING) lay(g, 'drift', onBeach(s));
 }
 
-/** What quest `k` brings as it starts: its stones and wash-ups (its lightning is the game's to strike). */
-export function bring(s: Shore, g: Game, k: number): void {
-  const q = QUESTS[k];
-  for (let n = 0; n < (q.stones ?? 0) && s.beach.length; n++) lay(g, 'stone', onBeach(s));
-  washUp(s, g, q.washUps ?? []);
+/** A quest's `stones` effect: stones laid on the beach (from then on `topUpStones` keeps some to find). */
+export function layStones(s: Shore, g: Game, n: number): void {
+  for (let k = 0; k < n && s.beach.length; k++) lay(g, 'stone', onBeach(s));
 }
 
 /** The morning's gifts: a coconut once the last is eaten, and the sea's wood. */

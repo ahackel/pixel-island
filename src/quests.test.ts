@@ -1,16 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { advance, checkContent, next, QUESTS, startProgress, stonesOut, waiting, type Quest } from './quests.ts';
+import { advance, checkContent, next, QUESTS, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
+import { RULES } from './interactions.ts';
 import { LOOSE } from './crafts.ts';
 
-test('the shipped quests and texts are valid', () => {
-  assert.deepEqual(checkContent(QUESTS, loca, ['crate', ...LOOSE]), []);
+const REPORTED = reportedGoals(RULES);
+
+test('the shipped quests and texts are valid, and every goal a quest waits for is reported by something', () => {
+  assert.deepEqual(checkContent(QUESTS, loca, ['crate', ...LOOSE], REPORTED), []);
 });
 
 test('bad quests and texts are caught', () => {
-  const bad = checkContent([{ id: 'a', goal: 'dance', weather: 'snow', count: 0, icon: 'x', thought: 'nope', washUps: ['boat'] }, { id: 'a' }], { 'bad id': { en: 1 } }, ['crate']);
-  for (const part of ['dance', 'snow', 'count', 'icon', 'nope', 'boat', 'repeated', 'bad id', 'needs en']) assert.ok(bad.some((l) => l.includes(part)), part);
+  const bad = checkContent([{ id: 'a', goal: 'dance', count: 0, icon: 'x', thought: 'nope', start: [{ weather: 'snow' }, { washUp: ['boat'] }, { stones: 0 }, { reach: 'eat' }, { room: true }] }, { id: 'a' }], { 'bad id': { en: 1 } }, ['crate'], REPORTED);
+  for (const part of ['dance', 'snow', 'count', 'icon', 'nope', 'boat', 'stones must be', '"reach" is not for a quest', '"room" is not for a quest', 'repeated', 'bad id', 'needs en']) assert.ok(bad.some((l) => l.includes(part)), part);
 });
 
 const chain: Quest[] = [
@@ -40,7 +43,7 @@ test('only the current quest counts, and a done one waits for its morning unless
 });
 
 test('what a task needs only comes with its own quest', () => {
-  const brings = (item: string) => QUESTS.findIndex((q) => q.washUps?.includes(item));
+  const brings = (item: string) => QUESTS.findIndex((q) => q.start?.some((e) => 'washUp' in e && e.washUp.includes(item)));
   const of = (id: string) => QUESTS.findIndex((q) => q.id === id);
   assert.equal(brings('hammer'), of('hut'));
   assert.equal(brings('vine'), of('axe'));
@@ -48,21 +51,21 @@ test('what a task needs only comes with its own quest', () => {
   assert.equal(brings('crate'), of('crate'));
   assert.equal(stonesOut(of('fish') - 1), false);
   assert.equal(stonesOut(of('fish')), true);
-  assert.equal(QUESTS.findIndex((q) => q.strike), of('fire'));
+  assert.equal(QUESTS.findIndex((q) => q.start?.some((e) => 'strike' in e)), of('fire'));
   // Crabs come out only on windy days: the crab quest's, and none before it.
-  assert.equal(QUESTS.findIndex((q) => q.weather === 'windy'), of('crab'));
+  assert.equal(QUESTS.findIndex((q) => weatherOf(q) === 'windy'), of('crab'));
   // The storm comes in the night the hut is done, and the fire from the storm the morning after.
   assert.equal(QUESTS[of('storm') - 1].id, 'hut');
   assert.equal(QUESTS[of('storm')].night, true);
-  assert.equal(QUESTS[of('storm')].weather, 'storm');
+  assert.equal(weatherOf(QUESTS[of('storm')]), 'storm');
   assert.equal(QUESTS[of('fire') - 1].id, 'storm');
   // The fire quest brings no weather of its own: the storm has blown over by its morning.
-  assert.equal(QUESTS[of('fire')].weather, undefined);
+  assert.equal(weatherOf(QUESTS[of('fire')]), undefined);
 });
 
 test('every quest that needs its own weather says so, and no quest asks for rain out of turn', () => {
   // Rain and storms come only with the hut and the storm; the rest of the week is fair or whatever lasts.
-  assert.deepEqual(QUESTS.filter((q) => q.weather === 'rain' || q.weather === 'storm').map((q) => q.id), ['hut', 'storm']);
+  assert.deepEqual(QUESTS.filter((q) => weatherOf(q) === 'rain' || weatherOf(q) === 'storm').map((q) => q.id), ['hut', 'storm']);
 });
 
 test('a done quest waits for the next one only when that one waits for the morning', () => {
@@ -73,4 +76,23 @@ test('a done quest waits for the next one only when that one waits for the morni
   // The last quest: none comes after it.
   assert.equal(waiting(done(2), chain), null);
   assert.equal(waiting({ quest: 1, count: 0, done: false }, chain), null);
+});
+
+test('a quest waits only for what is reported: its goal by the game or by a rule, and a goal no rule reaches is caught', () => {
+  const lines = checkContent([{ id: 'dig', goal: 'dig', icon: 'moon', thought: 'quest.eat' }], loca, [], REPORTED);
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].includes('nothing reports the goal "dig"'));
+  // A rule that reaches it makes it reported.
+  const rules = [{ do: [{ think: 'think.crate' }, { reach: 'dig' }] }];
+  assert.deepEqual(checkContent([{ id: 'dig', goal: 'dig', icon: 'moon', thought: 'quest.eat' }], loca, [], reportedGoals([...RULES, ...rules] as never)), []);
+});
+
+test('the start effects are done in the order written, and weather and stones are found among them', () => {
+  const q: Quest = { id: 'a', goal: 'eat', icon: 'coconut', thought: 't', start: [{ stones: 2 }, { weather: 'fog' }, { washUp: ['crate'] }] };
+  assert.equal(weatherOf(q), 'fog');
+  assert.equal(weatherOf({ ...q, start: [{ stones: 2 }] }), undefined);
+  assert.equal(weatherOf({ id: 'b', goal: 'eat', icon: 'coconut', thought: 't' }), undefined);
+  assert.equal(weatherOf(undefined), undefined);
+  assert.equal(stonesOut(0, [q]), true);
+  assert.equal(stonesOut(0, [{ ...q, start: [{ weather: 'fog' }] }]), false);
 });
