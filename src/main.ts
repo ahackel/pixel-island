@@ -52,6 +52,7 @@ import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, 
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
+import { flight, landed, landing, type Thrown } from './throw.ts';
 import { talkView } from './talk.ts';
 import { optionsOf, withoutQuest } from './options.ts';
 import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
@@ -380,10 +381,8 @@ function showBag(): void {
 /** A screen offset in ground pixels as a map offset in metres: a tile is TILE_W by TILE_H pixels, map +i is screen right and down. */
 const mapOffset = (dx: number, dy: number) => ({ i: dx / TILE_W + dy / TILE_H, j: dy / TILE_H - dx / TILE_W });
 
-/** How far a thing from the bag is thrown at most, in metres, and how long it flies. */
-const THROW = { far: 1, ms: 450 };
-/** Things in the air, thrown from the bag: where from and to, and when. */
-let thrown: { item: BagItem; from: { i: number; j: number }; to: { i: number; j: number }; start: number }[] = [];
+/** Things in the air, thrown from the bag (throw.ts). */
+let thrown: Thrown[] = [];
 
 /**
  * Throws a thing from the bag toward a ground-image point, at most THROW.far from the survivor and
@@ -394,14 +393,8 @@ function putDown(n: number, p: { x: number; y: number }): void {
   if (!item || item === 'fire' || paused || sleeping) return;
   // The point on the map under `p`, taken at the survivor's own ground level.
   const s = world.screenOf(actor.i, actor.j);
-  let { i: di, j: dj } = mapOffset(p.x - s.x, p.y - s.y);
-  const d = Math.hypot(di, dj);
-  if (d > THROW.far) (di *= THROW.far / d), (dj *= THROW.far / d);
-  let to = { i: actor.i, j: actor.j };
-  for (let k = 1; k >= 0.25; k -= 0.25) {
-    const at = { i: actor.i + di * k, j: actor.j + dj * k };
-    if (dry(at) && world.canWalk(actor, at)) { to = at; break; }
-  }
+  const { i: di, j: dj } = mapOffset(p.x - s.x, p.y - s.y);
+  const to = landing(actor, { i: di, j: dj }, (at) => dry(at) && world.canWalk(actor, at));
   game.bag.splice(n, 1);
   const now = performance.now();
   thrown.push({ item, from: { i: actor.i, j: actor.j }, to, start: now });
@@ -411,19 +404,16 @@ function putDown(n: number, p: { x: number; y: number }): void {
 }
 /** Lands what has flown its time: on the ground with its kind. */
 function land(ms: number): void {
-  for (const t of thrown.filter((t) => ms - t.start >= THROW.ms)) {
+  for (const t of thrown.filter((t) => landed(t, ms))) {
     // Put down, the crate stands on the ground again, in the way like before.
     if (t.item === 'crate') game.items.push({ item: 'crate', ...t.to });
     else lay(game, t.item, t.to);
   }
-  thrown = thrown.filter((t) => ms - t.start < THROW.ms);
+  thrown = thrown.filter((t) => !landed(t, ms));
 }
 /** A thing in flight: along the line from hand height up in an arc and down onto the ground. */
-function thrownThing(t: (typeof thrown)[number], ms: number): Thing {
-  const k = Math.min(1, (ms - t.start) / THROW.ms);
-  const i = t.from.i + (t.to.i - t.from.i) * k, j = t.from.j + (t.to.j - t.from.j) * k;
-  // In levels above the ground: from the hands (2) up over the throw and down to it.
-  const up = 2 * (1 - k) + 6 * k * (1 - k);
+function thrownThing(t: Thrown, ms: number): Thing {
+  const { i, j, up } = flight(t, ms);
   return LYING[t.item]({ i, j, level: standingHeight(world.map, i, j) + up });
 }
 
