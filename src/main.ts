@@ -1335,6 +1335,8 @@ let strikeFx: Strike | null = null;
 let bursts: Burst[] = [];
 const particles = new Particles();
 let last = performance.now();
+/** Whether frames draw: the playthrough's test hook turns drawing off to run the game's rules fast (see the end of this file). */
+let drawing = true;
 /** Whether a frame has failed; the first failure is reported, later ones only logged. */
 let failed = false;
 /**
@@ -1367,6 +1369,7 @@ function step(ms: number): void {
   walk(dt, ms);
   stir(dt, ms);
   const sky = skyNow(ms);
+  if (!drawing) return;
   const { things, me } = sceneThings(ms, sky.striking);
   draw(ms, dt, begun, things, me, fade, sky);
   showPage(ms, fade, sky.weather);
@@ -1632,6 +1635,10 @@ if (import.meta.env.DEV) {
     sail: () => setSail(),
     /** Stands the survivor somewhere (to reach a fish or a crab that will not wait), and stops their walk. */
     place: (i: number, j: number) => { target = null; Object.assign(actor, { i, j }); },
+    /** Draws frames, or not: the rules run the same, and far faster, with no drawing. */
+    draw: (on: boolean) => { drawing = on; },
+    /** Puts away the thoughts in the story box. */
+    dismiss: () => forget(),
     /** Hunger and energy full, as the FULL cheat. */
     fill: () => Object.assign(game, { hunger: 1, energy: 1 }),
   };

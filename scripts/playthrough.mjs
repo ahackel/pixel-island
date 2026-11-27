@@ -5,6 +5,8 @@
 //
 //   npm run playthrough            (needs Playwright with a Chromium; it starts the dev server itself)
 //
+// It runs on a fake clock (Playwright's `page.clock`) that the script advances itself, with drawing turned off, so the game's
+// rules run as fast as the machine can step them instead of in real time: the whole tutorial takes well under a minute.
 // A few things are done by hand instead of by walking, because they will not wait: a fish and a crab are reached by
 // standing next to them (`place`), and hunger and energy are topped up now and then (`fill`), as the FULL cheat does.
 // Everything else is a tap, a bag action, sleeping or building, as the player does it.
@@ -31,34 +33,41 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.
 const within = (promise, ms, what) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what}: the page stopped answering (the game froze?)`)), ms))]);
 const T = (fn, ...args) => within(page.evaluate(([f, a]) => window.__test[f](...a), [fn, args]), 15000, fn);
 const S = () => T('state');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const realWait = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Lets `ms` of the game's time go by (the fake clock runs the game's timers and frames up to then). */
+const wait = (ms) => within(page.clock.runFor(ms), 60000, 'the clock');
 const t0 = Date.now();
 const log = (msg) => console.log(`[${String(Math.round((Date.now() - t0) / 1000)).padStart(3)}s] ${msg}`);
 
 async function fail(msg) {
   let state = '(no state)';
-  try { const { beach, ...rest } = await S(); state = JSON.stringify(rest); await page.screenshot({ path: path.join(root, 'playthrough-failure.png') }); } catch { /* the page is gone */ }
+  try {
+    const { beach, ...rest } = await S();
+    state = JSON.stringify(rest);
+    await T('draw', true);
+    await wait(200);
+    await page.screenshot({ path: path.join(root, 'playthrough-failure.png') });
+  } catch { /* the page is gone */ }
   console.error(`\nFAILED: ${msg}\n${state}\n${errors.length ? `\nBrowser errors:\n${errors.join('\n')}` : ''}\n(screenshot: playthrough-failure.png)`);
-  await Promise.race([Promise.allSettled([browser.close(), server.close()]), wait(5000)]);
+  await Promise.race([Promise.allSettled([browser.close(), server.close()]), realWait(5000)]);
   process.exit(1);
 }
 
-/** Waits until `cond(state)`, polling; fails with `what` if it takes longer than `ms`. */
+/** Lets the game's time go by, a little at a time, until `cond(state)`; fails with `what` if `ms` of game time pass first. */
 async function until(what, cond, ms = 20000) {
-  const end = Date.now() + ms;
-  for (;;) {
+  for (let waited = 0; ; waited += 100) {
     const s = await S();
     if (cond(s)) return s;
-    if (Date.now() > end) await fail(`timed out waiting for ${what}`);
-    await wait(120);
+    if (waited >= ms) await fail(`timed out waiting for ${what} (${ms / 1000} s of the game's time)`);
+    await wait(100);
   }
 }
-/** Puts away every thought in the story box (the game stands still while one is up). */
+/** Puts away every thought in the story box (the game stands still while one is up), until two seconds go by with none. */
 async function settle() {
   let quiet = 0;
-  for (let n = 0; n < 60 && quiet < 4; n++) {
+  for (let n = 0; n < 80 && quiet < 8; n++) {
     const s = await S();
-    if (s.telling) { quiet = 0; await page.locator('.dialog').click({ force: true, position: { x: 20, y: 20 } }); await wait(850); } else { quiet++; await wait(250); }
+    if (s.telling) { quiet = 0; await T('dismiss'); await wait(100); } else { quiet++; await wait(250); }
   }
 }
 const idle = async (what) => { await until(`${what}: the walk to end`, (s) => !s.walking && !s.sleeping); await settle(); return S(); };
@@ -76,11 +85,16 @@ async function pickUp(item, skip = () => false) {
     const spots = lying(s, item).filter((l) => !skip(l)).sort((a, b) => Number(lone(b)) - Number(lone(a)) || dist(a, s.at) - dist(b, s.at));
     if (!spots.length) await fail(`no ${item} lying anywhere to pick up`);
     const before = count(s, item);
+    const had = [...s.bag];
     await T('hold', null);
     await T('tap', spots[Math.min(tries, spots.length - 1)].i, spots[Math.min(tries, spots.length - 1)].j);
     await idle(`picking up ${item}`);
     if (count(await S(), item) > before) return;
     const now = await S();
+    // Whatever a tap took in its place (a neighbour in reach) goes out onto the sand again, out of the way.
+    const taken = [...now.bag];
+    for (const it of had) { const k = taken.indexOf(it); if (k >= 0) taken.splice(k, 1); }
+    await dump(taken);
     // A tap on a thing behind the survivor on the screen lands on their body (they sit down): stand above it on the screen.
     if (dist(now.at, s.at) < 0.05) await T('place', spots[Math.min(tries, spots.length - 1)].i - 1.3, spots[Math.min(tries, spots.length - 1)].j - 1.3);
     const target = spots[Math.min(tries, spots.length - 1)];
@@ -88,16 +102,28 @@ async function pickUp(item, skip = () => false) {
   }
   await fail(`could not pick up ${item}; after each try the bag and thought were:\n  ${seen.join('\n  ')}`);
 }
+/** Drags things out of the bag onto the sand far from the work (the beach corner furthest from the hut), so they do not lie where they would take the taps meant for other things; and back. */
+async function dump(items) {
+  if (!items.length) return;
+  const s = await S();
+  const corner = [...s.beach].sort((a, b) => dist(b, s.hut) - dist(a, s.hut))[0];
+  await T('place', corner.i, corner.j);
+  for (const item of items) {
+    const k = (await S()).bag.indexOf(item);
+    if (k >= 0) { await T('hold', null); await T('drop', k, corner.i + 0.8, corner.j + 0.4); await wait(1500); }
+  }
+  await T('place', s.at.i, s.at.j);
+}
 /** Makes room in the bag as the player does: eats what is food, drags the rest out onto the sand (the bag holds six things). */
 async function tidy(keep = []) {
   await T('hold', null);
+  const food = ['coconut', 'fish', 'wrasse', 'snapper', 'crab', 'fishSoup'];
   for (let n = 0; n < 12; n++) {
-    const s = await S();
-    const k = s.bag.findIndex((it) => !keep.includes(it));
-    if (k < 0) return;
-    if (['coconut', 'fish', 'wrasse', 'snapper', 'crab', 'fishSoup'].includes(s.bag[k])) { await T('eat', k); await wait(200); }
-    else { await T('drop', k, s.at.i + 1.3, s.at.j + 0.6); await wait(1600); }
+    const k = (await S()).bag.findIndex((it) => food.includes(it) && !keep.includes(it));
+    if (k < 0) break;
+    await T('eat', k); await wait(100);
   }
+  await dump((await S()).bag.filter((it) => !keep.includes(it)));
 }
 const slotOf = async (item) => (await S()).bag.indexOf(item);
 /** Ties the first `a` onto the first `b` in the bag, as a drag does. */
@@ -134,7 +160,11 @@ const questIs = (id) => async (what) => { const s = await S(); if (s.quest.id !=
 // ---------------------------------------------------------------------------------------------------- the start
 process.on('unhandledRejection', (e) => fail(String(e?.message ?? e)));
 process.on('uncaughtException', (e) => fail(String(e?.message ?? e)));
+await page.clock.install();
 await page.goto(url, { waitUntil: 'load' });
+// From here the game's time is ours: it passes only as the script lets it, and nothing is drawn.
+await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+await T('draw', false);
 await wait(1500);
 await page.click('button[aria-label="Create character"]', { force: true });
 await wait(1200);
@@ -249,11 +279,12 @@ await step('quest 8, fire: lightning on a palm, a torch from the stump, a campfi
   await until('the lightning to strike a palm', (x) => x.struck !== null, 30000);
   await settle();
   await pickUp('drift');
+  // The driftwood goes down just outside the hut's east wall (inside it, walls are in the way), near enough to count as the hut's.
   s = await S();
-  await T('tap', s.blanket.i, s.blanket.j); await idle('walking to the hut');
-  s = await S();
-  await T('drop', s.bag.indexOf('drift'), s.hut.i + 1.4, s.hut.j + 0.4);
-  await until('the driftwood to land by the hut', (x) => lying(x, 'drift').some((l) => dist(l, x.hut) <= 2.5), 8000);
+  await T('place', s.hut.i + 1.9, s.hut.j + 0.2);
+  await T('drop', s.bag.indexOf('drift'), s.hut.i + 2.5, s.hut.j + 0.3);
+  const byTheHut = (x) => lying(x, 'drift').filter((l) => dist(l, x.hut) <= 2.9 && l.i - x.hut.i > 1.3);
+  await until('the driftwood to land by the hut', (x) => byTheHut(x).length > 0, 8000);
   s = await S();
   const stump = s.palms.find((p) => p.struck);
   await T('hold', 'wood');
@@ -261,7 +292,7 @@ await step('quest 8, fire: lightning on a palm, a torch from the stump, a campfi
   await until('a torch in hand', (x) => x.hand === 'fire' || x.bag.includes('fire'), 8000);
   await T('hold', 'fire');
   s = await S();
-  const wood = lying(s, 'drift').find((l) => dist(l, s.hut) <= 2.5);
+  const wood = byTheHut(s)[0];
   await T('tap', wood.i, wood.j, 2); await idle('lighting the campfire');
   await until('the campfire lit and the quest done', (x) => x.fires.length > 0 && x.quest.done, 8000);
 });
