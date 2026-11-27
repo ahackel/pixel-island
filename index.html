@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Pixel Island</title>
+    <script>
+      // Errors are shown, once, in a box at the top, rather than the island just standing still: one at start (a bad
+      // content file) or one a frame reports (main.ts frame()).
+      (function () {
+        var shown = false;
+        function show(e) {
+          if (shown) return;
+          shown = true;
+          var box = document.createElement('div');
+          box.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:100;padding:8px 12px;background:#000c;color:#fff;font:14px/1.4 system-ui,sans-serif;border-radius:4px;white-space:pre-wrap';
+          box.textContent = 'Something went wrong: ' + ((e && e.message) || e) + '\nReload the page to play on.';
+          box.addEventListener('click', function () { box.remove(); });
+          document.body.appendChild(box);
+        }
+        addEventListener('error', function (ev) { show(ev.error || ev.message); });
+        addEventListener('unhandledrejection', function (ev) { show(ev.reason); });
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

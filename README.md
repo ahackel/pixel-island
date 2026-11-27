@@ -17,7 +17,7 @@ To take a newer engine: `git subtree pull --prefix=engine https://github.com/aha
 npm run dev
 ```
 
-Open http://localhost:8330. The same server also serves the engine's editors at `/engine/tools/*`: F2 (or the EDITOR cheat) jumps from the game to the scene editor, and F2 in any editor jumps back. What an editor saves with "Save to project" is written into `src/content/` (stores such as walls, props, parts and flora under `src/content/store/`) to commit; the game reads them when the browser has no edits of its own. The editors exist only on the dev server; the published build has none of them. `npm test` runs the clock and needs tests, `npm run build` type-checks and builds into `dist/`.
+Open http://localhost:8330. The same server also serves the engine's editors at `/engine/tools/*`: F2 (or the EDITOR cheat) jumps from the game to the scene editor, and F2 in any editor jumps back. What an editor saves with "Save to project" is written into `src/content/` (stores such as walls, props, parts and flora under `src/content/store/`) to commit; the game reads them when the browser has no edits of its own. The editors exist only on the dev server; the published build has none of them. `npm test` runs the game's tests (`src/*.test.ts`: clock, crafts, shore, quests and their texts, and that every saved scene reads back) and the engine's (`engine/tests/`); `npm run build` checks the engine boundary, type-checks and builds into `dist/`. `.github/workflows/check.yml` runs both on every push and pull request.
 
 Fires and lights carry particle systems (sparks and their glow halo, the lantern's light) by id: they are edited in the engine's particle editor (`/engine/tools/particles/`) and saved to `src/content/store/pixel-particles.json`.
 
@@ -31,8 +31,10 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 - `src/main.ts` — the page, input and the game loop.
 - `src/clock.ts` — day phases and survival needs as plain numbers (tested in `clock.test.ts`).
-- `src/island.ts` — the first island, the same every time from a seed, and the sea bed shelving away round it.
+- `src/island.ts` — the islands: the saved scenes in `src/content/scenes/` (a scene that fails the checks stops the game rather than being replaced; `scenes.test.ts` reads them all), else made from a seed, and the sea bed shelving away round them.
 - `src/save.ts` — the saved game, written on waking and checked when read back; it remembers its island's fingerprint, so an edited island starts a new game.
+- `src/crafts.ts` — the bag's items, what can be tied together, and the hut and raft built in stages, as plain data and rules (tested in `crafts.test.ts`).
+- `src/rows.ts`, `src/things.ts`, `src/fire.ts`, `src/fishing.ts` — the game's small hand-drawn pictures (rows of letters): the week's new things and the hut, fire and the burnt stump, the spear, fish and crabs.
 - `src/shore.ts` — what the island gives (coconuts, wood, stones, wash-ups) and where the hut and raft can be built, as plain rules (tested in `shore.test.ts`).
 - `src/ui.ts` — the interface as pixel art (HUD, buttons, bag slots), on the engine's `shared/pixel-font.ts` and `shared/pixel-ui.ts`.
 - `src/i18n.ts` — `t(id)`: English and German text from `src/content/loca.json`, by id.

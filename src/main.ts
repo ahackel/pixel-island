@@ -1651,7 +1651,24 @@ let strikeFx: Strike | null = null;
 let bursts: Burst[] = [];
 const particles = new Particles();
 let last = performance.now();
+/** Whether a frame has failed; the first failure is reported, later ones only logged. */
+let failed = false;
+/**
+ * Runs a frame and asks for the next one whatever happens in it, so one bad frame does not stop the game for good.
+ * The first error goes to `reportError` (the console, and the page's error box in index.html).
+ */
 function frame(ms: number): void {
+  try {
+    step(ms);
+  } catch (e) {
+    if (failed) console.error(e);
+    else reportError(e);
+    failed = true;
+  }
+  requestAnimationFrame(frame);
+}
+/** One frame: the clock, walking, the creatures, drawing the world, and the page around it. */
+function step(ms: number): void {
   const begun = performance.now();
   const dt = Math.min(0.1, (ms - last) / 1000);
   last = ms;
@@ -1854,7 +1871,6 @@ function frame(ms: number): void {
     const x = Math.min(appWidth - 8 - bubbleHalf, Math.max(8 + bubbleHalf, s.x));
     setStyle(bubble, 'transform', `translate(${x}px, ${s.y - 46 * view.zoom}px) translate(-50%, -100%)`);
   }
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
