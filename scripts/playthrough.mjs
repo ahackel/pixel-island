@@ -81,6 +81,8 @@ async function pickUp(item, skip = () => false) {
     await idle(`picking up ${item}`);
     if (count(await S(), item) > before) return;
     const now = await S();
+    // A tap on a thing behind the survivor on the screen lands on their body (they sit down): stand above it on the screen.
+    if (dist(now.at, s.at) < 0.05) await T('place', spots[Math.min(tries, spots.length - 1)].i - 1.3, spots[Math.min(tries, spots.length - 1)].j - 1.3);
     const target = spots[Math.min(tries, spots.length - 1)];
     seen.push(`tapped ${item} at ${target.i},${target.j}; survivor at ${now.at.i},${now.at.j}; bag ${now.bag.join(',')}; lying within 1 m: ${now.lying.filter((l) => dist(l, target) < 1).map((l) => `${l.item}@${l.i},${l.j}`).join(' ')}; crates ${now.crates.map((c) => `${c.item}@${c.i},${c.j}`).join(' ')}; thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
@@ -187,10 +189,17 @@ await step('quest 5, crate: smashed with a stone', async () => {
   const s0 = await questIs('crate')('after the night');
   if (!s0.crates.some((c) => c.item === 'crate')) await fail('no crate washed up');
   await pickUp('stone'); await T('hold', 'stone');
-  const crate = (await S()).crates.find((c) => c.item === 'crate');
-  await T('tap', crate.i, crate.j, 7);
-  await idle('smashing the crate');
-  await until('the crate smashed and the quest done', (s) => s.quest.done && s.quest.id === 'crate');
+  // A thing lying beside the crate takes a tap on its foot (loose things come first), so tap it higher up, as a player would.
+  for (const up of [8, 13, 16, 10, 15]) {
+    const s = await S();
+    if (s.quest.done) break;
+    const crate = s.crates.find((c) => c.item === 'crate');
+    if (!crate) break;
+    await T('hold', 'stone');
+    await T('tap', crate.i, crate.j, up);
+    await idle('smashing the crate');
+  }
+  await until('the crate smashed and the quest done', (s) => s.quest.done && s.quest.id === 'crate', 8000);
 });
 
 await step('quest 6, hut: four driftwood, the hammer, four palm leaves, built round the blanket', async () => {
