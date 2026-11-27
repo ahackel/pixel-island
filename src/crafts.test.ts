@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BAG_ITEMS, BUILDS, HUT_PLAN, lacking, recipeFor, takeFrom, type BagItem } from './crafts.ts';
+import { BAG_ITEMS, BUILDS, HUT_PLAN, lacking, partsOf, recipeFor, recipeOnto, takeFrom, type BagItem } from './crafts.ts';
 // By path, as node runs the tests without Vite's `@pixel` alias.
 import { LOOT } from '../engine/engine/world/loot.ts';
 
@@ -37,4 +37,17 @@ test('the hut plan has a stage for every cost', () => {
   const leaves = HUT_PLAN.flatMap((s) => ('roof' in s ? [`${s.roof.i},${s.roof.j}`] : []));
   assert.deepEqual([...new Set(leaves)].sort(), ['0,0', '0,1', '1,0', '1,1']);
   assert.ok(HUT_PLAN.slice(-4).every((s) => 'roof' in s));
+});
+
+test('a bag slot dragged onto another ties with what fits, lighting the other parts it would use', () => {
+  const bag: BagItem[] = ['stone', 'coconut', 'vine', 'wood'];
+  assert.equal(recipeOnto(bag, 3, 0)?.makes, 'spear');
+  assert.equal(recipeOnto(bag, 2, 0)?.makes, 'axe');
+  assert.equal(recipeOnto(bag, 3, 3), null, 'not onto itself');
+  assert.equal(recipeOnto(bag, 3, -1), null, 'not off the bag');
+  assert.equal(recipeOnto(bag, 3, 7), null, 'not onto an empty slot');
+  assert.equal(recipeOnto(bag, 1, 0), null);
+  assert.deepEqual([...partsOf(bag, 2, 0)], [3], 'the axe takes the stick too');
+  assert.deepEqual([...partsOf(bag, 3, 0)], []);
+  assert.deepEqual([...partsOf(bag, 1, 0)], []);
 });

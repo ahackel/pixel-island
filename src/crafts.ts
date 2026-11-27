@@ -37,6 +37,22 @@ export function recipeFor(hand: BagItem | null, tapped: BagItem, bag: readonly B
   return RECIPES.filter((r) => r.needs.includes(hand) && r.needs.includes(tapped) && has(bag, r.needs)).sort((a, b) => a.needs.length - b.needs.length)[0] ?? null;
 }
 
+/** What dragging bag slot `n` onto slot `m` ties into, if anything. */
+export const recipeOnto = (bag: readonly (BagItem | undefined)[], n: number, m: number) =>
+  m < 0 || m === n || !bag[m] ? null : recipeFor(bag[n] ?? null, bag[m]!, bag as readonly BagItem[]);
+/** The other slots tying slot `n` onto `over` would use, besides those two: the first of each further thing the recipe needs. */
+export function partsOf(bag: readonly BagItem[], n: number, over: number): Set<number> {
+  const parts = new Set<number>();
+  const recipe = recipeOnto(bag, n, over);
+  if (!recipe) return parts;
+  const left = bag.map((it, k) => (k === n || k === over ? null : it));
+  for (const need of without(recipe.needs, [bag[n], bag[over]])) {
+    const k = left.indexOf(need);
+    if (k >= 0) { parts.add(k); left[k] = null; }
+  }
+  return parts;
+}
+
 /** A structure built in stages, each taking what it needs from the bag. */
 export const BUILDS = {
   /**

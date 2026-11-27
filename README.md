@@ -29,7 +29,10 @@ Debug URL options: `?speed=30` runs the game clock 30 times faster, `?new` start
 
 ## Layout
 
-- `src/main.ts` — the page, input and the game loop.
+- `src/main.ts` — the page, input and the game loop: wires the modules below together.
+- `src/camp.ts` — sleeping (blanket, the hut's shelter, rain, the fire quest, storms), what burns and frightens animals, the lightning's palm, when the raft sails, as plain rules (tested in `camp.test.ts`).
+- `src/places.ts` — chests and doors as the save keeps them: what a chest still holds, a door's state by scene and edge, unlocking (tested in `places.test.ts`).
+- `src/bag-ui.ts` — the bag's slots: tap to eat or hold, drag onto another to tie (crafts.ts `recipeOnto`, `partsOf`), drag out to put down.
 - `src/clock.ts` — day phases and survival needs as plain numbers (tested in `clock.test.ts`).
 - `src/island.ts` — the islands: the saved scenes in `src/content/scenes/` (a scene that fails the checks stops the game rather than being replaced; `scenes.test.ts` reads them all), else made from a seed, and the sea bed shelving away round them.
 - `src/save.ts` — the saved game, written on waking and checked when read back; it remembers its island's fingerprint, so an edited island starts a new game.

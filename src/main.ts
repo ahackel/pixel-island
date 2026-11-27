@@ -45,12 +45,13 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
+import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
+import { bagView } from './bag-ui.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -389,90 +390,28 @@ const LYING = {
 } as Record<BagItem, ReturnType<typeof thing>>;
 /** How near a tap must be to a thing on the ground to pick it, in pixels, round a point `up` pixels over its foot: driftwood is a big piece. */
 const PICK_NEAR: Partial<Record<BagItem, [r: number, up: number]>> = { coconut: [5, 2], wood: [5, 1], stone: [5, 1], drift: [12, 3] };
-const bag = el('div', 'bag');
+const bagUi = bagView({
+  items: () => game.bag,
+  hand: () => hand,
+  canAct: () => !paused && !sleeping,
+  picture: (item) => BAG_PICTURES[item],
+  words: (item) => t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'crab' | Fish>)),
+  eat: (n, item) => {
+    if (!FOOD[item]) return false;
+    eat(n);
+    return true;
+  },
+  hold,
+  tie: (recipe) => make(recipe),
+  noMatch: () => think('think.noMatch'),
+  putDown: (n, x, y) => putDown(n, view.toGround(x, y)),
+  ghostParent: app,
+});
+const bag = bagUi.el;
 bag.setAttribute('aria-label', t('bag'));
 function showBag(): void {
-  bag.replaceChildren(...Array.from({ length: BAG_SLOTS }, (_, n) => {
-    const item = game.bag[n];
-    const b = el('button', 'pbtn');
-    b.append(slot(item ? BAG_PICTURES[item] : null));
-    // The first of the kind in hand is shown lifted.
-    if (item && item === hand && game.bag.indexOf(item) === n) b.classList.add('held');
-    if (item) b.addEventListener('pointerdown', (e) => { if (!paused && !sleeping) dragging = { n, x: e.clientX, y: e.clientY, ghost: null }; });
-    if (item) {
-      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'crab' | Fish>));
-      b.setAttribute('aria-label', words);
-      b.title = words;
-      b.addEventListener('click', () => {
-        if (paused || sleeping) return;
-        if (FOOD[item]) return eat(n);
-        hold(item === hand ? null : item);
-      });
-    } else b.disabled = true;
-    return b;
-  }));
+  bagUi.show();
 }
-
-/**
- * A bag slot being dragged. Dropped on another slot, the two are tied together if they make
- * something (with whatever else the recipe needs from the bag); dropped over the island, the
- * thing is put down at the survivor's feet. While dragging, the slots it goes with light up.
- */
-let dragging: { n: number; x: number; y: number; ghost: HTMLElement | null; over?: number } | null = null;
-const slots = () => [...bag.children] as HTMLElement[];
-/** The bag slot under a point, or -1. */
-const slotAt = (x: number, y: number) => slots().findIndex((b) => { const r = b.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
-/** What dragging slot `n` onto slot `m` makes, if anything. */
-const recipeOnto = (n: number, m: number) => (m < 0 || m === n || !game.bag[m] ? null : recipeFor(game.bag[n], game.bag[m], game.bag));
-/** Lights the slots the dragged thing goes with, and under the finger the other parts it would use. */
-function markSlots(n: number | null, over = -1): void {
-  const recipe = n === null ? null : recipeOnto(n, over);
-  // The other parts: the first of each further thing the recipe needs, besides the two being tied.
-  const parts = new Set<number>();
-  if (recipe && n !== null) {
-    const left = game.bag.map((it, k) => (k === n || k === over ? null : it));
-    for (const need of without(recipe.needs, [game.bag[n], game.bag[over]])) {
-      const k = left.indexOf(need);
-      if (k >= 0) { parts.add(k); left[k] = null; }
-    }
-  }
-  slots().forEach((b, m) => {
-    const fits = n !== null && !!recipeOnto(n, m);
-    b.classList.toggle('fits', fits || parts.has(m));
-    b.classList.toggle('dim', n !== null && m !== n && !fits && !parts.has(m));
-  });
-}
-window.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  if (!dragging.ghost && Math.hypot(e.clientX - dragging.x, e.clientY - dragging.y) > 12) {
-    dragging.ghost = el('div', 'ghost');
-    dragging.ghost.append(slot(BAG_PICTURES[game.bag[dragging.n]]));
-    app.append(dragging.ghost);
-  }
-  if (!dragging.ghost) return;
-  dragging.ghost.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
-  const over = slotAt(e.clientX, e.clientY);
-  if (over !== dragging.over) markSlots(dragging.n, (dragging.over = over));
-});
-const endDrag = (e: PointerEvent) => {
-  const d = dragging;
-  dragging = null;
-  if (!d?.ghost) return;
-  d.ghost.remove();
-  markSlots(null);
-  if (e.type !== 'pointerup' || paused || sleeping) return;
-  const over = slotAt(e.clientX, e.clientY);
-  if (over >= 0) {
-    if (over === d.n) return;
-    const recipe = recipeOnto(d.n, over);
-    return recipe ? make(recipe) : game.bag[over] ? think('think.noMatch') : undefined;
-  }
-  const r = bag.getBoundingClientRect();
-  const overBag = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top - 16 && e.clientY <= r.bottom;
-  if (!overBag) putDown(d.n, view.toGround(e.clientX, e.clientY));
-};
-window.addEventListener('pointerup', endDrag);
-window.addEventListener('pointercancel', endDrag);
 
 /** A screen offset in ground pixels as a map offset in metres: a tile is TILE_W by TILE_H pixels, map +i is screen right and down. */
 const mapOffset = (dx: number, dy: number) => ({ i: dx / TILE_W + dy / TILE_H, j: dy / TILE_H - dx / TILE_W });
