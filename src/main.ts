@@ -33,10 +33,10 @@ import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
 import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, dialog as storyDialog, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
-import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
+import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
+import { label } from '@pixel/shared/pixel-ui.ts';
 import { wrap } from '@pixel/shared/pixel-font.ts';
-import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
+import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
@@ -52,6 +52,7 @@ import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear,
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
+import { talkView } from './talk.ts';
 import { optionsOf, withoutQuest } from './options.ts';
 import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
@@ -460,92 +461,7 @@ function make(recipe: ReturnType<typeof recipeFor> & {}): void {
   think(recipe.thought);
 }
 
-const bubble = el('div', 'bubble');
-bubble.hidden = true;
-/** When the passing thought shown over the survivor's head goes away by itself. */
-let bubbleUntil = 0;
-let bubbleShown = 0;
-/** Half the bubble's width, and the page's, in screen pixels: read when they change, not every frame. */
-let bubbleHalf = 0;
-let appWidth = app.clientWidth;
-addEventListener('resize', () => (appWidth = app.clientWidth));
-/** How long a thought takes to read: a moment, and more for each letter. */
-const readMs = (words: string) => Math.min(12_000, Math.max(3000, 1500 + 70 * words.length));
-/** A tap only puts a thought away once it has shown this long, so the tap that caused it does not. */
-const TAP_AFTER = 700;
-/** A passing thought ("Got one!"): a bubble over the survivor's head that goes when read, or at a tap. */
-function think(key: string): void {
-  const words = t(key);
-  bubble.replaceChildren(speechBubble(caps(words), C, S));
-  bubble.setAttribute('aria-label', words);
-  bubble.hidden = false;
-  // Measured once, as it is shown: it only changes with the words.
-  bubbleHalf = bubble.offsetWidth / 2;
-  bubbleShown = performance.now();
-  bubbleUntil = bubbleShown + readMs(words);
-  actor.talkUntil = bubbleShown + Math.min(readMs(words), 4000);
-}
-function unthink(): void {
-  bubble.hidden = true;
-  bubbleUntil = 0;
-}
-// Any tap puts a passing thought away (and still walks, picks up, ...), once it has been there a moment.
-app.addEventListener('pointerdown', () => {
-  if (!bubble.hidden && performance.now() - bubbleShown > TAP_AFTER && !paused) unthink();
-}, { capture: true });
-
-// Story thoughts (the morning's, the day plan's, waking to thunder): a box at the bottom with the survivor's face. The
-// island dims and stands still until a tap; thoughts that come meanwhile wait their turn.
-const dialog = el('div', 'dialog');
-dialog.hidden = true;
-const told: string[] = [];
-let toldShown = 0;
-/** Whether a story thought is up, which holds the game still. */
-const telling = () => !dialog.hidden;
-function tell(key: string): void {
-  told.push(key);
-  if (!telling()) showTold();
-}
-function showTold(): void {
-  const key = told.shift();
-  if (!key) return void (dialog.hidden = true);
-  unthink();
-  dialog.replaceChildren(storyBox(caps(t(key))));
-  dialog.setAttribute('aria-label', t(key));
-  dialog.hidden = false;
-  toldShown = performance.now();
-}
-dialog.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  if (performance.now() - toldShown > TAP_AFTER) showTold();
-});
-/** Puts away the story thought shown and those waiting, and the passing one: the night (or the end) begins. */
-function forget(): void {
-  told.length = 0;
-  dialog.hidden = true;
-  unthink();
-}
-/** The face in the box: the survivor's head in the same three-quarter view always, cut from their picture. */
-const FACE = 22;
-function drawFace(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  const me = actor.portrait();
-  const ink = (px: number, py: number) => { const c = me.picture.get(px, py); return c && c !== SHADOW ? c : null; };
-  // From the top of the hat or hair down, centred on what is drawn in those rows.
-  let top = 0;
-  while (top < me.h && ![...Array(me.w).keys()].some((px) => ink(px, top))) top++;
-  const xs = [...Array(me.w).keys()].filter((px) => [...Array(FACE).keys()].some((fy) => ink(px, top + fy)));
-  const x0 = Math.round((xs[0] + xs[xs.length - 1] + 1) / 2 - FACE / 2);
-  for (let fy = 0; fy < FACE; fy++) for (let fx = 0; fx < FACE; fx++) {
-    const c = ink(x0 + fx, top + fy - 1);
-    if (!c) continue;
-    ctx.fillStyle = c;
-    ctx.fillRect(x + fx, y + fy, 1, 1);
-  }
-}
-/** The box: the face in a frame on the left, the words beside it; as wide as the screen allows. */
-function storyBox(words: string): HTMLCanvasElement {
-  return storyDialog(words, drawFace, Math.min(200, Math.floor((window.innerWidth - 24) / S)), FACE);
-}
+const { bubble, dialog, think, thinking, tell, telling, forget, follow } = talkView(app, actor, () => paused);
 
 const veil = el('div', 'veil');
 /** The day whose title the veil shows, 0 for none: the title comes up once the screen is black. */
@@ -1427,7 +1343,7 @@ function caveLamps(me: Thing | null, ms: number): TileLamp[] {
 /** Hints said once a game (and again after a reload): how to tie things together and how to drop them. */
 const taught = new Set<Key>();
 function teach(key: Key, when: () => boolean): void {
-  if (bubble.hidden && !telling() && !taught.has(key) && when()) {
+  if (!thinking() && !telling() && !taught.has(key) && when()) {
     taught.add(key);
     think(key);
   }
@@ -1692,14 +1608,10 @@ function step(ms: number): void {
     veilDay = game.day;
     veil.replaceChildren(label(caps(t('day', { n: game.day })), C.moon, S * 2));
   }
-  if (!bubble.hidden && ms > bubbleUntil) unthink();
-  if (!bubble.hidden) {
-    const foot = world.screenOf(actor.i, actor.j);
-    const s = view.toScreen(foot.x, foot.y);
-    // Centred over the survivor, but kept on the screen when they stand near its edge.
-    const x = Math.min(appWidth - 8 - bubbleHalf, Math.max(8 + bubbleHalf, s.x));
-    setStyle(bubble, 'transform', `translate(${x}px, ${s.y - 46 * view.zoom}px) translate(-50%, -100%)`);
-  }
+  // The passing thought over the survivor's head.
+  const foot = world.screenOf(actor.i, actor.j);
+  const head = view.toScreen(foot.x, foot.y);
+  follow(ms, head.x, head.y - 46 * view.zoom);
 }
 requestAnimationFrame(frame);
 
