@@ -18,5 +18,8 @@
  "crate": {},
  "drift": { "loose": true },
  "lantern": {},
- "key": {}
+ "key": {},
+ "pot": { "loose": true },
+ "flint": { "loose": true },
+ "fishSoup": { "food": { "fills": 0.8, "label": "eatSoup", "yum": "think.yumSoup" } }
 }

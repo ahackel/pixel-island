@@ -474,5 +474,29 @@
  "think.doorFound": {
   "en": "A hidden door! It was behind the wall all along.",
   "de": "Eine versteckte Tür! Sie war die ganze Zeit hinter der Wand."
+ },
+ "pot": {
+  "en": "Pot",
+  "de": "Topf"
+ },
+ "flint": {
+  "en": "Flint",
+  "de": "Feuerstein"
+ },
+ "eatSoup": {
+  "en": "Eat the soup",
+  "de": "Suppe essen"
+ },
+ "think.pot": {
+  "en": "A pot, dented but sound. Something to cook in.",
+  "de": "Ein Topf, verbeult, aber heil. Zum Kochen genau richtig."
+ },
+ "think.flint": {
+  "en": "Flint! Struck against something hard, it throws sparks.",
+  "de": "Feuerstein! Auf etwas Hartem geschlagen, sprüht er Funken."
+ },
+ "think.yumSoup": {
+  "en": "Warm, salty and filling. Wonderful.",
+  "de": "Warm, salzig und sättigend. Herrlich."
  }
 }

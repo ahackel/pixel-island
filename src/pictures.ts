@@ -7,7 +7,7 @@ import { CRAB_IN_BAG, FISH_IN_BAG, SPEAR_IN_BAG, STONE } from './fishing.ts';
 import { TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 import { EXTRA_ICONS, type QuestIcon } from './quests.ts';
 import { picture, type Rows } from './rows.ts';
-import { AXE_IN_BAG, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, KEY, LANTERN, LEAF, LOG, RAFT_ICON, ROPE, thing, VINE } from './things.ts';
+import { AXE_IN_BAG, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, FLINT, HAMMER, KEY, LANTERN, LEAF, LOG, POT, RAFT_ICON, ROPE, SOUP, thing, VINE } from './things.ts';
 
 // A husked coconut: egg-shaped, a little lumpy, its point up to the right, a fibre streak along it.
 const COCO_ROWS = ['..bbbb..', '.bBBbbbb', 'bBBbfbbd', 'bbbbbbdd', '.dbbbdd.', '..ddd...'];
@@ -19,7 +19,7 @@ const coconutThing = (spot: Thing['spot']): Thing => ({ spot, picture: COCO, w: 
 export const BAG_PICTURES: Record<BagItem, Rows> = {
   coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: TORCH_IN_BAG,
   stone: STONE, spear: SPEAR_IN_BAG, fish: FISH_IN_BAG[0], wrasse: FISH_IN_BAG[1], snapper: FISH_IN_BAG[2], crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN, key: KEY,
+  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN, key: KEY, pot: POT, flint: FLINT, fishSoup: SOUP,
 };
 /** The quests' pictures in the corner that are no bag item's. */
 const EXTRA_PICTURES: Record<(typeof EXTRA_ICONS)[number], Rows> = { moon: { rows: ICONS.moon, colors: PAINT }, storm: { rows: ICONS.storm, colors: PAINT }, raft: RAFT_ICON };

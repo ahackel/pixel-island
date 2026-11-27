@@ -46,6 +46,7 @@ export function checkItems(items: unknown, loca: object): string[] {
     for (const key of Object.keys(d)) if (!['loose', 'group', 'food'].includes(key)) out.push(`${w}: unknown field "${key}"`);
     if (d.loose !== undefined && typeof d.loose !== 'boolean') out.push(`${w}: loose is true or false`);
     if (d.group !== undefined && typeof d.group !== 'string') out.push(`${w}: group is a name`);
+    if (d.loose === true && !(`think.${id}` in loca)) out.push(`${w}: is loose, so needs the pickup thought "think.${id}"`);
     const f = d.food;
     if (f !== undefined) {
       if (!f || typeof f.fills !== 'number' || !(f.fills > 0 && f.fills <= 1)) out.push(`${w}: food fills 0 to 1`);

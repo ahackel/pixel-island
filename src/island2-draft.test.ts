@@ -20,11 +20,6 @@ const rules = rules2 as any[];
 
 /** What the game cannot do yet, as the checks say it: one line each, grouped by what is missing. */
 const GAPS = [
-  // Items are code (BAG_ITEMS, LOOSE and FOOD in crafts.ts, their pictures in things.ts), not data: a pot, flint and fish soup need all three.
-  'quest 1, effect 2: unknown wash-up in ["pot","flint"]',
-  'interaction 1, effect 2: unknown item "fishSoup"',
-  'interaction 1: unknown hand "pot"',
-  'interaction 2: unknown hand "pot"',
   // Events keyed by item (got:pot) are not reported by anything; only what main.ts calls reach for, or a rule reaches, is.
   'quest 1: nothing reports the goal "got:pot"',
   // A person to meet: no way to bring one into the scene, to act on one, or to talk (and `talked:` is reached only inside the dialogue).
@@ -38,9 +33,7 @@ const GAPS = [
   'interaction 3: unknown target "campfire"',
   'interaction 1: unknown condition "has:fish" in when',
   'interaction 1, effect 1: unknown effect "take"',
-  // The quest's corner pictures are a closed list of hand-drawn pictures (pictures.ts).
-  'quest 1: unknown icon "pot"',
-  'quest 2: unknown icon "pot"',
+  // A quest's corner picture is an item's or one of a few extras (pictures.ts); there is none yet for talking.
   'quest 3: unknown icon "talk"',
 ];
 

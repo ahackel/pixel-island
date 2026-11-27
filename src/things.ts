@@ -213,6 +213,22 @@ const RAFT = [1, 2, 3].map((s) => thing(raftRows(s)));
 /** The raft as built so far (at least one stage). */
 export const raftThing = (stage: number, spot: Thing['spot']): Thing => RAFT[Math.min(RAFT.length, stage) - 1](spot);
 
+/** A cooking pot: dark iron, a rim, an arched handle. */
+export const POT: Rows = {
+  rows: ['..hhhhhh..', '.h......h.', 'LLLLLLLLLL', 'kKKKKKKKKk', 'kKLKKKKKKk', '.kKKKKKKk.', '..kkkkkk..'],
+  colors: { h: '#2b2d31', L: '#8b9099', K: '#565a61', k: '#3a3d42' },
+};
+/** A piece of flint: dark, with bright sharp edges. */
+export const FLINT: Rows = {
+  rows: ['..Ll..', '.LGGl.', 'LGGGGd', '.dGGd.'],
+  colors: { L: '#d5d8dc', l: '#aab0b8', G: '#4a4f57', d: '#2a2d32' },
+};
+/** A wooden bowl of fish soup. */
+export const SOUP: Rows = {
+  rows: ['.oOOOOOo.', 'wwwwwwwww', 'wWWWWWWWw', '.wWWWWWw.', '..wwwww..'],
+  colors: { O: '#f0a848', o: '#c9772a', ...WOOD },
+};
+
 /**
  * A hurricane lantern: a wire handle over an olive cap, a round glass globe glowing yellow behind its cage, and a
  * stepped foot. Wind and rain don't put it out. The globe is in the fire tones, so it glows and lights the dark.

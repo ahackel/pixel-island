@@ -546,7 +546,7 @@ if (opts.cheats) {
     }),
     {
       words: 'GIVE',
-      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern', 'key'] as const).map((it) => cheat(it.toUpperCase(), () => {
+      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern', 'key', 'pot', 'flint', 'fishSoup'] as const).map((it) => cheat(it.toUpperCase(), () => {
         if (game.bag.length < BAG_SLOTS) game.bag.push(it);
         showBag();
       })),
