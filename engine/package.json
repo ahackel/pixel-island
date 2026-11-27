@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p tests && vite build",
     "bake": "node scripts/bake.mjs",
     "check:turntable": "node scripts/turntable-check.mjs",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test": "node --test tests/*.test.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "pngjs": "^7.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"

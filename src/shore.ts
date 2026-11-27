@@ -117,3 +117,37 @@ export function buildSpot(s: Shore, g: Game, kind: BuildKind, at: Spot): Build |
   const clear = !s.palms.some((q, k) => !g.felled.includes(k) && Math.hypot(q.i - at.i, q.j - at.j) < 1.2) && !g.builds.some((o) => Math.hypot(o.i - at.i, o.j - at.j) < 2);
   return fits && clear ? 'new' : null;
 }
+
+/**
+ * A spot `d` metres to the side on screen from `p`: lying, the body lies across the screen, and +i -j is screen
+ * right. `side` -1 is left, 1 right.
+ */
+export const sideways = (p: Spot, side: number, d: number) => ({ i: p.i + (side * d) / Math.SQRT2, j: p.j - (side * d) / Math.SQRT2 });
+/** Half of head to feet, in metres: the lying sprite is some 26 pixels long, and a tile's 32 pixels across are 1.4 metres. */
+export const HALF_BODY = 0.6;
+/** The side of the screen the head goes, lying at `p`: on dry ground, the feet (if one side must be) toward the water. */
+export function headSide(dry: (p: Spot) => boolean, p: Spot): -1 | 1 {
+  // Near the body first, then a metre further out: with both ends dry, the head goes inland, the feet toward the sea.
+  const score = (side: number) =>
+    [HALF_BODY, 1.2].reduce((n, d, k) => n + (k ? 1 : 3) * ((dry(sideways(p, side, d)) ? 2 : 0) + (dry(sideways(p, -side, d)) ? 0 : 1)), 0);
+  return score(1) > score(-1) ? 1 : -1;
+}
+
+/**
+ * Where a new game's survivor wakes washed ashore: on the beach nearest `spawn` (the island's middle) with the sea beside
+ * it on screen, so they lie along the water's edge, the feet toward the sea, all of them on the sand (`dry`). With a
+ * `hat`, it came off in the sea and lies on the sand beyond their head, if there is sand there.
+ */
+export function washedUp(s: Shore, spawn: Spot, dry: (p: Spot) => boolean, hat: boolean): { at: Spot; hat: Spot | null } {
+  const seaSide = (b: Spot) => [-1, 1].find((side) => !dry(sideways(b, side, 0.9)) && dry(sideways(b, -side, 0.9)));
+  const far = (b: Spot) => Math.hypot(b.i - spawn.i, b.j - spawn.j);
+  const shore = s.beach.filter((b) => seaSide(b) !== undefined).sort((a, b) => far(a) - far(b))[0] ?? spawn;
+  const side = seaSide(shore);
+  let at = { ...shore };
+  // Up the sand from the sea until head and feet are both on dry ground, with a little to spare.
+  const ends = HALF_BODY + 0.4;
+  if (side) for (let d = 0.05; d < 1.5 && !(dry(sideways(at, side, ends)) && dry(sideways(at, -side, ends))); d += 0.05) at = sideways(shore, -side, d);
+  if (!dry(at)) at = { ...shore };
+  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(s, at, 0.6, 0.3);
+  return { at, hat: hat && hatAt && dry(hatAt) ? hatAt : null };
+}

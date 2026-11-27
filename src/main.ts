@@ -14,8 +14,8 @@ import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
 import { settingsOf, type PlacedPerson } from '@pixel/engine/world/scene.ts';
 import { turnFacing } from '@pixel/engine/core/puppet.ts';
-import { along, light, lightByTile, mixTint, TINTS, type Tint } from '@pixel/engine/world/daylight.ts';
-import { CLEAR, flashAt, lightning, overcast, type Weather } from '@pixel/engine/world/weather.ts';
+import { light, lightByTile } from '@pixel/engine/world/daylight.ts';
+import { CLEAR, flashAt, lightning, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
 import { emittersOf, halos, particleSystem, Particles, tileHalo } from '@pixel/engine/world/particles.ts';
@@ -32,51 +32,44 @@ import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
-import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, dialog as storyDialog, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
-import { label, speechBubble } from '@pixel/shared/pixel-ui.ts';
+import { DAY_S, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
+import { C, caps, hud, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
+import { label } from '@pixel/shared/pixel-ui.ts';
 import { wrap } from '@pixel/shared/pixel-font.ts';
-import { PALETTE, SHADOW } from '@pixel/engine/core/palette.ts';
+import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
-import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
-import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
-import { picture, type Rows } from './rows.ts';
-import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
-import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
-import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
+import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
+import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
+import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washWood, type Shore } from './shore.ts';
+import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
+import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
+import { bagView } from './bag-ui.ts';
+import { menuView, wordButton } from './menu.ts';
+import { BAG_PICTURES, LYING, PICK_NEAR, QUEST_PICTURES } from './pictures.ts';
+import { flight, landed, landing, type Thrown } from './throw.ts';
+import { talkView } from './talk.ts';
+import { optionsOf, withoutQuest } from './options.ts';
+import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
+import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt } from './fire.ts';
 
-const params = new URLSearchParams(location.search);
-/** Debug: `?speed=20` runs the game clock 20 times faster. */
-const SPEED = Math.max(0.1, Number(params.get('speed')) || 1);
-/** Debug: `?quest=5` plays a new game from the fifth quest, with what the ones before brought, and never saves, so the real save is kept. */
-let TRYOUT = params.has('quest');
-let START_QUEST = Math.min(QUESTS.length, Math.max(1, Math.floor(Number(params.get('quest'))) || 1)) - 1;
+/** The debug options in the address (options.ts); a tryout ends when a new game is started from the menu. */
+const opts = optionsOf(location.search, QUESTS.length);
 /** A new game from the menu is a real one: the first quest, saved, and the tryout's `?quest` gone from the address. */
 function endTryout(): void {
-  if (!TRYOUT) return;
-  TRYOUT = false;
-  START_QUEST = 0;
-  params.delete('quest');
-  // Flags like `cheats` keep their bare form, not `cheats=`.
-  const rest = `${params}`.replace(/=(?=&|$)/g, '');
-  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
+  if (!opts.tryout) return;
+  opts.tryout = false;
+  opts.startQuest = 0;
+  history.replaceState(null, '', location.pathname + withoutQuest(location.search));
 }
-/**
- * Debug: `?island=2` plays the first try at the rocky island and its cave, with a lantern in the bag; never saved.
- * `?cave` starts it straight in the cave, lantern in hand, with no menu, editor or intro.
- */
-const CAVE_START = params.has('cave');
-const ISLAND2 = params.get('island') === '2' || CAVE_START;
-/** Debug: `?scene=<name>` plays a scene saved from the editor (`src/content/scenes/<name>.json`) as the island; never saved. */
-const SCENE_TRY = params.get('scene') ? savedScene(params.get('scene')!) : null;
+/** The saved scene `?scene=` plays as the island, if there is one by that name. */
+const SCENE_TRY = opts.scene ? savedScene(opts.scene) : null;
 /** Whether this game is the real, saved one: not a tryout, the rocky island or a saved scene. */
-const saves = () => !TRYOUT && !ISLAND2 && !SCENE_TRY;
+const saves = () => !opts.tryout && !opts.island2 && !SCENE_TRY;
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -94,7 +87,7 @@ const GRAB_LUCK = 0.25;
 
 // ------------------------------------------------------------------ the world
 
-const rocky = ISLAND2 ? rockyIsland() : null;
+const rocky = opts.island2 ? rockyIsland() : null;
 const islandScene = rocky?.scene ?? SCENE_TRY ?? firstIsland();
 /** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
 const island = new World(islandScene);
@@ -127,8 +120,6 @@ const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 const palms = [...islandScene.plants];
 /** The island's fingerprint, kept in the save, so a save of another island (one edited since) is not loaded onto this one. */
 const ISLAND_ID = islandId(islandScene.levels, palms);
-/** The tall palms can be felled and draw lightning; the sapling is too small. */
-const tall = (k: number) => palms[k].plant !== 'plant-palms-2';
 /** Shows (and lets block the way) only the palms not cut down. */
 const keepStanding = () => (islandScene.plants = palms.filter((_, k) => !game.felled.includes(k)));
 /** The crabs out today, and how many have come out so far; all gone by the next morning. */
@@ -144,57 +135,31 @@ const firstWho = (): State => {
   return who;
 };
 
-/**
- * A spot `d` metres to the side on screen from `p`: lying, the body lies across the screen, and +i -j is screen
- * right. `side` -1 is left, 1 right.
- */
-const sideways = (p: { i: number; j: number }, side: number, d: number) => ({ i: p.i + (side * d) / Math.SQRT2, j: p.j - (side * d) / Math.SQRT2 });
-/** Half of head to feet, in metres: the lying sprite is some 26 pixels long, and a tile's 32 pixels across are 1.4 metres. */
-const HALF_BODY = 0.6;
-/** The side of the screen the head goes, lying here: on dry ground, the feet (if one side must be) toward the water. */
-function headSide(p: { i: number; j: number }): -1 | 1 {
-  // Near the body first, then a metre further out: with both ends dry, the head goes inland, the feet toward the sea.
-  const score = (side: number) =>
-    [HALF_BODY, 1.2].reduce((n, d, k) => n + (k ? 1 : 3) * ((dry(sideways(p, side, d)) ? 2 : 0) + (dry(sideways(p, -side, d)) ? 0 : 1)), 0);
-  return score(1) > score(-1) ? 1 : -1;
-}
 /** Turns the survivor so that, lying down, the head is on the dry side (see `headSide`). */
 function faceToLie(): void {
   // Facing 0 lies with the head to the left, 1 to the right (the engine mirrors facings 1, 2, 5 and 6).
-  const right = headSide(actor) === 1;
+  const right = headSide(dry, actor) === 1;
   actor.facing = right ? 1 : 0;
   actor.lookAt(right ? 0 : 1, right ? 1 : 0);
 }
 
 function newGame(who = firstWho()): Game {
-  // The survivor wakes washed ashore: on the beach nearest the island's middle with the sea beside it on screen, so
-  // they lie along the water's edge, the feet toward the sea, all of them on the sand.
-  const seaSide = (b: { i: number; j: number }) => [-1, 1].find((side) => !dry(sideways(b, side, 0.9)) && dry(sideways(b, -side, 0.9)));
-  const far = (b: { i: number; j: number }) => Math.hypot(b.i - scene.spawn.i, b.j - scene.spawn.j);
-  const shore = beach.filter((b) => seaSide(b) !== undefined).sort((a, b) => far(a) - far(b))[0] ?? scene.spawn;
-  const side = seaSide(shore);
-  let at = { ...shore };
-  // Up the sand from the sea until head and feet are both on dry ground, with a little to spare.
-  const ends = HALF_BODY + 0.4;
-  if (side) for (let d = 0.05; d < 1.5 && !(dry(sideways(at, side, ends)) && dry(sideways(at, -side, ends))); d += 0.05) at = sideways(shore, -side, d);
-  if (!dry(at)) at = { ...shore };
-  // The hat came off in the sea and lies on the sand beyond their head.
-  const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(isle, at, 0.6, 0.3);
-  const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
-  const quest: Progress = { ...startProgress(), quest: START_QUEST };
+  // Washed ashore along the water's edge, the hat on the sand beyond their head (shore.ts).
+  const { at, hat } = washedUp(isle, scene.spawn, dry, !!who.worn.hat);
+  const quest: Progress = { ...startProgress(), quest: opts.startQuest };
   const g: Game = {
     day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
-    builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
+    builds: [], at, hat, who, quest, weather: kindFor(opts.startQuest, 1),
   };
-  if (ISLAND2) g.bag.push('lantern');
+  if (opts.island2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
   for (let n = 0; n < 2; n++) dropCoconuts(isle, g);
   washWood(isle, g);
   washWood(isle, g);
   // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
-  for (let k = 0; k <= START_QUEST; k++) {
+  for (let k = 0; k <= opts.startQuest; k++) {
     bring(isle, g, k);
-    if (QUESTS[k].strike && k < START_QUEST) burnPalm(g, at);
+    if (QUESTS[k].strike && k < opts.startQuest) burnPalm(isle, g, at);
   }
   return g;
 }
@@ -213,7 +178,7 @@ const isle: Shore = {
   surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
   random: Math.random,
 };
-const saved = params.has('new') || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
+const saved = opts.fresh || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
 // Saves from before doors kept them have none opened.
 game.doors ??= {};
@@ -280,13 +245,6 @@ actor.sitAfter = 60_000;
 
 // ------------------------------------------------------------------ pictures
 
-// A husked coconut: egg-shaped, a little lumpy, its point up to the right, a fibre streak along it.
-const COCO_ROWS = ['..bbbb..', '.bBBbbbb', 'bBBbfbbd', 'bbbbbbdd', '.dbbbdd.', '..ddd...'];
-const COCO_COLORS: Record<string, string> = { b: '#7a4a24', B: '#b07a44', f: '#93603a', d: '#4e2e16' };
-const COCO = picture(COCO_ROWS, COCO_COLORS);
-
-const coconutThing = (spot: Thing['spot']): Thing => ({ spot, picture: COCO, w: 8, h: 6, foot: { x: 3, y: 5 } });
-
 /** Where something lies on the island's ground, its height there worked out once for each spot object (they never move). */
 const groundSpots = new WeakMap<object, Thing['spot']>();
 function groundSpot(p: { i: number; j: number }): Thing['spot'] {
@@ -325,7 +283,7 @@ let target: { way: Waypoint[]; run: boolean; pick?: Pick; replans?: number } | n
 /** How often a way that stalls is planned again from where the survivor stands before it is given up. */
 const REPLANS = 3;
 /** The doors a way may go through: closed ones, which the survivor opens on the way, and locked ones while a key is in the bag. */
-const passable = (d: SceneDoor) => d.state === 'closed' || (d.state === 'locked' && game.bag.includes('key'));
+const passable = (d: SceneDoor) => canPass(d.state, game.bag);
 function goTo(at: { i: number; j: number }, run: boolean, pick?: Pick): void {
   const way = findPath(world, actor, at, passable);
   target = way.length ? { way, run, pick } : null;
@@ -347,8 +305,6 @@ questButton.addEventListener('click', (e) => {
 hudBox.append(status.canvas, questButton);
 
 const buttons = el('div', 'buttons');
-/** A button that says its text. */
-const wordButton = (key: string, on: () => void) => pixelButton(t(key), { words: t(key) }, on);
 const sleepButton = pixelButton(t('sleep'), { icon: 'moon', words: t('sleep'), dark: true }, () => sleep(false));
 const buildButtons = Object.fromEntries(BUILD_KINDS.map((k) => [k, wordButton(`build.${k}`, () => build(k))])) as Record<BuildKind, HTMLButtonElement>;
 const sailButton = wordButton('setSail', () => setSail());
@@ -365,122 +321,34 @@ function hold(item: BagItem | null): void {
   dress();
   showBag();
 }
-type Fish = (typeof FISH_ITEMS)[number];
-const BAG_PICTURES: Record<BagItem, Rows> = {
-  coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: TORCH_IN_BAG,
-  stone: STONE, spear: SPEAR_IN_BAG, ...(Object.fromEntries(FISH_ITEMS.map((f, k) => [f, FISH_IN_BAG[k]])) as Record<Fish, Rows>), crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN, key: KEY,
-};
-/** The quests' pictures in the corner. */
-const QUEST_PICTURES: Record<QuestIcon, Rows> = {
-  coconut: BAG_PICTURES.coconut, moon: { rows: ICONS.moon, colors: PAINT }, fish: FISH_IN_BAG[0], crab: CRAB_IN_BAG, crate: CRATE_IN_BAG, hammer: HAMMER,
-  storm: { rows: ICONS.storm, colors: PAINT }, fire: BAG_PICTURES.fire, axe: AXE_IN_BAG, raft: RAFT_ICON,
-};
-/** What is eaten from the bag, and how much it fills. */
-type Food = { fills: number; label: Key; yum: Key };
-const FOOD: Partial<Record<BagItem, Food>> = {
-  coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
-  ...(Object.fromEntries(FISH_ITEMS.map((f) => [f, { fills: FISH, label: 'eatFish', yum: 'think.yumFish' }])) as Record<Fish, Food>),
-  crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
-};
-/** Bag things on the ground: in the bag's pictures, but for the coconut, the stick and driftwood, which have their own. */
-const LYING = {
-  ...Object.fromEntries(BAG_ITEMS.map((k) => [k, thing(BAG_PICTURES[k])])), coconut: coconutThing, wood: woodThing, drift: driftThing,
-} as Record<BagItem, ReturnType<typeof thing>>;
-/** How near a tap must be to a thing on the ground to pick it, in pixels, round a point `up` pixels over its foot: driftwood is a big piece. */
-const PICK_NEAR: Partial<Record<BagItem, [r: number, up: number]>> = { coconut: [5, 2], wood: [5, 1], stone: [5, 1], drift: [12, 3] };
-const bag = el('div', 'bag');
+const bagUi = bagView({
+  items: () => game.bag,
+  hand: () => hand,
+  canAct: () => !paused && !sleeping,
+  picture: (item) => BAG_PICTURES[item],
+  words: (item) => t(bagWords(item)),
+  eat: (n, item) => {
+    if (!FOOD[item]) return false;
+    eat(n);
+    return true;
+  },
+  hold,
+  tie: (recipe) => make(recipe),
+  noMatch: () => think('think.noMatch'),
+  putDown: (n, x, y) => putDown(n, view.toGround(x, y)),
+  ghostParent: app,
+});
+const bag = bagUi.el;
 bag.setAttribute('aria-label', t('bag'));
 function showBag(): void {
-  bag.replaceChildren(...Array.from({ length: BAG_SLOTS }, (_, n) => {
-    const item = game.bag[n];
-    const b = el('button', 'pbtn');
-    b.append(slot(item ? BAG_PICTURES[item] : null));
-    // The first of the kind in hand is shown lifted.
-    if (item && item === hand && game.bag.indexOf(item) === n) b.classList.add('held');
-    if (item) b.addEventListener('pointerdown', (e) => { if (!paused && !sleeping) dragging = { n, x: e.clientX, y: e.clientY, ghost: null }; });
-    if (item) {
-      const words = t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'crab' | Fish>));
-      b.setAttribute('aria-label', words);
-      b.title = words;
-      b.addEventListener('click', () => {
-        if (paused || sleeping) return;
-        if (FOOD[item]) return eat(n);
-        hold(item === hand ? null : item);
-      });
-    } else b.disabled = true;
-    return b;
-  }));
+  bagUi.show();
 }
-
-/**
- * A bag slot being dragged. Dropped on another slot, the two are tied together if they make
- * something (with whatever else the recipe needs from the bag); dropped over the island, the
- * thing is put down at the survivor's feet. While dragging, the slots it goes with light up.
- */
-let dragging: { n: number; x: number; y: number; ghost: HTMLElement | null; over?: number } | null = null;
-const slots = () => [...bag.children] as HTMLElement[];
-/** The bag slot under a point, or -1. */
-const slotAt = (x: number, y: number) => slots().findIndex((b) => { const r = b.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
-/** What dragging slot `n` onto slot `m` makes, if anything. */
-const recipeOnto = (n: number, m: number) => (m < 0 || m === n || !game.bag[m] ? null : recipeFor(game.bag[n], game.bag[m], game.bag));
-/** Lights the slots the dragged thing goes with, and under the finger the other parts it would use. */
-function markSlots(n: number | null, over = -1): void {
-  const recipe = n === null ? null : recipeOnto(n, over);
-  // The other parts: the first of each further thing the recipe needs, besides the two being tied.
-  const parts = new Set<number>();
-  if (recipe && n !== null) {
-    const left = game.bag.map((it, k) => (k === n || k === over ? null : it));
-    for (const need of without(recipe.needs, [game.bag[n], game.bag[over]])) {
-      const k = left.indexOf(need);
-      if (k >= 0) { parts.add(k); left[k] = null; }
-    }
-  }
-  slots().forEach((b, m) => {
-    const fits = n !== null && !!recipeOnto(n, m);
-    b.classList.toggle('fits', fits || parts.has(m));
-    b.classList.toggle('dim', n !== null && m !== n && !fits && !parts.has(m));
-  });
-}
-window.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  if (!dragging.ghost && Math.hypot(e.clientX - dragging.x, e.clientY - dragging.y) > 12) {
-    dragging.ghost = el('div', 'ghost');
-    dragging.ghost.append(slot(BAG_PICTURES[game.bag[dragging.n]]));
-    app.append(dragging.ghost);
-  }
-  if (!dragging.ghost) return;
-  dragging.ghost.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
-  const over = slotAt(e.clientX, e.clientY);
-  if (over !== dragging.over) markSlots(dragging.n, (dragging.over = over));
-});
-const endDrag = (e: PointerEvent) => {
-  const d = dragging;
-  dragging = null;
-  if (!d?.ghost) return;
-  d.ghost.remove();
-  markSlots(null);
-  if (e.type !== 'pointerup' || paused || sleeping) return;
-  const over = slotAt(e.clientX, e.clientY);
-  if (over >= 0) {
-    if (over === d.n) return;
-    const recipe = recipeOnto(d.n, over);
-    return recipe ? make(recipe) : game.bag[over] ? think('think.noMatch') : undefined;
-  }
-  const r = bag.getBoundingClientRect();
-  const overBag = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top - 16 && e.clientY <= r.bottom;
-  if (!overBag) putDown(d.n, view.toGround(e.clientX, e.clientY));
-};
-window.addEventListener('pointerup', endDrag);
-window.addEventListener('pointercancel', endDrag);
 
 /** A screen offset in ground pixels as a map offset in metres: a tile is TILE_W by TILE_H pixels, map +i is screen right and down. */
 const mapOffset = (dx: number, dy: number) => ({ i: dx / TILE_W + dy / TILE_H, j: dy / TILE_H - dx / TILE_W });
 
-/** How far a thing from the bag is thrown at most, in metres, and how long it flies. */
-const THROW = { far: 1, ms: 450 };
-/** Things in the air, thrown from the bag: where from and to, and when. */
-let thrown: { item: BagItem; from: { i: number; j: number }; to: { i: number; j: number }; start: number }[] = [];
+/** Things in the air, thrown from the bag (throw.ts). */
+let thrown: Thrown[] = [];
 
 /**
  * Throws a thing from the bag toward a ground-image point, at most THROW.far from the survivor and
@@ -491,14 +359,8 @@ function putDown(n: number, p: { x: number; y: number }): void {
   if (!item || item === 'fire' || paused || sleeping) return;
   // The point on the map under `p`, taken at the survivor's own ground level.
   const s = world.screenOf(actor.i, actor.j);
-  let { i: di, j: dj } = mapOffset(p.x - s.x, p.y - s.y);
-  const d = Math.hypot(di, dj);
-  if (d > THROW.far) (di *= THROW.far / d), (dj *= THROW.far / d);
-  let to = { i: actor.i, j: actor.j };
-  for (let k = 1; k >= 0.25; k -= 0.25) {
-    const at = { i: actor.i + di * k, j: actor.j + dj * k };
-    if (dry(at) && world.canWalk(actor, at)) { to = at; break; }
-  }
+  const { i: di, j: dj } = mapOffset(p.x - s.x, p.y - s.y);
+  const to = landing(actor, { i: di, j: dj }, (at) => dry(at) && world.canWalk(actor, at));
   game.bag.splice(n, 1);
   const now = performance.now();
   thrown.push({ item, from: { i: actor.i, j: actor.j }, to, start: now });
@@ -508,19 +370,16 @@ function putDown(n: number, p: { x: number; y: number }): void {
 }
 /** Lands what has flown its time: on the ground with its kind. */
 function land(ms: number): void {
-  for (const t of thrown.filter((t) => ms - t.start >= THROW.ms)) {
+  for (const t of thrown.filter((t) => landed(t, ms))) {
     // Put down, the crate stands on the ground again, in the way like before.
     if (t.item === 'crate') game.items.push({ item: 'crate', ...t.to });
     else lay(game, t.item, t.to);
   }
-  thrown = thrown.filter((t) => ms - t.start < THROW.ms);
+  thrown = thrown.filter((t) => !landed(t, ms));
 }
 /** A thing in flight: along the line from hand height up in an arc and down onto the ground. */
-function thrownThing(t: (typeof thrown)[number], ms: number): Thing {
-  const k = Math.min(1, (ms - t.start) / THROW.ms);
-  const i = t.from.i + (t.to.i - t.from.i) * k, j = t.from.j + (t.to.j - t.from.j) * k;
-  // In levels above the ground: from the hands (2) up over the throw and down to it.
-  const up = 2 * (1 - k) + 6 * k * (1 - k);
+function thrownThing(t: Thrown, ms: number): Thing {
+  const { i, j, up } = flight(t, ms);
   return LYING[t.item]({ i, j, level: standingHeight(world.map, i, j) + up });
 }
 
@@ -532,92 +391,7 @@ function make(recipe: ReturnType<typeof recipeFor> & {}): void {
   think(recipe.thought);
 }
 
-const bubble = el('div', 'bubble');
-bubble.hidden = true;
-/** When the passing thought shown over the survivor's head goes away by itself. */
-let bubbleUntil = 0;
-let bubbleShown = 0;
-/** Half the bubble's width, and the page's, in screen pixels: read when they change, not every frame. */
-let bubbleHalf = 0;
-let appWidth = app.clientWidth;
-addEventListener('resize', () => (appWidth = app.clientWidth));
-/** How long a thought takes to read: a moment, and more for each letter. */
-const readMs = (words: string) => Math.min(12_000, Math.max(3000, 1500 + 70 * words.length));
-/** A tap only puts a thought away once it has shown this long, so the tap that caused it does not. */
-const TAP_AFTER = 700;
-/** A passing thought ("Got one!"): a bubble over the survivor's head that goes when read, or at a tap. */
-function think(key: string): void {
-  const words = t(key);
-  bubble.replaceChildren(speechBubble(caps(words), C, S));
-  bubble.setAttribute('aria-label', words);
-  bubble.hidden = false;
-  // Measured once, as it is shown: it only changes with the words.
-  bubbleHalf = bubble.offsetWidth / 2;
-  bubbleShown = performance.now();
-  bubbleUntil = bubbleShown + readMs(words);
-  actor.talkUntil = bubbleShown + Math.min(readMs(words), 4000);
-}
-function unthink(): void {
-  bubble.hidden = true;
-  bubbleUntil = 0;
-}
-// Any tap puts a passing thought away (and still walks, picks up, ...), once it has been there a moment.
-app.addEventListener('pointerdown', () => {
-  if (!bubble.hidden && performance.now() - bubbleShown > TAP_AFTER && !paused) unthink();
-}, { capture: true });
-
-// Story thoughts (the morning's, the day plan's, waking to thunder): a box at the bottom with the survivor's face. The
-// island dims and stands still until a tap; thoughts that come meanwhile wait their turn.
-const dialog = el('div', 'dialog');
-dialog.hidden = true;
-const told: string[] = [];
-let toldShown = 0;
-/** Whether a story thought is up, which holds the game still. */
-const telling = () => !dialog.hidden;
-function tell(key: string): void {
-  told.push(key);
-  if (!telling()) showTold();
-}
-function showTold(): void {
-  const key = told.shift();
-  if (!key) return void (dialog.hidden = true);
-  unthink();
-  dialog.replaceChildren(storyBox(caps(t(key))));
-  dialog.setAttribute('aria-label', t(key));
-  dialog.hidden = false;
-  toldShown = performance.now();
-}
-dialog.addEventListener('pointerdown', (e) => {
-  e.stopPropagation();
-  if (performance.now() - toldShown > TAP_AFTER) showTold();
-});
-/** Puts away the story thought shown and those waiting, and the passing one: the night (or the end) begins. */
-function forget(): void {
-  told.length = 0;
-  dialog.hidden = true;
-  unthink();
-}
-/** The face in the box: the survivor's head in the same three-quarter view always, cut from their picture. */
-const FACE = 22;
-function drawFace(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-  const me = actor.portrait();
-  const ink = (px: number, py: number) => { const c = me.picture.get(px, py); return c && c !== SHADOW ? c : null; };
-  // From the top of the hat or hair down, centred on what is drawn in those rows.
-  let top = 0;
-  while (top < me.h && ![...Array(me.w).keys()].some((px) => ink(px, top))) top++;
-  const xs = [...Array(me.w).keys()].filter((px) => [...Array(FACE).keys()].some((fy) => ink(px, top + fy)));
-  const x0 = Math.round((xs[0] + xs[xs.length - 1] + 1) / 2 - FACE / 2);
-  for (let fy = 0; fy < FACE; fy++) for (let fx = 0; fx < FACE; fx++) {
-    const c = ink(x0 + fx, top + fy - 1);
-    if (!c) continue;
-    ctx.fillStyle = c;
-    ctx.fillRect(x + fx, y + fy, 1, 1);
-  }
-}
-/** The box: the face in a frame on the left, the words beside it; as wide as the screen allows. */
-function storyBox(words: string): HTMLCanvasElement {
-  return storyDialog(words, drawFace, Math.min(200, Math.floor((window.innerWidth - 24) / S)), FACE);
-}
+const { bubble, dialog, think, thinking, tell, telling, forget, follow } = talkView(app, actor, () => paused);
 
 const veil = el('div', 'veil');
 /** The day whose title the veil shows, 0 for none: the title comes up once the screen is black. */
@@ -691,12 +465,20 @@ function startNew(who: State): void {
   questShown = '';
   showQuest();
   // The new game replaces the old save at once, but with `?new` only from its first sleep.
-  if (!params.has('new')) store();
+  if (!opts.fresh) store();
   hold(null);
 }
 
-// The menu, which is also the pause: the name, play on or start over, and before the first step the language.
-const menuBox = el('div', 'menu');
+// The menu, which is also the pause (menu.ts).
+const menu = menuView({
+  state: () => ({ editing, present, ended: !!ended, started }),
+  play,
+  // Over the editor, play goes on once the survivor is made and the screen is fading to the island.
+  backToEditor: () => { menuBox.hidden = true; editor!.hidden = false; if (editor!.inert) setPaused(false); },
+  newGame: () => { endTryout(); present = false; showMenu(); },
+  createCharacter: makeCharacter,
+});
+const menuBox = menu.el;
 /** Whether the player has played since the page loaded. */
 let started = false;
 function play(): void {
@@ -729,54 +511,10 @@ function makeCharacter(): void {
   // Under the menu button and the veil, so it fades to black with everything else.
   buttons.before(editor);
 }
-/** A flag for each language, the one in use bright. */
-function flags(): HTMLElement {
-  const row = el('div', 'langs');
-  row.append(...LANGS.map((l) => {
-    const b = pixelButton(l.name, { icon: l.id }, () => {
-      if (l.id === currentLang()) return;
-      setLang(l.id);
-      location.reload();
-    });
-    if (l.id !== currentLang()) b.classList.add('off');
-    return b;
-  }));
-  return row;
-}
-/** The game's name, large; its shadow (style.css) falls as far as the buttons', not a large pixel. */
-function titleLabel(words: string): HTMLCanvasElement {
-  const c = label(words, C.paper, S * 3);
-  c.className = 'title';
-  return c;
-}
 function showMenu(): void {
-  // Over the editor: back to it, or the settings; the editor is a new game already.
-  // The editor steps aside meanwhile, so the two do not show through each other.
+  // Over the editor, it steps aside meanwhile, so the two do not show through each other.
   if (editing) editor!.hidden = true;
-  menuBox.replaceChildren(
-    titleLabel('PIXEL ISLAND'),
-    ...(editing
-      // Once the survivor is made and the screen is fading to the island, play goes on.
-      ? [wordButton('continue', () => { menuBox.hidden = true; editor!.hidden = false; if (editor!.inert) setPaused(false); })]
-      : [
-        ...(present && !ended ? [wordButton('continue', play)] : []),
-        // A new game starts over at the first menu, out at sea; the old one stays saved until a survivor is made.
-        present
-          ? wordButton('newGame', () => { endTryout(); present = false; showMenu(); })
-          : wordButton('createCharacter', makeCharacter),
-      ]),
-    wordButton('settings', showSettings),
-  );
-}
-/** Settings, in place of the menu: the language for now. */
-function showSettings(): void {
-  menuBox.replaceChildren(
-    label(caps(t('settings')), C.paper, S * 2),
-    flags(),
-    // The page is built in one language, so a change reloads it, back to the last save: the morning.
-    ...(started ? [label(caps(t('settings.langLoses')), C.paper, S)] : []),
-    wordButton('back', showMenu),
-  );
+  menu.show();
 }
 
 app.append(hudBox, buttons, actions, bag, bubble, dialog, veil, menuBox);
@@ -790,7 +528,7 @@ if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (l
 let fast = 1;
 /** A weather the cheat forces, instead of the day's own. */
 let weatherCheat: Kind | undefined;
-if (params.has('cheats')) {
+if (opts.cheats) {
   const cheat = (words: string, on: () => void) => ({ words, on });
   // Under the menu, so it does not show over it.
   const stats = statsOverlay(app, S);
@@ -949,7 +687,6 @@ function walkTo(p: { x: number; y: number }): void {
 }
 
 /** Where a chest stands, as the save knows it. */
-const chestKey = (it: PlacedItem) => `${it.i},${it.j}`;
 /** Chests opening, and when they began to: the lid swings up a frame at a time. */
 const opening = new Map<PlacedItem, number>();
 const LID_MS = 150;
@@ -957,12 +694,8 @@ const LID_MS = 150;
 /** Opens a chest: its lid swings up, and what is in it goes into the bag as far as there is room; the rest stays for later. */
 function openChest(it: PlacedItem): void {
   const key = chestKey(it);
-  const first = !(key in game.chests);
+  const { first, took } = takeFromChest(game, key, it.loot, BAG_SLOTS);
   if (first) opening.set(it, performance.now());
-  const inside = first ? (it.loot ?? []).filter(isBagItem) : game.chests[key];
-  const took = inside.slice(0, Math.max(0, BAG_SLOTS - game.bag.length));
-  game.bag.push(...took);
-  game.chests[key] = inside.slice(took.length);
   actor.emote('use', performance.now());
   showBag();
   if (game.chests[key].length) return think('think.full');
@@ -991,7 +724,7 @@ function leaveCave(): void {
 /** The scenes the survivor can be led to (by file name), made into worlds when first visited; the island is one of them. */
 const visited = new Map<string, World>([
   // By the island's own file name (see island.ts), so a way back to it comes back to this world.
-  [rocky ? 'rocky-island' : (params.get('scene') ?? 'island'), island],
+  [rocky ? 'rocky-island' : (opts.scene ?? 'island'), island],
   // The rocky island's cave is the same world whether walked into at its mouth or climbed down into.
   ...(cave ? [['smuggler-cave', cave.world] as [string, World]] : []),
 ]);
@@ -1078,7 +811,7 @@ function topLeft(t: Thing): { x: number; y: number } {
  * the front walls cut already.
  */
 function hides(parts: Thing[], me: Thing | null): boolean {
-  if (!me || !parts.length || sheltered()) return false;
+  if (!me || !parts.length || sheltered(game, actor)) return false;
   const m = topLeft(me);
   return parts.some((p) => {
     // Behind: further back than the part's footprint middle (the box the world sorts by).
@@ -1129,11 +862,13 @@ function nearSideOf(door: SceneDoor): { i: number; j: number } {
 const nameOf = (w: World) => [...visited].find(([, v]) => v === w)?.[0] ?? 'island';
 /** Each door's state as its scene has it, before the game changed any. */
 const doorsAsMade = new WeakMap<SceneDoor, SceneDoor['state']>();
+/** A door's key in the save (`scene|edge`). */
+const doorKeyOf = (w: World, d: SceneDoor) => doorKey(nameOf(w), edgeKey(d.edge));
 /** Puts a world's doors in the states the game left them in, the rest as their scene has them. */
 function doorsOf(w: World): void {
   for (const d of w.scene.doors ?? []) {
     if (!doorsAsMade.has(d)) doorsAsMade.set(d, d.state);
-    d.state = game.doors[`${nameOf(w)}|${edgeKey(d.edge)}`] ?? doorsAsMade.get(d)!;
+    d.state = doorState(game, doorKeyOf(w, d), doorsAsMade.get(d)!);
   }
 }
 // The worlds there are from the start, as the save left them.
@@ -1141,22 +876,21 @@ for (const w of visited.values()) doorsOf(w);
 /** Sets a door of the world the survivor is in, and keeps it so. */
 function setDoor(door: SceneDoor, state: SceneDoor['state']): void {
   door.state = state;
-  game.doors[`${nameOf(world)}|${edgeKey(door.edge)}`] = state;
+  game.doors[doorKeyOf(world, door)] = state;
 }
 /**
  * A door the survivor comes up to on the way: a closed one swings open, a locked one opens with a key from the bag
  * (which stays in the lock). Says whether it is open now.
  */
 function openDoor(door: SceneDoor): boolean {
-  if (door.state === 'closed') setDoor(door, 'open');
-  else if (door.state === 'locked' && game.bag.includes('key')) {
-    game.bag.splice(game.bag.indexOf('key'), 1);
+  const { state, unlocked } = openDoorRule(game, doorKeyOf(world, door), door.state);
+  door.state = state;
+  if (unlocked) {
     if (hand === 'key' && !game.bag.includes('key')) hold(null);
     showBag();
-    setDoor(door, 'open');
     think('think.unlocked');
   }
-  return door.state === 'open';
+  return state === 'open';
 }
 
 /** Whether a ground pixel is within `r` pixels of a map point's picture, centred `up` pixels above its foot. */
@@ -1215,7 +949,7 @@ function arrive(pick: Pick): void {
     return think('think.crateTaken');
   }
   if ('palm' in pick) {
-    if (hand === 'axe') return tall(pick.palm) ? fell(pick.palm) : think('think.tooSmall');
+    if (hand === 'axe') return isTall(palms[pick.palm]) ? fell(pick.palm) : think('think.tooSmall');
     if (bagFull()) return think('think.full');
     pocket('leaf');
     return think('think.leaf');
@@ -1235,7 +969,7 @@ function arrive(pick: Pick): void {
     game.bag.splice(game.bag.indexOf('fire'), 1);
     hold(null);
     const atHut = byHut(pick.loose);
-    think(!atHut && wantsFire() ? 'think.fireFar' : 'think.campfire');
+    think(!atHut && wantsFire(game) ? 'think.fireFar' : 'think.campfire');
     return atHut ? reach('campfire') : undefined;
   }
   if (bagFull()) return think('think.full');
@@ -1325,50 +1059,13 @@ function build(kind: BuildKind): void {
   game.energy = Math.max(0, game.energy - 0.05);
   hold(hand);
   think(`think.${kind}${stage + 1}`);
-  if (kind === 'hut' && hut()) reach('hut');
-}
-/** Where the survivor sleeps: the blanket, in the middle of where the hut goes. */
-const BLANKET = HUT_AT;
-const onBlanket = () => Math.hypot(actor.i - BLANKET.i, actor.j - BLANKET.j) < 0.5;
-/** The hut, once finished. */
-const hut = () => { const b = buildOf('hut'); return finished(b) ? b : undefined; };
-/** Under the finished hut's roof: on one of its 2×2 cells. */
-const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
-/** By a burning campfire (the stump is too wild a fire to sleep by). */
-const byFire = () => game.fires.some((f) => Math.hypot(f.i - actor.i, f.j - actor.j) <= 2.5);
-/** How near the hut a campfire counts as its own, in metres. */
-const HUT_FIRE = 3;
-const byHut = (at: { i: number; j: number }) => Math.hypot(at.i - HUT_AT.i, at.j - HUT_AT.j) <= HUT_FIRE;
-/** The fire quest is under way: after that storm the survivor does not sleep again until a campfire burns by the hut. */
-const wantsFire = () => questNow().goal === 'campfire' && !game.quest.done;
-const fireByHut = () => game.fires.some(byHut);
-
-/** How far a fire scares animals off, in metres: a fire burning on the ground, and a torch carried about. */
-const FIRE_FEAR = 3.5;
-const TORCH_FEAR = 1.6;
-/** Every fire burning now, and how far each one frightens: the campfires, the palm lightning left alight, the torch in hand. */
-function burning(): { i: number; j: number; fear: number }[] {
-  return [
-    ...game.fires.map((f) => ({ ...f, fear: FIRE_FEAR })),
-    ...(game.struck === null ? [] : [{ i: palms[game.struck].i, j: palms[game.struck].j, fear: FIRE_FEAR }]),
-    ...(hand === 'fire' && present ? [{ i: actor.i, j: actor.j, fear: TORCH_FEAR }] : []),
-  ];
-}
-/** The fire nearest an animal, if one is near enough to frighten it. */
-function fireNear(at: { i: number; j: number }, lit: readonly { i: number; j: number; fear: number }[]): { i: number; j: number } | null {
-  let best: { i: number; j: number } | null = null;
-  let bestD = Infinity;
-  for (const f of lit) {
-    const d = Math.hypot(f.i - at.i, f.j - at.j);
-    if (d <= f.fear && d < bestD) [best, bestD] = [f, d];
-  }
-  return best;
+  if (kind === 'hut' && hutOf(game)) reach('hut');
 }
 /** How fast a frightened fish turns away, in radians a second. */
 const FISH_TURN = 3;
 /** No animal stays by a fire: a crab runs off sideways as it does from the survivor, a fish turns and swims away. */
 function fleeFire(dt: number): void {
-  const lit = burning();
+  const lit = burning(game, palms, hand === 'fire' && present ? actor : null);
   if (!lit.length) return;
   for (const c of crabs) {
     const f = fireNear(c, lit);
@@ -1383,14 +1080,9 @@ function fleeFire(dt: number): void {
   }
 }
 
-/** The raft, finished, by the survivor, and the sea not stormy. */
-function canSail(): boolean {
-  const r = buildOf('raft');
-  return finished(r) && Math.hypot(r!.i - actor.i, r!.j - actor.j) <= 1.5 && kindNow() !== 'storm';
-}
 const END_FADE = 2500;
 function setSail(): void {
-  if (!canSail() || paused || sleeping || ended) return;
+  if (!canSail(game, actor, kindNow()) || paused || sleeping || ended) return;
   target = null;
   forget();
   ended = performance.now();
@@ -1402,23 +1094,8 @@ function setSail(): void {
 
 /** The fire quest's lightning burns down the tall palm nearest the survivor, so they see it. */
 function strike(): void {
-  if (burnPalm(game, actor)) think('think.struck');
+  if (burnPalm(isle, game, actor)) think('think.struck');
 }
-/** Burns the tall palm nearest `near` down to a burning stump, its crown's twigs dry wood round it. Whether there was one. */
-function burnPalm(g: Game, near: { i: number; j: number }): boolean {
-  let best = -1;
-  let bestD = Infinity;
-  palms.forEach((p, k) => {
-    const d = Math.hypot(p.i - near.i, p.j - near.j);
-    // A sapling is too small to draw lightning.
-    if (tall(k) && !g.felled.includes(k) && d < bestD) [best, bestD] = [k, d];
-  });
-  if (best < 0) return false;
-  g.struck = best;
-  for (const twig of spotsNear(isle, palms[best], 3, 0.8, 0.9)) lay(g, 'wood', twig);
-  return true;
-}
-
 function eat(slot: number): void {
   if (paused || sleeping) return;
   const food = FOOD[game.bag[slot]]!;
@@ -1429,15 +1106,6 @@ function eat(slot: number): void {
   reach('eat');
 }
 
-/**
- * Why the survivor will not lie down on the blanket now, if they will not: in the rain they sleep only under the hut's
- * roof, and after the storm night they lie awake until a campfire burns by the hut.
- */
-function sleepRefused(weather: Weather): Key | null {
-  if (weather.rain > 0.4 && !sheltered()) return 'think.rainSleep';
-  if (wantsFire() && !fireByHut()) return 'think.needFire';
-  return null;
-}
 /** Whether the storm has woken the survivor tonight; then only a fire lets them sleep again. */
 let stormWoken = false;
 function sleep(fainted: boolean, anywhere = false): void {
@@ -1446,10 +1114,10 @@ function sleep(fainted: boolean, anywhere = false): void {
   if (world !== island) leaveCave();
   const chosen = !fainted && !anywhere;
   if (chosen && !dry(actor)) return think('think.wet');
-  const refused = chosen && sleepRefused(weatherAt(kindNow(), kindTomorrow(), time));
+  const refused = chosen && sleepRefused(game, actor, weatherAt(kindNow(), kindTomorrow(), time));
   if (refused) return think(refused);
   // In a storm, sleep out of the hut and away from a fire is broken by thunder, and then does not come back.
-  const wakes = chosen && kindNow() === 'storm' && !byFire() && !sheltered();
+  const wakes = chosen && stormWakes(game, actor, kindNow());
   if (wakes && stormWoken) return think('think.scared');
   target = null;
   forget();
@@ -1566,39 +1234,10 @@ function caveLamps(me: Thing | null, ms: number): TileLamp[] {
   return [...caveOwnLamps(world, ms), ...(held ? [held] : [])];
 }
 
-/** How far into the night it is: 0 by day and at sunset, growing through dusk, 1 once it is dark. */
-function nightfall(t: number): number {
-  const { phase, k } = phaseAt(t);
-  return phase === 'dusk' ? k : phase === 'night' ? 1 : 0;
-}
-/**
- * The weather the world is shown: by day as it is, but at night without its cloud, since the moon throws shadows
- * as hard as a sunny day's and a grey sky is nothing to see in the dark. Fog is left alone: it swallows shadows
- * whatever the hour.
- */
-function asSeen(w: Weather, night: number): Weather {
-  return night <= 0 || w.fog > 0 ? w : { ...w, cloud: w.cloud * (1 - night) };
-}
-/** Night fog: not the pale grey of a foggy morning but a dark blue bank, which this light over the whole picture makes of it. */
-const FOG_NIGHT: Tint = { r: 34, g: 52, b: 118, amount: 0.62 };
-/** The light the weather leaves: the engine's overcast grey, turning to a dark blue where fog lies at night. */
-function weatherLight(w: Weather, night: number): Tint {
-  const grey = overcast(w);
-  return w.fog > 0 && night > 0 ? mixTint(grey, FOG_NIGHT, night * w.fog) : grey;
-}
-
-function tintAt(time: number): Tint {
-  const { phase, k } = phaseAt(time);
-  if (phase === 'day') return TINTS.day;
-  if (phase === 'sunset') return mixTint(TINTS.day, TINTS.sunset, k);
-  if (phase === 'dusk') return along([TINTS.sunset, TINTS.dusk, TINTS.night], k);
-  return TINTS.night;
-}
-
 /** Hints said once a game (and again after a reload): how to tie things together and how to drop them. */
 const taught = new Set<Key>();
 function teach(key: Key, when: () => boolean): void {
-  if (bubble.hidden && !telling() && !taught.has(key) && when()) {
+  if (!thinking() && !telling() && !taught.has(key) && when()) {
     taught.add(key);
     think(key);
   }
@@ -1651,7 +1290,24 @@ let strikeFx: Strike | null = null;
 let bursts: Burst[] = [];
 const particles = new Particles();
 let last = performance.now();
+/** Whether a frame has failed; the first failure is reported, later ones only logged. */
+let failed = false;
+/**
+ * Runs a frame and asks for the next one whatever happens in it, so one bad frame does not stop the game for good.
+ * The first error goes to `reportError` (the console, and the page's error box in index.html).
+ */
 function frame(ms: number): void {
+  try {
+    step(ms);
+  } catch (e) {
+    if (failed) console.error(e);
+    else reportError(e);
+    failed = true;
+  }
+  requestAnimationFrame(frame);
+}
+/** One frame: the clock, walking, the creatures, the sky, drawing the world, and the page around it, in that order. */
+function step(ms: number): void {
   const begun = performance.now();
   const dt = Math.min(0.1, (ms - last) / 1000);
   last = ms;
@@ -1662,9 +1318,20 @@ function frame(ms: number): void {
   // Sleep fades out and back in; setting sail fades out for good.
   const fade = ended ? Math.min(1, (ms - ended) / END_FADE) : fadeAt(ms);
 
+  live(dt, ms);
+  walk(dt, ms);
+  stir(dt, ms);
+  const sky = skyNow(ms);
+  const { things, me } = sceneThings(ms, sky.striking);
+  draw(ms, dt, begun, things, me, fade, sky);
+  showPage(ms, fade, sky.weather);
+}
+
+/** The clock and the survivor's needs run while they are up and about (fainting when one runs out); their face shows how they feel. */
+function live(dt: number, ms: number): void {
   if (!paused && !sleeping && !ended && !telling()) {
-    time += dt * SPEED * fast;
-    Object.assign(game, drain(game, dt * SPEED * fast));
+    time += dt * opts.speed * fast;
+    Object.assign(game, drain(game, dt * opts.speed * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
     warnOnce('think.shark', !dry(actor) && !!sharkNear(sharks, actor, SHARK_SEEN));
@@ -1678,7 +1345,10 @@ function frame(ms: number): void {
   feel();
   // The torch's flame flickers with the stump's.
   if (hand === 'fire' && held !== torchAt(ms)) dress();
+}
 
+/** The survivor walks the way planned: ladders climbed, doors opened on the way, what was tapped picked up at the end. */
+function walk(dt: number, ms: number): void {
   let di = 0;
   let dj = 0;
   let run = false;
@@ -1735,7 +1405,10 @@ function frame(ms: number): void {
     go();
   }
   throughCave();
+}
 
+/** The island's life: animals fleeing fires, fish and sharks swimming, thrown things landing, crabs coming out on a windy day. */
+function stir(dt: number, ms: number): void {
   if (!paused && !sleeping && !telling() && onIsland()) fleeFire(dt);
   swim(island.fish, island.floor, dt, fishRandom);
   cruise(sharks, island.floor, paused || sleeping ? 0 : dt, fishRandom);
@@ -1747,6 +1420,10 @@ function frame(ms: number): void {
     crabsOut++;
   }
   scuttle(crabs, island, paused ? 0 : dt, fishRandom, sleeping || !onIsland() ? null : actor);
+}
+
+/** The weather now and how dark the night is, set on the worlds; and the fire quest's lightning, when it is due. */
+function skyNow(ms: number): { weather: Weather; night: number; flashNow: number; striking: boolean } {
   // Before the survivor is on the island (the menu, the editor, the fade in), a sunny sea, not the last game's weather.
   const weather = !present || editing || sleeping?.intro ? weatherAt('sunny', 'sunny', 0) : weatherAt(kindNow(), kindTomorrow(), time);
   const night = nightfall(time);
@@ -1758,11 +1435,16 @@ function frame(ms: number): void {
   // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
   if (game.struck !== null) strikeNow = false;
   // The bolt comes as the survivor steps out of the hut, so they see it strike.
-  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered() && onIsland();
+  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered(game, actor) && onIsland();
   if (striking) {
     strikeNow = false;
     strike();
   }
+  return { weather, night, flashNow, striking };
+}
+
+/** Everything drawn in the scene the survivor is in, the survivor among it (`me`, null before there is one). */
+function sceneThings(ms: number, striking: boolean): { things: Thing[]; me: Thing | null } {
   /** The plants' and props' wind frame, six a second. */
   const windFrame = Math.floor((ms / 1000) * 6) % FRAMES;
   const plants = world.plantThings(windFrame);
@@ -1804,6 +1486,12 @@ function frame(ms: number): void {
   // The scene's own walls, those in front of the survivor dissolving as they walk.
   things.push(...world.wallThings(actor, ms));
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
+  return { things, me };
+}
+
+/** Composes the scene, lights it (the cave's lamps, or daylight, weather and lightning) and shows it, with sparks and bursts. */
+function draw(ms: number, dt: number, begun: number, things: Thing[], me: Thing | null, fade: number, sky: ReturnType<typeof skyNow>): void {
+  const { weather, night, flashNow, striking } = sky;
   const rect = view.rect();
   let t0 = part('things', begun);
   const image = world.compose(rect, things, undefined, false, ms);
@@ -1830,36 +1518,33 @@ function frame(ms: number): void {
   part('show', t0);
   part('whole frame', begun);
   frameDone();
+}
 
-  // The page around the picture.
+/** The page around the picture: the day and bars, the buttons for what can be done here, the night's veil, the thought bubble. */
+function showPage(ms: number, fade: number, weather: Weather): void {
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
   const away = !!ended || !onIsland();
-  setHidden(sleepButton, away || !onBlanket());
+  setHidden(sleepButton, away || !onBlanket(actor));
   // Looks disabled while sleep is refused, but still takes a press, which says why not.
-  setAttr(sleepButton, 'aria-disabled', String(!!sleepRefused(weather)));
+  setAttr(sleepButton, 'aria-disabled', String(!!sleepRefused(game, actor, weather)));
   for (const k of BUILD_KINDS) setHidden(buildButtons[k], away || !buildable(k));
-  setHidden(sailButton, away || !canSail());
+  setHidden(sailButton, away || !canSail(game, actor, kindNow()));
   setStyle(veil, 'opacity', String(fade));
   // A new day's title; thunder waking the survivor in the same night gets none.
   if (fade >= 1 && veilDay !== game.day && !ended && !warp && !sleeping?.wakes) {
     veilDay = game.day;
     veil.replaceChildren(label(caps(t('day', { n: game.day })), C.moon, S * 2));
   }
-  if (!bubble.hidden && ms > bubbleUntil) unthink();
-  if (!bubble.hidden) {
-    const foot = world.screenOf(actor.i, actor.j);
-    const s = view.toScreen(foot.x, foot.y);
-    // Centred over the survivor, but kept on the screen when they stand near its edge.
-    const x = Math.min(appWidth - 8 - bubbleHalf, Math.max(8 + bubbleHalf, s.x));
-    setStyle(bubble, 'transform', `translate(${x}px, ${s.y - 46 * view.zoom}px) translate(-50%, -100%)`);
-  }
-  requestAnimationFrame(frame);
+  // The passing thought over the survivor's head.
+  const foot = world.screenOf(actor.i, actor.j);
+  const head = view.toScreen(foot.x, foot.y);
+  follow(ms, head.x, head.y - 46 * view.zoom);
 }
 requestAnimationFrame(frame);
 
 // `?cave`: a default survivor, straight into the cave with the lantern in hand, playing at once.
-if (CAVE_START && cave) {
+if (opts.cave && cave) {
   startNew(firstWho());
   hold('lantern');
   goInto(cave.world, cave.entry);

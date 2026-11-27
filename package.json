@@ -9,7 +9,7 @@
     "build": "npm run check:engine && tsc --noEmit && vite build",
     "check:engine": "node engine/scripts/check-boundary.mjs",
     "preview": "vite preview --host",
-    "test": "node --test src/*.test.ts"
+    "test": "node --import ./scripts/pixel-alias.mjs --test src/*.test.ts engine/tests/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

@@ -2,8 +2,8 @@
 // runs between the floors at its ends, a hole has no floor; and a walker crosses an edge only where both its ends meet.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CUT, defaultShape, edgeWalkable, HOLE, RAMP, SMOOTH, standable, topOf, turnShape } from '../engine/engine/world/ground.ts';
-import { cornersOf, heightAt, type HeightMap } from '../engine/engine/world/terrain.ts';
+import { CUT, defaultShape, edgeWalkable, HOLE, RAMP, SMOOTH, standable, topOf, turnShape } from '../engine/world/ground.ts';
+import { cornersOf, heightAt, type HeightMap } from '../engine/world/terrain.ts';
 
 /** A map of rows of digits (levels) and a row of shapes per row: `.` smooth, `c` cut, `>` `<` `v` `^` ramps, `o` hole. */
 const map = (rows: string[], shapes?: string[]): HeightMap => ({

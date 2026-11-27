@@ -2,10 +2,10 @@
 // wall's end is blocked, and walls in front of the survivor dissolve a straight run at a time, fences never.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cornerBlocked, edgeKey, emptyBuilding, wallEnds, type Edge } from '../engine/engine/world/building/building.ts';
-import { CUT } from '../engine/engine/world/ground.ts';
-import { WallFade, type FadingWall } from '../engine/engine/world/wall-fade.ts';
-import type { HeightMap } from '../engine/engine/world/terrain.ts';
+import { cornerBlocked, edgeKey, emptyBuilding, wallEnds, type Edge } from '../engine/world/building/building.ts';
+import { CUT } from '../engine/world/ground.ts';
+import { WallFade, type FadingWall } from '../engine/world/wall-fade.ts';
+import type { HeightMap } from '../engine/world/terrain.ts';
 
 /** A map of rows of digits (levels), all cut ground, without water. */
 const map = (...rows: string[]): HeightMap => ({

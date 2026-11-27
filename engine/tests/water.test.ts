@@ -2,8 +2,8 @@
 // from the map's own water line; a map without one has the sea at level 0, and one with null has no water at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DRY, heightAt, isLand, seaFloor, SEA_LEVEL, standingHeight, surfaceAt, waterOf, type HeightMap } from '../engine/engine/world/terrain.ts';
-import { endHeights } from '../engine/engine/world/building/building.ts';
+import { DRY, heightAt, isLand, seaFloor, SEA_LEVEL, standingHeight, surfaceAt, waterOf, type HeightMap } from '../engine/world/terrain.ts';
+import { endHeights } from '../engine/world/building/building.ts';
 
 /** A map of rows of digits (levels), with a water line. */
 const map = (water: number | null | undefined, ...rows: string[]): HeightMap => ({

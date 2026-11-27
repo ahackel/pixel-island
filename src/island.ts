@@ -40,11 +40,18 @@ function seaBed(map: HeightMap): void {
   }
 }
 
-/** Scenes saved from the scene editor ("Save to project" writes `content/scenes/<name>.json`), by file name without `.json`. */
+/**
+ * Scenes saved from the scene editor ("Save to project" writes `content/scenes/<name>.json`), by file name without `.json`.
+ * Null when there is no such file; a file that fails the scene checks throws, rather than the game quietly playing
+ * another island (which would also lose every saved game of this one). `scenes.test.ts` reads them all.
+ */
 const SAVED = import.meta.glob('./content/scenes/*.json', { eager: true, import: 'default' });
 export const savedScene = (slug: string): Scene | null => {
   const file = SAVED[`./content/scenes/${slug}.json`];
-  return file ? readSceneFile(JSON.stringify(file)) : null;
+  if (!file) return null;
+  const scene = readSceneFile(JSON.stringify(file));
+  if (!scene) throw new Error(`src/content/scenes/${slug}.json is not a valid scene`);
+  return scene;
 };
 
 /** The first island: the scene saved as `island` when there is one, else the one made from its seed. */
@@ -140,7 +147,8 @@ export interface Cave {
 
 /** The rocky island's cave, from `content/scenes/smuggler-cave.json`. */
 export function caveScene(): Cave {
-  const scene = savedScene('smuggler-cave')!;
+  const scene = savedScene('smuggler-cave');
+  if (!scene) throw new Error('src/content/scenes/smuggler-cave.json is missing');
   const exit = scene.cave?.exits[0] ?? scene.spawn;
   return { scene, entry: scene.spawn, exit };
 }

@@ -4,6 +4,9 @@ import { PALETTE } from '@pixel/engine/core/palette.ts';
 import { crabPixels } from '@pixel/engine/world/crab.ts';
 import { fishPixels, type Pixel } from '@pixel/engine/world/fish.ts';
 import type { Rows } from './rows.ts';
+import { FISH_ITEMS } from './crafts.ts';
+
+export { FISH_ITEMS };
 
 /** A sharp grey stone, lit from above. */
 export const STONE: Rows = { rows: ['..LLs..', '.LLsss.', 'Lssssdd', '.ssddd.'], colors: { L: '#c9c5bd', s: '#8f8b83', d: '#5d5a55' } };
@@ -25,7 +28,6 @@ function rowsOf(px: Pixel[]): Rows {
 }
 
 /** The bag items for each kind of fish in the sea (fish.ts KINDS): a mackerel, a wrasse, a snapper. */
-export const FISH_ITEMS = ['fish', 'wrasse', 'snapper'] as const;
 /** A caught fish in the bag, by kind: the one swimming in the sea, in its colours. */
 export const FISH_IN_BAG = FISH_ITEMS.map((_, k) => rowsOf(fishPixels(0, 0, k)));
 /** A caught crab in the bag, in 3/4 front view (heading 4; 5 is straight on): claws and eyes both showing. */

@@ -3,9 +3,9 @@
 // is read back is checked.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CUT, HOLE } from '../engine/engine/world/ground.ts';
-import { cleanDoors, cleanLadders, climbDown, climbOf, doorFits, holeLadder, ladderOn, ladderSpots } from '../engine/engine/world/ways.ts';
-import type { HeightMap } from '../engine/engine/world/terrain.ts';
+import { CUT, HOLE } from '../engine/world/ground.ts';
+import { cleanDoors, cleanLadders, climbDown, climbOf, doorFits, holeLadder, ladderOn, ladderSpots } from '../engine/world/ways.ts';
+import type { HeightMap } from '../engine/world/terrain.ts';
 
 /** A map of rows of digits (levels), all cut ground, without water; `h` in a row is a hole at level 2. */
 const map = (...rows: string[]): HeightMap => {
