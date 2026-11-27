@@ -32,8 +32,8 @@ import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
 import { rng } from '@pixel/shared/random.ts';
-import { COCONUT, DAY_S, FISH, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
-import { C, caps, hud, ICONS, PAINT, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
+import { DAY_S, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
+import { C, caps, hud, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
 import { label } from '@pixel/shared/pixel-ui.ts';
 import { wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE } from '@pixel/engine/core/palette.ts';
@@ -44,19 +44,18 @@ import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type K
 import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
-import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
-import { picture, type Rows } from './rows.ts';
-import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
+import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
+import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
 import { bring, buildSpot, dropCoconuts, headSide, lay, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
+import { BAG_PICTURES, LYING, PICK_NEAR, QUEST_PICTURES } from './pictures.ts';
 import { flight, landed, landing, type Thrown } from './throw.ts';
 import { talkView } from './talk.ts';
 import { optionsOf, withoutQuest } from './options.ts';
 import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
-import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
+import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt } from './fire.ts';
 
 /** The debug options in the address (options.ts); a tryout ends when a new game is started from the menu. */
 const opts = optionsOf(location.search, QUESTS.length);
@@ -246,13 +245,6 @@ actor.sitAfter = 60_000;
 
 // ------------------------------------------------------------------ pictures
 
-// A husked coconut: egg-shaped, a little lumpy, its point up to the right, a fibre streak along it.
-const COCO_ROWS = ['..bbbb..', '.bBBbbbb', 'bBBbfbbd', 'bbbbbbdd', '.dbbbdd.', '..ddd...'];
-const COCO_COLORS: Record<string, string> = { b: '#7a4a24', B: '#b07a44', f: '#93603a', d: '#4e2e16' };
-const COCO = picture(COCO_ROWS, COCO_COLORS);
-
-const coconutThing = (spot: Thing['spot']): Thing => ({ spot, picture: COCO, w: 8, h: 6, foot: { x: 3, y: 5 } });
-
 /** Where something lies on the island's ground, its height there worked out once for each spot object (they never move). */
 const groundSpots = new WeakMap<object, Thing['spot']>();
 function groundSpot(p: { i: number; j: number }): Thing['spot'] {
@@ -331,36 +323,12 @@ function hold(item: BagItem | null): void {
   dress();
   showBag();
 }
-type Fish = (typeof FISH_ITEMS)[number];
-const BAG_PICTURES: Record<BagItem, Rows> = {
-  coconut: { rows: COCO_ROWS, colors: COCO_COLORS }, wood: { rows: WOOD_ROWS, colors: WOOD_COLORS }, fire: TORCH_IN_BAG,
-  stone: STONE, spear: SPEAR_IN_BAG, ...(Object.fromEntries(FISH_ITEMS.map((f, k) => [f, FISH_IN_BAG[k]])) as Record<Fish, Rows>), crab: CRAB_IN_BAG,
-  leaf: LEAF, vine: VINE, axe: AXE_IN_BAG, rope: ROPE, cloth: CLOTH, log: LOG, hammer: HAMMER, crate: CRATE_IN_BAG, drift: DRIFT, lantern: LANTERN, key: KEY,
-};
-/** The quests' pictures in the corner. */
-const QUEST_PICTURES: Record<QuestIcon, Rows> = {
-  coconut: BAG_PICTURES.coconut, moon: { rows: ICONS.moon, colors: PAINT }, fish: FISH_IN_BAG[0], crab: CRAB_IN_BAG, crate: CRATE_IN_BAG, hammer: HAMMER,
-  storm: { rows: ICONS.storm, colors: PAINT }, fire: BAG_PICTURES.fire, axe: AXE_IN_BAG, raft: RAFT_ICON,
-};
-/** What is eaten from the bag, and how much it fills. */
-type Food = { fills: number; label: Key; yum: Key };
-const FOOD: Partial<Record<BagItem, Food>> = {
-  coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
-  ...(Object.fromEntries(FISH_ITEMS.map((f) => [f, { fills: FISH, label: 'eatFish', yum: 'think.yumFish' }])) as Record<Fish, Food>),
-  crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
-};
-/** Bag things on the ground: in the bag's pictures, but for the coconut, the stick and driftwood, which have their own. */
-const LYING = {
-  ...Object.fromEntries(BAG_ITEMS.map((k) => [k, thing(BAG_PICTURES[k])])), coconut: coconutThing, wood: woodThing, drift: driftThing,
-} as Record<BagItem, ReturnType<typeof thing>>;
-/** How near a tap must be to a thing on the ground to pick it, in pixels, round a point `up` pixels over its foot: driftwood is a big piece. */
-const PICK_NEAR: Partial<Record<BagItem, [r: number, up: number]>> = { coconut: [5, 2], wood: [5, 1], stone: [5, 1], drift: [12, 3] };
 const bagUi = bagView({
   items: () => game.bag,
   hand: () => hand,
   canAct: () => !paused && !sleeping,
   picture: (item) => BAG_PICTURES[item],
-  words: (item) => t(FOOD[item]?.label ?? (item as Exclude<BagItem, 'coconut' | 'crab' | Fish>)),
+  words: (item) => t(bagWords(item)),
   eat: (n, item) => {
     if (!FOOD[item]) return false;
     eat(n);

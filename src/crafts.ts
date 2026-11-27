@@ -1,11 +1,28 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
 // in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
 
+import { COCONUT, FISH } from './clock.ts';
+import type { Key } from './i18n.ts';
+
 export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift', 'lantern', 'key'] as const;
 export type BagItem = (typeof BAG_ITEMS)[number];
 /** Bag items that can also lie on the ground to be picked up (wash-ups, driftwood, what the crate held, logs). */
 export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift'] as const;
 export type Loose = (typeof LOOSE)[number];
+/** The fish that can be caught, by the kind of fish swimming (engine fish.ts `kind`). */
+export const FISH_ITEMS = ['fish', 'wrasse', 'snapper'] as const;
+export type Fish = (typeof FISH_ITEMS)[number];
+
+/** What is eaten from the bag: how much it fills, what its slot says and the thought on eating it (text ids). */
+export interface Food { fills: number; label: Key; yum: Key }
+export const FOOD: Partial<Record<BagItem, Food>> = {
+  coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
+  ...(Object.fromEntries(FISH_ITEMS.map((f) => [f, { fills: FISH, label: 'eatFish', yum: 'think.yumFish' }])) as Record<Fish, Food>),
+  crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
+};
+/** What a bag slot says (a text id): how to eat it if it is food, else the thing's name. */
+export const bagWords = (item: BagItem): string => FOOD[item]?.label ?? item;
+
 export const isBagItem = (x: unknown): x is BagItem => BAG_ITEMS.includes(x as BagItem);
 export const isLoose = (x: unknown): x is Loose => LOOSE.includes(x as Loose);
 
