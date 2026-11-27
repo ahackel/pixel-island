@@ -45,10 +45,11 @@ import { currentLang, LANGS, setLang } from '@pixel/shared/lang.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { CRAB_IN_BAG, FISH_IN_BAG, FISH_ITEMS, SPEAR_IN_BAG, STONE } from './fishing.ts';
-import { BAG_ITEMS, BUILD_KINDS, BUILDS, finished, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
+import { BAG_ITEMS, BUILD_KINDS, BUILDS, HUT_AT, isBagItem, isLoose, recipeFor, takeFrom, without, type BagItem, type BuildKind } from './crafts.ts';
 import { picture, type Rows } from './rows.ts';
 import { AXE, AXE_IN_BAG, blanketThing, heldOf, CLOTH, CRATE_IN_BAG, DRIFT, driftThing, HAMMER, HAMMER_HELD, hatThing, hutBuilding, KEY, LANTERN, LEAF, LOG, mouthThing, PIECE_KINDS, RAFT_ICON, thing, raftThing, ROPE, VINE } from './things.ts';
 import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear, topUpStones, washWood, type Shore } from './shore.ts';
+import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
 const params = new URLSearchParams(location.search);
@@ -127,8 +128,6 @@ const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 const palms = [...islandScene.plants];
 /** The island's fingerprint, kept in the save, so a save of another island (one edited since) is not loaded onto this one. */
 const ISLAND_ID = islandId(islandScene.levels, palms);
-/** The tall palms can be felled and draw lightning; the sapling is too small. */
-const tall = (k: number) => palms[k].plant !== 'plant-palms-2';
 /** Shows (and lets block the way) only the palms not cut down. */
 const keepStanding = () => (islandScene.plants = palms.filter((_, k) => !game.felled.includes(k)));
 /** The crabs out today, and how many have come out so far; all gone by the next morning. */
@@ -194,7 +193,7 @@ function newGame(who = firstWho()): Game {
   // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
   for (let k = 0; k <= START_QUEST; k++) {
     bring(isle, g, k);
-    if (QUESTS[k].strike && k < START_QUEST) burnPalm(g, at);
+    if (QUESTS[k].strike && k < START_QUEST) burnPalm(isle, g, at);
   }
   return g;
 }
@@ -1078,7 +1077,7 @@ function topLeft(t: Thing): { x: number; y: number } {
  * the front walls cut already.
  */
 function hides(parts: Thing[], me: Thing | null): boolean {
-  if (!me || !parts.length || sheltered()) return false;
+  if (!me || !parts.length || sheltered(game, actor)) return false;
   const m = topLeft(me);
   return parts.some((p) => {
     // Behind: further back than the part's footprint middle (the box the world sorts by).
@@ -1215,7 +1214,7 @@ function arrive(pick: Pick): void {
     return think('think.crateTaken');
   }
   if ('palm' in pick) {
-    if (hand === 'axe') return tall(pick.palm) ? fell(pick.palm) : think('think.tooSmall');
+    if (hand === 'axe') return isTall(palms[pick.palm]) ? fell(pick.palm) : think('think.tooSmall');
     if (bagFull()) return think('think.full');
     pocket('leaf');
     return think('think.leaf');
@@ -1235,7 +1234,7 @@ function arrive(pick: Pick): void {
     game.bag.splice(game.bag.indexOf('fire'), 1);
     hold(null);
     const atHut = byHut(pick.loose);
-    think(!atHut && wantsFire() ? 'think.fireFar' : 'think.campfire');
+    think(!atHut && wantsFire(game) ? 'think.fireFar' : 'think.campfire');
     return atHut ? reach('campfire') : undefined;
   }
   if (bagFull()) return think('think.full');
@@ -1325,50 +1324,13 @@ function build(kind: BuildKind): void {
   game.energy = Math.max(0, game.energy - 0.05);
   hold(hand);
   think(`think.${kind}${stage + 1}`);
-  if (kind === 'hut' && hut()) reach('hut');
-}
-/** Where the survivor sleeps: the blanket, in the middle of where the hut goes. */
-const BLANKET = HUT_AT;
-const onBlanket = () => Math.hypot(actor.i - BLANKET.i, actor.j - BLANKET.j) < 0.5;
-/** The hut, once finished. */
-const hut = () => { const b = buildOf('hut'); return finished(b) ? b : undefined; };
-/** Under the finished hut's roof: on one of its 2×2 cells. */
-const sheltered = () => !!hut() && Math.abs(Math.floor(actor.i) + 0.5 - HUT_AT.i) < 1 && Math.abs(Math.floor(actor.j) + 0.5 - HUT_AT.j) < 1;
-/** By a burning campfire (the stump is too wild a fire to sleep by). */
-const byFire = () => game.fires.some((f) => Math.hypot(f.i - actor.i, f.j - actor.j) <= 2.5);
-/** How near the hut a campfire counts as its own, in metres. */
-const HUT_FIRE = 3;
-const byHut = (at: { i: number; j: number }) => Math.hypot(at.i - HUT_AT.i, at.j - HUT_AT.j) <= HUT_FIRE;
-/** The fire quest is under way: after that storm the survivor does not sleep again until a campfire burns by the hut. */
-const wantsFire = () => questNow().goal === 'campfire' && !game.quest.done;
-const fireByHut = () => game.fires.some(byHut);
-
-/** How far a fire scares animals off, in metres: a fire burning on the ground, and a torch carried about. */
-const FIRE_FEAR = 3.5;
-const TORCH_FEAR = 1.6;
-/** Every fire burning now, and how far each one frightens: the campfires, the palm lightning left alight, the torch in hand. */
-function burning(): { i: number; j: number; fear: number }[] {
-  return [
-    ...game.fires.map((f) => ({ ...f, fear: FIRE_FEAR })),
-    ...(game.struck === null ? [] : [{ i: palms[game.struck].i, j: palms[game.struck].j, fear: FIRE_FEAR }]),
-    ...(hand === 'fire' && present ? [{ i: actor.i, j: actor.j, fear: TORCH_FEAR }] : []),
-  ];
-}
-/** The fire nearest an animal, if one is near enough to frighten it. */
-function fireNear(at: { i: number; j: number }, lit: readonly { i: number; j: number; fear: number }[]): { i: number; j: number } | null {
-  let best: { i: number; j: number } | null = null;
-  let bestD = Infinity;
-  for (const f of lit) {
-    const d = Math.hypot(f.i - at.i, f.j - at.j);
-    if (d <= f.fear && d < bestD) [best, bestD] = [f, d];
-  }
-  return best;
+  if (kind === 'hut' && hutOf(game)) reach('hut');
 }
 /** How fast a frightened fish turns away, in radians a second. */
 const FISH_TURN = 3;
 /** No animal stays by a fire: a crab runs off sideways as it does from the survivor, a fish turns and swims away. */
 function fleeFire(dt: number): void {
-  const lit = burning();
+  const lit = burning(game, palms, hand === 'fire' && present ? actor : null);
   if (!lit.length) return;
   for (const c of crabs) {
     const f = fireNear(c, lit);
@@ -1383,14 +1345,9 @@ function fleeFire(dt: number): void {
   }
 }
 
-/** The raft, finished, by the survivor, and the sea not stormy. */
-function canSail(): boolean {
-  const r = buildOf('raft');
-  return finished(r) && Math.hypot(r!.i - actor.i, r!.j - actor.j) <= 1.5 && kindNow() !== 'storm';
-}
 const END_FADE = 2500;
 function setSail(): void {
-  if (!canSail() || paused || sleeping || ended) return;
+  if (!canSail(game, actor, kindNow()) || paused || sleeping || ended) return;
   target = null;
   forget();
   ended = performance.now();
@@ -1402,23 +1359,8 @@ function setSail(): void {
 
 /** The fire quest's lightning burns down the tall palm nearest the survivor, so they see it. */
 function strike(): void {
-  if (burnPalm(game, actor)) think('think.struck');
+  if (burnPalm(isle, game, actor)) think('think.struck');
 }
-/** Burns the tall palm nearest `near` down to a burning stump, its crown's twigs dry wood round it. Whether there was one. */
-function burnPalm(g: Game, near: { i: number; j: number }): boolean {
-  let best = -1;
-  let bestD = Infinity;
-  palms.forEach((p, k) => {
-    const d = Math.hypot(p.i - near.i, p.j - near.j);
-    // A sapling is too small to draw lightning.
-    if (tall(k) && !g.felled.includes(k) && d < bestD) [best, bestD] = [k, d];
-  });
-  if (best < 0) return false;
-  g.struck = best;
-  for (const twig of spotsNear(isle, palms[best], 3, 0.8, 0.9)) lay(g, 'wood', twig);
-  return true;
-}
-
 function eat(slot: number): void {
   if (paused || sleeping) return;
   const food = FOOD[game.bag[slot]]!;
@@ -1429,15 +1371,6 @@ function eat(slot: number): void {
   reach('eat');
 }
 
-/**
- * Why the survivor will not lie down on the blanket now, if they will not: in the rain they sleep only under the hut's
- * roof, and after the storm night they lie awake until a campfire burns by the hut.
- */
-function sleepRefused(weather: Weather): Key | null {
-  if (weather.rain > 0.4 && !sheltered()) return 'think.rainSleep';
-  if (wantsFire() && !fireByHut()) return 'think.needFire';
-  return null;
-}
 /** Whether the storm has woken the survivor tonight; then only a fire lets them sleep again. */
 let stormWoken = false;
 function sleep(fainted: boolean, anywhere = false): void {
@@ -1446,10 +1379,10 @@ function sleep(fainted: boolean, anywhere = false): void {
   if (world !== island) leaveCave();
   const chosen = !fainted && !anywhere;
   if (chosen && !dry(actor)) return think('think.wet');
-  const refused = chosen && sleepRefused(weatherAt(kindNow(), kindTomorrow(), time));
+  const refused = chosen && sleepRefused(game, actor, weatherAt(kindNow(), kindTomorrow(), time));
   if (refused) return think(refused);
   // In a storm, sleep out of the hut and away from a fire is broken by thunder, and then does not come back.
-  const wakes = chosen && kindNow() === 'storm' && !byFire() && !sheltered();
+  const wakes = chosen && stormWakes(game, actor, kindNow());
   if (wakes && stormWoken) return think('think.scared');
   target = null;
   forget();
@@ -1775,7 +1708,7 @@ function step(ms: number): void {
   // The fire quest's lightning, once the survivor is up and the morning's thought read: a bolt into the palm, its crown bursting.
   if (game.struck !== null) strikeNow = false;
   // The bolt comes as the survivor steps out of the hut, so they see it strike.
-  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered() && onIsland();
+  const striking = strikeNow && present && !paused && !sleeping && !telling() && !sheltered(game, actor) && onIsland();
   if (striking) {
     strikeNow = false;
     strike();
@@ -1852,11 +1785,11 @@ function step(ms: number): void {
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
   const away = !!ended || !onIsland();
-  setHidden(sleepButton, away || !onBlanket());
+  setHidden(sleepButton, away || !onBlanket(actor));
   // Looks disabled while sleep is refused, but still takes a press, which says why not.
-  setAttr(sleepButton, 'aria-disabled', String(!!sleepRefused(weather)));
+  setAttr(sleepButton, 'aria-disabled', String(!!sleepRefused(game, actor, weather)));
   for (const k of BUILD_KINDS) setHidden(buildButtons[k], away || !buildable(k));
-  setHidden(sailButton, away || !canSail());
+  setHidden(sailButton, away || !canSail(game, actor, kindNow()));
   setStyle(veil, 'opacity', String(fade));
   // A new day's title; thunder waking the survivor in the same night gets none.
   if (fade >= 1 && veilDay !== game.day && !ended && !warp && !sleeping?.wakes) {
