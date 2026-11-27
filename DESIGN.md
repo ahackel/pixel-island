@@ -345,6 +345,24 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
 6. Digging and treasure.
 7. Content and polish.
 
+### Island 2 as data (a spike)
+
+The first three quests of the draft chain, written as the content they should be in `src/content/drafts/island2/` (quests, interaction rules, one dialogue, texts in English and German), and checked with the game's own checks by `src/island2-draft.test.ts`. The test lists exactly what the game cannot do yet; when the vocabulary grows to cover a line, the test fails until the line is removed, and when the list is empty the draft moves out of `drafts/` into the game.
+
+What the draft showed is missing, most useful first:
+
+| Gap | What the draft needed | The way to close it |
+|---|---|---|
+| **Items are code** | a pot, flint, fish soup: `BAG_ITEMS`, `LOOSE`, `FOOD` and the recipes are TypeScript in `crafts.ts`, and the pictures are in `things.ts` | `content/items.json` (id, name, loose or not, food values, picture by id) and `recipes.json` (cooking too); the pictures stay hand-drawn code, named by id. The quest corner picture is then an item's picture, and the closed `QUEST_ICONS` list goes |
+| **Events keyed by item** | a quest "get the pot", "cook fish soup" | the game reports `got:<item>` when a thing goes into the bag, `made:<item>` when a recipe or cooking makes one, `ate:<item>` when it is eaten; the check knows these patterns |
+| **Things to act on** | a lit campfire (cooking: pot in hand, fish in the bag), a person | more targets in `interactions.ts` (`campfire`, `person` with a `who`), the way `crate` and `palm` are now |
+| **Conditions with a value** | "the bag holds a fish" | `has:<item>` beside `tall`, `byHut`, `wantsFire`; an item group for "any fish" (`FISH_ITEMS`) |
+| **Effects** | using up what is in the hand, a person turning up, talking | `take`, `show` (a person placed hidden in the scene appears) and `talk` (starts a dialogue) |
+| **Dialogue** | the smuggler's first words | a graph of nodes in `dialogues.json`: each says one text, then offers 2–3 replies, goes on, or ends, and a node's `do` is the same effects. `src/island2-draft.test.ts` already checks one (texts exist, every reply goes somewhere, every node is reachable). The UI is `talk.ts`'s story box with reply buttons. Ink only if the branching outgrows this |
+| **Island scoping** | Island 2's own quest chain and rules | each island a bundle in `content/islands/<id>/` (quests, interactions, dialogues, texts); `QUESTS` becomes the current island's, and a save says which island it is on. `byHut` and `HUT_AT` are the first island's, and become scene markers |
+
+Suggested order: items as data first (it unlocks the pot, flint and every dish after it), then the item events and the new targets, conditions and effects (all small, all tested like the rest), then island bundles, and the dialogue UI last, once the smuggler scene is there to try it in.
+
 ## Survivor
 
 - For now, one fixed character made once in the wardrobe.

@@ -1,0 +1,15 @@
+{
+ "i2.wreck": { "en": "The raft broke apart on the rocks… Something from the wreck washed up in the bay.", "de": "Das Floß ist an den Felsen zerbrochen… In der Bucht ist etwas vom Wrack angespült worden." },
+ "i2.meal": { "en": "A pot! With a fire under it and a fish in it, that’s a proper meal. I need a spark first…", "de": "Ein Topf! Mit einem Feuer darunter und einem Fisch darin wird das ein richtiges Essen. Erst brauche ich einen Funken…" },
+ "i2.potNeedsFood": { "en": "An empty pot isn’t much of a meal. I need a fish.", "de": "Ein leerer Topf ist kein Essen. Ich brauche einen Fisch." },
+ "i2.needPot": { "en": "If only I had a pot to cook in.", "de": "Hätte ich nur einen Topf zum Kochen." },
+ "i2.soup": { "en": "Fish soup! It smells wonderful.", "de": "Fischsuppe! Das riecht wunderbar." },
+ "i2.smell": { "en": "Something moved on the rocks… someone is watching me. The smell of the soup must have drawn them.", "de": "Auf den Felsen hat sich etwas bewegt… jemand beobachtet mich. Der Duft der Suppe hat ihn wohl angelockt." },
+ "smuggler.hello": { "en": "Ahem! Don’t be alarmed. I was just… passing by. Is that fish soup?", "de": "Ähm! Keine Angst. Ich war nur… auf der Durchreise. Ist das Fischsuppe?" },
+ "smuggler.r.who": { "en": "Who are you?", "de": "Wer bist du?" },
+ "smuggler.r.soup": { "en": "Would you like some?", "de": "Möchtest du welche?" },
+ "smuggler.r.joke": { "en": "Are you hiding behind that rock?", "de": "Versteckst du dich hinter dem Felsen?" },
+ "smuggler.who": { "en": "Me? A… trader. A very brave trader. Never been afraid of anything in my life. Except spiders. And the dark. And caves.", "de": "Ich? Ein… Händler. Ein sehr mutiger Händler. Ich hatte noch nie vor irgendetwas Angst. Außer vor Spinnen. Und vor der Dunkelheit. Und vor Höhlen." },
+ "smuggler.joke": { "en": "Hiding? Certainly not! I was… scouting. With great courage.", "de": "Verstecken? Auf keinen Fall! Ich habe… erkundet. Mit großem Mut." },
+ "smuggler.soup": { "en": "Well, if you insist! And in return… I could do you a favour or two. I know this island.", "de": "Nun, wenn du darauf bestehst! Und dafür… könnte ich dir ein, zwei Gefallen tun. Ich kenne diese Insel." }
+}

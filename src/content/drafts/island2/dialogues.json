@@ -1,0 +1,14 @@
+{
+ "smuggler.intro": {
+  "start": "hello",
+  "nodes": {
+   "hello": { "say": "smuggler.hello", "replies": [
+     { "text": "smuggler.r.who", "go": "who" },
+     { "text": "smuggler.r.soup", "go": "soup" },
+     { "text": "smuggler.r.joke", "go": "joke" } ] },
+   "who": { "say": "smuggler.who", "go": "hello" },
+   "joke": { "say": "smuggler.joke", "go": "hello" },
+   "soup": { "say": "smuggler.soup", "do": [{ "reach": "talked:smuggler" }], "end": true }
+  }
+ }
+}

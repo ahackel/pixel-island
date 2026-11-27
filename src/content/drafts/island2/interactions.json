@@ -1,0 +1,7 @@
+[
+ { "on": "campfire", "hand": "pot", "when": "has:fish", "do": [{ "take": "fish" }, { "give": "fishSoup" }, { "think": "i2.soup" }, { "reach": "made:fishSoup" }] },
+ { "on": "campfire", "hand": "pot", "do": [{ "think": "i2.potNeedsFood" }] },
+ { "on": "campfire", "do": [{ "think": "i2.needPot" }] },
+
+ { "on": "person", "who": "smuggler", "do": [{ "talk": "smuggler.intro" }] }
+]
