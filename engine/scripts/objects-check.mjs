@@ -19,7 +19,7 @@ const problems = [];
 
 // ---- the presets
 let frames = 0;
-if (OBJECT_PRESETS.length !== 21) problems.push(`${OBJECT_PRESETS.length} presets, expected 21`);
+if (OBJECT_PRESETS.length !== 24) problems.push(`${OBJECT_PRESETS.length} presets, expected 24`);
 for (const { id, prop } of OBJECT_PRESETS) {
   if (JSON.stringify(cleanBuild(prop)) !== JSON.stringify(prop)) problems.push(`${id}: changed by cleanBuild`);
   const seen = new Set();
