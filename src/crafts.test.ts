@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { bagWords, FOOD, BAG_ITEMS, BUILDS, HUT_PLAN, lacking, partsOf, recipeFor, recipeOnto, takeFrom, type BagItem } from './crafts.ts';
+import items from './content/items.json' with { type: 'json' };
+import { bagWords, BAG_ITEMS, BUILDS, checkItems, checkRecipes, FISH_ITEMS, FOOD, HUT_PLAN, lacking, LOOSE, partsOf, RECIPES, recipeFor, recipeOnto, takeFrom, type BagItem } from './crafts.ts';
 import { LOOT } from '@pixel/engine/world/loot.ts';
 
 test('every thing the scene editor can put in a chest is a bag item', () => {
@@ -52,10 +53,33 @@ test('a bag slot dragged onto another ties with what fits, lighting the other pa
   assert.deepEqual([...partsOf(bag, 1, 0)], []);
 });
 
-test('every bag slot says something there is text for, and every food its thought', () => {
+test('the shipped items and recipes are valid', () => {
+  assert.deepEqual(checkItems(items, loca), []);
+  assert.deepEqual(checkRecipes(RECIPES, loca), []);
+  // Every bag slot says something there is text for, and every food its thought.
   for (const item of BAG_ITEMS) assert.ok(bagWords(item) in loca, `${item}: ${bagWords(item)}`);
-  for (const [item, food] of Object.entries(FOOD)) {
-    assert.ok(food.yum in loca, `${item}: ${food.yum}`);
-    assert.ok(food.fills > 0 && food.fills <= 1, item);
-  }
+});
+
+// What the lists were while they were written in code: the data must give the same.
+test('the items as data give the bag, the loose things, the fish and the food the game had', () => {
+  assert.deepEqual(BAG_ITEMS, ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift', 'lantern', 'key']);
+  assert.deepEqual(LOOSE, ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift']);
+  assert.deepEqual(FISH_ITEMS, ['fish', 'wrasse', 'snapper']);
+  assert.deepEqual(FOOD, {
+    coconut: { fills: 0.35, label: 'eat', yum: 'think.yum' },
+    fish: { fills: 0.5, label: 'eatFish', yum: 'think.yumFish' },
+    wrasse: { fills: 0.5, label: 'eatFish', yum: 'think.yumFish' },
+    snapper: { fills: 0.5, label: 'eatFish', yum: 'think.yumFish' },
+    crab: { fills: 0.5, label: 'eatCrab', yum: 'think.yumCrab' },
+  });
+  assert.deepEqual(RECIPES.map((r) => [r.needs, r.makes]), [[['wood', 'stone'], 'spear'], [['wood', 'stone', 'vine'], 'axe']]);
+});
+
+test('bad items and recipes are caught', () => {
+  const bad = checkItems({ 'bad id': {}, a: 5, b: { loose: 'yes', group: 3, sparkle: 1 }, c: { food: { fills: 2, label: 'nope', yum: 'nada' } }, d: {} }, loca);
+  for (const part of ['bad id', 'not an object', 'loose is true or false', 'group is a name', 'unknown field "sparkle"', 'fills 0 to 1', 'text "nope"', 'text "nada"', 'no name']) assert.ok(bad.some((l) => l.includes(part)), part);
+  assert.deepEqual(checkItems([], loca), ['items: not an object']);
+  const worse = checkRecipes([{ needs: ['wood'], makes: 'gold', thought: 'nope' }, { needs: ['wood', 'stone'], makes: 'wood', thought: 'think.spear' }, 4], loca);
+  for (const part of ['two or more', 'unknown item "gold"', 'unknown text "nope"', 'makes what it needs', 'not an object']) assert.ok(worse.some((l) => l.includes(part)), part);
+  assert.deepEqual(checkRecipes({}, loca), ['recipes: not a list']);
 });

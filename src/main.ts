@@ -52,7 +52,7 @@ import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, on
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
 import { menuView, wordButton } from './menu.ts';
-import { BAG_PICTURES, LYING, PICK_NEAR, QUEST_PICTURES } from './pictures.ts';
+import { BAG_PICTURES, LYING, PICK_NEAR, questPicture } from './pictures.ts';
 import { flight, landed, landing, type Thrown } from './throw.ts';
 import { talkView } from './talk.ts';
 import { optionsOf, withoutQuest } from './options.ts';
@@ -416,7 +416,7 @@ function showQuest(): void {
   const words = t(questThought());
   if (questShown === icon + words) return;
   questShown = icon + words;
-  questButton.replaceChildren(slot(QUEST_PICTURES[icon]));
+  questButton.replaceChildren(slot(questPicture(icon)));
   questButton.setAttribute('aria-label', words);
   questButton.title = words;
 }

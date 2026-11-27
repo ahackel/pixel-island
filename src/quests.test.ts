@@ -11,6 +11,12 @@ test('the shipped quests and texts are valid, and every goal a quest waits for i
   assert.deepEqual(checkContent(QUESTS, loca, ['crate', ...LOOSE], REPORTED), []);
 });
 
+test('a quest\'s picture is any bag item\'s or an extra one, and an unknown one is caught', () => {
+  const lines = (icon: string) => checkContent([{ id: 'a', goal: 'eat', icon, thought: 'quest.eat' }], loca, [], REPORTED);
+  for (const icon of ['coconut', 'axe', 'moon', 'storm', 'raft']) assert.deepEqual(lines(icon), [], icon);
+  assert.deepEqual(lines('dragon'), ['quest 1: unknown icon "dragon"']);
+});
+
 test('bad quests and texts are caught', () => {
   const bad = checkContent([{ id: 'a', goal: 'dance', count: 0, icon: 'x', thought: 'nope', start: [{ weather: 'snow' }, { washUp: ['boat'] }, { stones: 0 }, { reach: 'eat' }, { room: true }] }, { id: 'a' }], { 'bad id': { en: 1 } }, ['crate'], REPORTED);
   for (const part of ['dance', 'snow', 'count', 'icon', 'nope', 'boat', 'stones must be', '"reach" is not for a quest', '"room" is not for a quest', 'repeated', 'bad id', 'needs en']) assert.ok(bad.some((l) => l.includes(part)), part);

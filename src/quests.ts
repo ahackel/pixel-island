@@ -3,6 +3,7 @@
 // done before its quest. A finished quest hands over to the next one the following morning, or at once if the next
 // says `now`, or in the night before if it says `night`. Plain data and rules, no page or engine code, so the tests can use it.
 import data from './content/quests.json' with { type: 'json' };
+import { isBagItem, type BagItem } from './crafts.ts';
 import { checkEffects, goalsOf, KINDS, LOCA_ID, type Effect, type Kind } from './effects.ts';
 
 export { KINDS, type Kind };
@@ -12,9 +13,10 @@ export type Goal = string;
 /** The goals the game's own code reports (main.ts); the others are reached by interaction rules. */
 export const CODE_GOALS = ['eat', 'sleep', 'fish', 'crab', 'hut', 'stormSleep', 'log', 'sail'] as const;
 
-/** The pictures a quest can show in the corner (see main.ts). */
-export const QUEST_ICONS = ['coconut', 'moon', 'fish', 'crab', 'crate', 'hammer', 'storm', 'fire', 'axe', 'raft'] as const;
-export type QuestIcon = (typeof QUEST_ICONS)[number];
+/** The pictures a quest can show in the corner (see pictures.ts): any bag item's, and these. */
+export const EXTRA_ICONS = ['moon', 'storm', 'raft'] as const;
+export type QuestIcon = BagItem | (typeof EXTRA_ICONS)[number];
+export const isQuestIcon = (x: unknown): x is QuestIcon => isBagItem(x) || EXTRA_ICONS.includes(x as (typeof EXTRA_ICONS)[number]);
 
 export interface Quest {
   id: string;
@@ -98,7 +100,7 @@ export function checkContent(quests: unknown, loca: unknown, items: readonly str
     if (!reported.includes(q.goal)) out.push(`${w}: nothing reports the goal "${q.goal}"`);
     if (q.count !== undefined && !(Number.isInteger(q.count) && q.count >= 1 && q.count <= 20)) out.push(`${w}: count must be 1–20`);
     if (q.start !== undefined) out.push(...checkEffects(q.start, 'start', w, { loca: loca as object, goals: reported, items }));
-    if (!QUEST_ICONS.includes(q.icon)) out.push(`${w}: unknown icon "${q.icon}"`);
+    if (!isQuestIcon(q.icon)) out.push(`${w}: unknown icon "${q.icon}"`);
     if (typeof q.thought !== 'string' || !(q.thought in (loca as object))) out.push(`${w}: unknown text "${q.thought}"`);
   });
   return out;

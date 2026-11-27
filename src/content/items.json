@@ -1,0 +1,22 @@
+{
+ "coconut": { "food": { "fills": 0.35, "label": "eat", "yum": "think.yum" } },
+ "wood": {},
+ "fire": {},
+ "stone": {},
+ "spear": {},
+ "fish": { "group": "fish", "food": { "fills": 0.5, "label": "eatFish", "yum": "think.yumFish" } },
+ "wrasse": { "group": "fish", "food": { "fills": 0.5, "label": "eatFish", "yum": "think.yumFish" } },
+ "snapper": { "group": "fish", "food": { "fills": 0.5, "label": "eatFish", "yum": "think.yumFish" } },
+ "crab": { "food": { "fills": 0.5, "label": "eatCrab", "yum": "think.yumCrab" } },
+ "leaf": {},
+ "vine": { "loose": true },
+ "axe": {},
+ "rope": { "loose": true },
+ "cloth": { "loose": true },
+ "log": { "loose": true },
+ "hammer": { "loose": true },
+ "crate": {},
+ "drift": { "loose": true },
+ "lantern": {},
+ "key": {}
+}

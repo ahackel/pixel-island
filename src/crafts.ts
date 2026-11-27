@@ -1,37 +1,79 @@
 // What the survivor makes from what is in the bag: tools tied together, and the hut and raft built
-// in stages. Plain data and rules, no pictures (those are in things.ts), so the tests can use it.
+// in stages. The bag's things (content/items.json) and what they tie into (content/recipes.json) are data; the rules
+// are plain, with no pictures (those are in things.ts), so the tests can use them.
 
-import { COCONUT, FISH } from './clock.ts';
-import type { Key } from './i18n.ts';
+import data from './content/items.json' with { type: 'json' };
+import recipes from './content/recipes.json' with { type: 'json' };
 
-export const BAG_ITEMS = ['coconut', 'wood', 'fire', 'stone', 'spear', 'fish', 'wrasse', 'snapper', 'crab', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'hammer', 'crate', 'drift', 'lantern', 'key'] as const;
-export type BagItem = (typeof BAG_ITEMS)[number];
-/** Bag items that can also lie on the ground to be picked up (wash-ups, driftwood, what the crate held, logs). */
-export const LOOSE = ['vine', 'rope', 'cloth', 'log', 'hammer', 'drift'] as const;
-export type Loose = (typeof LOOSE)[number];
-/** The fish that can be caught, by the kind of fish swimming (engine fish.ts `kind`). */
-export const FISH_ITEMS = ['fish', 'wrasse', 'snapper'] as const;
-export type Fish = (typeof FISH_ITEMS)[number];
+/** Every thing that can be in the bag, by id: the keys of content/items.json. Its picture is in pictures.ts, its name a text. */
+export type BagItem = keyof typeof data;
+export const BAG_ITEMS = Object.keys(data) as BagItem[];
 
 /** What is eaten from the bag: how much it fills, what its slot says and the thought on eating it (text ids). */
-export interface Food { fills: number; label: Key; yum: Key }
-export const FOOD: Partial<Record<BagItem, Food>> = {
-  coconut: { fills: COCONUT, label: 'eat', yum: 'think.yum' },
-  ...(Object.fromEntries(FISH_ITEMS.map((f) => [f, { fills: FISH, label: 'eatFish', yum: 'think.yumFish' }])) as Record<Fish, Food>),
-  crab: { fills: FISH, label: 'eatCrab', yum: 'think.yumCrab' },
-};
+export interface Food { fills: number; label: string; yum: string }
+/** One item in content/items.json. */
+export interface ItemDef {
+  /** It washes up, and lies on the ground as a small thing to pick up (wash-ups, driftwood, what the crate held, logs). */
+  loose?: boolean;
+  /** A kind it belongs to (the fish that can be caught are the `fish` group, in the order fish.ts `kind` counts them). */
+  group?: string;
+  food?: Food;
+}
+const DEFS = data as Record<BagItem, ItemDef>;
+export const isBagItem = (x: unknown): x is BagItem => BAG_ITEMS.includes(x as BagItem);
+
+/** Bag items that can also lie on the ground to be picked up. */
+export const LOOSE = BAG_ITEMS.filter((k) => DEFS[k].loose);
+export type Loose = BagItem;
+/** The fish that can be caught, by the kind of fish swimming (engine fish.ts `kind`). */
+export const FISH_ITEMS = BAG_ITEMS.filter((k) => DEFS[k].group === 'fish');
+export type Fish = BagItem;
+
+export const FOOD: Partial<Record<BagItem, Food>> = Object.fromEntries(BAG_ITEMS.flatMap((k) => (DEFS[k].food ? [[k, DEFS[k].food]] : [])));
 /** What a bag slot says (a text id): how to eat it if it is food, else the thing's name. */
 export const bagWords = (item: BagItem): string => FOOD[item]?.label ?? item;
 
-export const isBagItem = (x: unknown): x is BagItem => BAG_ITEMS.includes(x as BagItem);
 export const isLoose = (x: unknown): x is Loose => LOOSE.includes(x as Loose);
+
+/** What is wrong with the items, as lines; empty when they are fine. `loca` is the table of texts. */
+export function checkItems(items: unknown, loca: object): string[] {
+  if (!items || typeof items !== 'object' || Array.isArray(items)) return ['items: not an object'];
+  const out: string[] = [];
+  for (const [id, d] of Object.entries(items as Record<string, any>)) {
+    const w = `item "${id}"`;
+    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(id)) out.push(`${w}: bad id`);
+    if (!d || typeof d !== 'object' || Array.isArray(d)) { out.push(`${w}: not an object`); continue; }
+    for (const key of Object.keys(d)) if (!['loose', 'group', 'food'].includes(key)) out.push(`${w}: unknown field "${key}"`);
+    if (d.loose !== undefined && typeof d.loose !== 'boolean') out.push(`${w}: loose is true or false`);
+    if (d.group !== undefined && typeof d.group !== 'string') out.push(`${w}: group is a name`);
+    const f = d.food;
+    if (f !== undefined) {
+      if (!f || typeof f.fills !== 'number' || !(f.fills > 0 && f.fills <= 1)) out.push(`${w}: food fills 0 to 1`);
+      if (!f || !(f.label in loca)) out.push(`${w}: unknown text "${f?.label}"`);
+      if (!f || !(f.yum in loca)) out.push(`${w}: unknown text "${f?.yum}"`);
+    } else if (!(id in loca)) out.push(`${w}: has no name, no text "${id}"`);
+  }
+  return out;
+}
 
 /** A thing tied from what is in the bag: one dragged onto another, the rest anywhere in the bag. */
 export interface Recipe { needs: BagItem[]; makes: BagItem; thought: string }
-export const RECIPES: Recipe[] = [
-  { needs: ['wood', 'stone'], makes: 'spear', thought: 'think.spear' },
-  { needs: ['wood', 'stone', 'vine'], makes: 'axe', thought: 'think.axe' },
-];
+export const RECIPES = recipes as Recipe[];
+
+/** What is wrong with the recipes, as lines; empty when they are fine. */
+export function checkRecipes(list: unknown, loca: object): string[] {
+  if (!Array.isArray(list)) return ['recipes: not a list'];
+  const out: string[] = [];
+  list.forEach((r: any, n: number) => {
+    const w = `recipe ${n + 1}`;
+    if (!r || typeof r !== 'object') return void out.push(`${w}: not an object`);
+    if (!Array.isArray(r.needs) || r.needs.length < 2 || r.needs.some((i: unknown) => !isBagItem(i))) out.push(`${w}: needs two or more known items`);
+    if (!isBagItem(r.makes)) out.push(`${w}: unknown item "${r.makes}"`);
+    else if (Array.isArray(r.needs) && r.needs.includes(r.makes)) out.push(`${w}: makes what it needs`);
+    if (typeof r.thought !== 'string' || !(r.thought in loca)) out.push(`${w}: unknown text "${r.thought}"`);
+  });
+  return out;
+}
 
 /** `from` without one of each of `remove`, in order. */
 export function without<T>(from: readonly T[], remove: readonly T[]): T[] {

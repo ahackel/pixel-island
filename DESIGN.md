@@ -371,7 +371,7 @@ Suggested order: items as data first (it unlocks the pot, flint and every dish a
 
 ## Numbers (now)
 
-From `src/clock.ts` and `src/save.ts`; tune them there.
+From `src/clock.ts`, `src/save.ts` and `src/content/items.json` (what each food fills); tune them there.
 
 - Day: 10 minutes, the last minute of it sunset, then 30 s of dusk.
 - Hunger empties in 15 minutes, energy in 20. Below 25% the survivor walks at half speed; at 0 they faint.
