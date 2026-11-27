@@ -86,7 +86,7 @@ async function pickUp(item, skip = () => false) {
     if (!spots.length) await fail(`no ${item} lying anywhere to pick up`);
     const before = count(s, item);
     const had = [...s.bag];
-    if (tries > 0 && !lone(spots[Math.min(tries, spots.length - 1)])) { await clearAround(spots[Math.min(tries, spots.length - 1)], 1.2); continue; }
+    if (tries > 0 && !lone(spots[Math.min(tries, spots.length - 1)])) await clearAround(spots[Math.min(tries, spots.length - 1)], 1.2, spots[Math.min(tries, spots.length - 1)]);
     await T('hold', null);
     await T('tap', spots[Math.min(tries, spots.length - 1)].i, spots[Math.min(tries, spots.length - 1)].j);
     await idle(`picking up ${item}`);
@@ -118,11 +118,12 @@ async function dump(items) {
   }
   await T('place', s.at.i, s.at.j);
 }
-/** Picks up whatever lies within `r` metres of a spot and puts it out of the way, so a tap on that spot takes what it was meant for. */
-async function clearAround(spot, r = 1.4) {
+/** Picks up whatever lies within `r` metres of a spot (but `keep`) and puts it out of the way, so a tap on that spot takes what it was meant for. */
+async function clearAround(spot, r = 1.4, keep = null) {
   for (let n = 0; n < 8; n++) {
     const s = await S();
-    const near = s.lying.filter((l) => dist(l, spot) < r);
+    // `keep`: the thing a tap is meant for, which stays where it lies.
+    const near = s.lying.filter((l) => dist(l, spot) < r && !(keep && dist(l, keep) < 0.02));
     if (!near.length) return;
     const had = [...s.bag];
     await T('hold', null);
@@ -250,6 +251,8 @@ await step('quest 5, crate: smashed with a stone', async () => {
     await T('hold', 'stone');
     await T('tap', crate.i, crate.j, up);
     await idle('smashing the crate');
+    const after = await S();
+    log(`   crate tap up ${up}: survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, hand ${after.hand}, crates ${after.crates.length}, thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
   await until('the crate smashed and the quest done', (s) => s.quest.done && s.quest.id === 'crate', 8000);
 });
