@@ -15,7 +15,7 @@ import { Actor } from '@pixel/engine/world/actor.ts';
 import { settingsOf, type PlacedPerson } from '@pixel/engine/world/scene.ts';
 import { turnFacing } from '@pixel/engine/core/puppet.ts';
 import { light, lightByTile } from '@pixel/engine/world/daylight.ts';
-import { CLEAR, flashAt, lightning } from '@pixel/engine/world/weather.ts';
+import { CLEAR, flashAt, lightning, type Weather } from '@pixel/engine/world/weather.ts';
 import { kindFor, weatherAt } from './weather.ts';
 import { footOf } from '@pixel/engine/world/island.ts';
 import { emittersOf, halos, particleSystem, Particles, tileHalo } from '@pixel/engine/world/particles.ts';
@@ -1306,7 +1306,7 @@ function frame(ms: number): void {
   }
   requestAnimationFrame(frame);
 }
-/** One frame: the clock, walking, the creatures, drawing the world, and the page around it. */
+/** One frame: the clock, walking, the creatures, the sky, drawing the world, and the page around it, in that order. */
 function step(ms: number): void {
   const begun = performance.now();
   const dt = Math.min(0.1, (ms - last) / 1000);
@@ -1318,6 +1318,17 @@ function step(ms: number): void {
   // Sleep fades out and back in; setting sail fades out for good.
   const fade = ended ? Math.min(1, (ms - ended) / END_FADE) : fadeAt(ms);
 
+  live(dt, ms);
+  walk(dt, ms);
+  stir(dt, ms);
+  const sky = skyNow(ms);
+  const { things, me } = sceneThings(ms, sky.striking);
+  draw(ms, dt, begun, things, me, fade, sky);
+  showPage(ms, fade, sky.weather);
+}
+
+/** The clock and the survivor's needs run while they are up and about (fainting when one runs out); their face shows how they feel. */
+function live(dt: number, ms: number): void {
   if (!paused && !sleeping && !ended && !telling()) {
     time += dt * opts.speed * fast;
     Object.assign(game, drain(game, dt * opts.speed * fast));
@@ -1334,7 +1345,10 @@ function step(ms: number): void {
   feel();
   // The torch's flame flickers with the stump's.
   if (hand === 'fire' && held !== torchAt(ms)) dress();
+}
 
+/** The survivor walks the way planned: ladders climbed, doors opened on the way, what was tapped picked up at the end. */
+function walk(dt: number, ms: number): void {
   let di = 0;
   let dj = 0;
   let run = false;
@@ -1391,7 +1405,10 @@ function step(ms: number): void {
     go();
   }
   throughCave();
+}
 
+/** The island's life: animals fleeing fires, fish and sharks swimming, thrown things landing, crabs coming out on a windy day. */
+function stir(dt: number, ms: number): void {
   if (!paused && !sleeping && !telling() && onIsland()) fleeFire(dt);
   swim(island.fish, island.floor, dt, fishRandom);
   cruise(sharks, island.floor, paused || sleeping ? 0 : dt, fishRandom);
@@ -1403,6 +1420,10 @@ function step(ms: number): void {
     crabsOut++;
   }
   scuttle(crabs, island, paused ? 0 : dt, fishRandom, sleeping || !onIsland() ? null : actor);
+}
+
+/** The weather now and how dark the night is, set on the worlds; and the fire quest's lightning, when it is due. */
+function skyNow(ms: number): { weather: Weather; night: number; flashNow: number; striking: boolean } {
   // Before the survivor is on the island (the menu, the editor, the fade in), a sunny sea, not the last game's weather.
   const weather = !present || editing || sleeping?.intro ? weatherAt('sunny', 'sunny', 0) : weatherAt(kindNow(), kindTomorrow(), time);
   const night = nightfall(time);
@@ -1419,6 +1440,11 @@ function step(ms: number): void {
     strikeNow = false;
     strike();
   }
+  return { weather, night, flashNow, striking };
+}
+
+/** Everything drawn in the scene the survivor is in, the survivor among it (`me`, null before there is one). */
+function sceneThings(ms: number, striking: boolean): { things: Thing[]; me: Thing | null } {
   /** The plants' and props' wind frame, six a second. */
   const windFrame = Math.floor((ms / 1000) * 6) % FRAMES;
   const plants = world.plantThings(windFrame);
@@ -1460,6 +1486,12 @@ function step(ms: number): void {
   // The scene's own walls, those in front of the survivor dissolving as they walk.
   things.push(...world.wallThings(actor, ms));
   things.push(...hutParts, ...(me ? [me, ...actor.dropThings()] : []));
+  return { things, me };
+}
+
+/** Composes the scene, lights it (the cave's lamps, or daylight, weather and lightning) and shows it, with sparks and bursts. */
+function draw(ms: number, dt: number, begun: number, things: Thing[], me: Thing | null, fade: number, sky: ReturnType<typeof skyNow>): void {
+  const { weather, night, flashNow, striking } = sky;
   const rect = view.rect();
   let t0 = part('things', begun);
   const image = world.compose(rect, things, undefined, false, ms);
@@ -1486,8 +1518,10 @@ function step(ms: number): void {
   part('show', t0);
   part('whole frame', begun);
   frameDone();
+}
 
-  // The page around the picture.
+/** The page around the picture: the day and bars, the buttons for what can be done here, the night's veil, the thought bubble. */
+function showPage(ms: number, fade: number, weather: Weather): void {
   const { phase } = phaseAt(time);
   status.draw(t('day', { n: game.day }), phase === 'day' ? 'sun' : phase === 'night' ? 'moon' : 'dusk', game.hunger, game.energy, LOW);
   const away = !!ended || !onIsland();
