@@ -335,6 +335,8 @@ await step('quest 9, axe: a stick, a stone and a vine tied together, four logs c
     const palm = s.palms.filter((p) => p.tall && !p.felled && !p.struck).sort((a, b) => dist(a, s.at) - dist(b, s.at))[0];
     if (!palm) await fail('no tall palm left to cut for the logs');
     await T('tap', palm.i, palm.j, 26); await idle('cutting a palm');
+    const after = await S();
+    log(`   cut try ${n + 1}: palm ${palm.k} at ${palm.i},${palm.j}; survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}; bag ${after.bag.join(',')}; logs lying ${lying(after, 'log').length}; felled ${after.felled.join(',')}; thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
   await until('four logs cut and the quest done', (s) => s.quest.done && s.quest.id === 'axe');
 });

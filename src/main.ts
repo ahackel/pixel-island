@@ -677,10 +677,12 @@ function press(p: { x: number; y: number }, start: boolean): void {
     const lo = game.lying.find((l) => near(p, l, ...(PICK_NEAR[l.item] ?? [6, 2])));
     if (lo) return goTo(lo, false, { loose: lo });
     if (game.hat && near(p, game.hat, 6, 2)) return goTo(game.hat, false, { hat: true });
-    if (near(p, BLANKET, 15, 0)) return goTo(BLANKET, false, { blanket: true });
+    // A crate comes before the blanket: it stands on the ground, and one that washed up beside the blanket would lie wholly
+    // inside the blanket's reach, so that a tap on it only ever walked to the blanket (the playthrough found it so).
     const it = game.items.find((it) => near(p, it, 9, 7));
     // A crate blocks the way, so the goal is the near side of it.
     if (it) return goTo(nearSide(it), false, { item: it });
+    if (near(p, BLANKET, 15, 0)) return goTo(BLANKET, false, { blanket: true });
     // A palm's trunk or crown: walked up to, for its leaves or, with the axe, to cut it down.
     const k = palms.findIndex((q, k) => k !== game.struck && !game.felled.includes(k) && (near(p, q, 6, 8) || near(p, q, 12, 26)));
     if (k >= 0) return goTo(nearSide(palms[k]), false, { palm: k });
