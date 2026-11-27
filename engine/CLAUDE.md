@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 - `npm install`, then `npm run dev` — Vite dev server: start page at `/`, tools at `/tools/wardrobe/`, `/tools/parts/`, `/tools/animals/`, `/tools/props/`, `/tools/objects/`, `/tools/flora/`, `/tools/walls/`, `/tools/particles/`, `/tools/scene/`.
-- `npm run build` — `tsc --noEmit && vite build` into `dist/`; `.github/workflows/pages.yml` publishes it on push to `main`. There is no linter.
+- `npm run build` — `tsc --noEmit` (the engine), `tsc --noEmit -p tests` (the tests, with Node's types) and `vite build` into `dist/`; `.github/workflows/pages.yml` publishes it on push to `main`. There is no linter.
 - `npm test` — `node --test tests/*.test.ts`: unit tests of the plain rules (ground, terrain and water, walls, ways, front rock). Node only strips types, so tested modules must load in plain Node: no `import.meta.glob` on their import chain and no constructor parameter properties or enums. A game runs these with its own tests.
 - `npm run bake` (`scripts/bake.mjs`) — bakes characters and flora into texture atlases with pivots and animations (see `docs/export.md`).
 - `npm run check:turntable` — measures hairstyles, hats and garments across the five drawn views.
