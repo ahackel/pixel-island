@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { advance, checkContent, next, QUESTS, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
+import { advance, checkContent, ITEM_GOALS, knownGoals, next, QUESTS, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
 import { RULES } from './interactions.ts';
 import { LOOSE } from './crafts.ts';
 
@@ -101,4 +101,19 @@ test('the start effects are done in the order written, and weather and stones ar
   assert.equal(weatherOf(undefined), undefined);
   assert.equal(stonesOut(0, [q]), true);
   assert.equal(stonesOut(0, [{ ...q, start: [{ weather: 'fog' }] }]), false);
+});
+
+test('the game reports what happens to items, and the checks know which goals those are', () => {
+  for (const goal of ['got:pot', 'got:fish', 'got:fishSoup', 'ate:coconut', 'ate:fishSoup', 'made:spear', 'made:axe']) assert.ok(ITEM_GOALS.includes(goal), goal);
+  // Only food is eaten, and only what a recipe makes is made by itself.
+  for (const goal of ['ate:stone', 'ate:pot', 'made:pot', 'made:fishSoup']) assert.ok(!ITEM_GOALS.includes(goal), goal);
+  // A rule may reach `made:` of any item (cooking does), and a quest may wait for what rules reach.
+  assert.ok(knownGoals(QUESTS).includes('made:fishSoup'));
+  assert.ok(reportedGoals(RULES).includes('made:fishSoup'));
+  const waits = (goal: string) => checkContent([{ id: 'a', goal, icon: 'pot', thought: 'quest.eat' }], loca, [], REPORTED);
+  assert.deepEqual(waits('got:pot'), []);
+  assert.deepEqual(waits('ate:fishSoup'), []);
+  assert.deepEqual(waits('made:fishSoup'), []);
+  assert.equal(waits('made:pot').length, 1);
+  assert.equal(waits('got:gold').length, 1);
 });

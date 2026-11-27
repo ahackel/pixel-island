@@ -41,11 +41,11 @@ import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { idle, run, type Doer, type Handler } from './effects.ts';
-import { ruleFor, type Condition, type Target } from './interactions.ts';
+import { HAS, hasRule, ruleFor, type StaticCondition, type Target } from './interactions.ts';
 import { advance, KINDS, next, QUESTS, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
-import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, HUT_AT, isLoose, recipeFor, takeFrom, type BagItem, type BuildKind } from './crafts.ts';
+import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
 import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
 import { buildSpot, dropCoconuts, headSide, lay, layStones, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washUp, washWood, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
@@ -279,7 +279,7 @@ function setStyle(e: HTMLElement, name: 'opacity' | 'transform', value: string):
 }
 const app = document.getElementById('app')!;
 
-type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem } | { door: SceneDoor };
+type Pick = { crab: Crab } | { item: PlacedItem } | { stump: true } | { loose: Lying } | { palm: number } | { hat: true } | { blanket: true } | { campfire: Game['fires'][number] } | { torch: PlacedDecor } | { chest: PlacedItem } | { way: PlacedItem } | { door: SceneDoor };
 /** Where the survivor is going: waypoints round what is in the way (ladders climbed on the way), the last one the goal. */
 let target: { way: Waypoint[]; run: boolean; pick?: Pick; replans?: number } | null = null;
 /** How often a way that stalls is planned again from where the survivor stands before it is given up. */
@@ -391,6 +391,8 @@ function make(recipe: ReturnType<typeof recipeFor> & {}): void {
   game.bag.push(recipe.makes);
   hold(recipe.makes);
   think(recipe.thought);
+  reach(`got:${recipe.makes}`);
+  reach(`made:${recipe.makes}`);
 }
 
 const { bubble, dialog, think, thinking, tell, telling, forget, follow } = talkView(app, actor, () => paused);
@@ -546,7 +548,7 @@ if (opts.cheats) {
     }),
     {
       words: 'GIVE',
-      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern', 'key', 'pot', 'flint', 'fishSoup'] as const).map((it) => cheat(it.toUpperCase(), () => {
+      more: (['wood', 'stone', 'spear', 'leaf', 'vine', 'axe', 'rope', 'cloth', 'log', 'fire', 'hammer', 'drift', 'lantern', 'key', 'pot', 'flint', 'fishSoup', 'fish', 'crab'] as const).map((it) => cheat(it.toUpperCase(), () => {
         if (game.bag.length < BAG_SLOTS) game.bag.push(it);
         showBag();
       })),
@@ -666,6 +668,9 @@ function press(p: { x: number; y: number }, start: boolean): void {
     // The burning stump comes first, over coconuts lying under it; it blocks the way like the palm did, so the goal is the near side of it.
     const stump = game.struck === null ? null : palms[game.struck];
     if (stump && near(p, stump, 10, 11)) return goTo(nearSide(stump), false, { stump: true });
+    // A lit campfire, if what is in hand can be done to it (cooking): walked up to.
+    const fire = hasRule('campfire', hand) ? game.fires.find((f) => near(p, f, 8, 5)) : undefined;
+    if (fire) return goTo(nearSide(fire), false, { campfire: fire });
     const lo = game.lying.find((l) => near(p, l, ...(PICK_NEAR[l.item] ?? [6, 2])));
     if (lo) return goTo(lo, false, { loose: lo });
     if (game.hat && near(p, game.hat, 6, 2)) return goTo(game.hat, false, { hat: true });
@@ -700,6 +705,7 @@ function openChest(it: PlacedItem): void {
   if (first) opening.set(it, performance.now());
   actor.emote('use', performance.now());
   showBag();
+  for (const item of took) reach(`got:${item}`);
   if (game.chests[key].length) return think('think.full');
   think(took.length ? 'think.chestLoot' : 'think.chestEmpty');
 }
@@ -907,13 +913,14 @@ function pocket(item: BagItem): void {
   game.bag.push(item);
   actor.emote('use', performance.now());
   showBag();
+  reach(`got:${item}`);
 }
 
 /** What a rule may act on: a crate, a palm's index, driftwood on the ground, or nothing (the stump). */
-type Subject = PlacedItem | number | Lying | null;
+type Subject = PlacedItem | number | Lying | Game['fires'][number] | null;
 
 /** The questions a rule's `when` and `unless` ask. */
-const IS: Record<Condition, (s: Subject) => boolean> = {
+const IS: Record<StaticCondition, (s: Subject) => boolean> = {
   tall: (s) => isTall(palms[s as number]),
   byHut: (s) => byHut(s as Lying),
   wantsFire: () => wantsFire(game),
@@ -945,6 +952,12 @@ const doer = (subject: Subject = null): Doer => ({
   think,
   reach,
   give: pocket,
+  take: (name) => {
+    takeOne(game.bag, name);
+    // Used up what was in the hand: the hand is empty.
+    if (hand && !game.bag.includes(hand)) hold(null);
+    else showBag();
+  },
   full: bagFull,
   call: (h) => DO[h](subject),
   weather: (kind) => void (game.weather = kind),
@@ -955,7 +968,7 @@ const doer = (subject: Subject = null): Doer => ({
 
 /** The hand on a thing: the first rule in content/interactions.json that fits is done. False if none fits. */
 function interact(on: Target, subject: Subject): boolean {
-  const rule = ruleFor(on, hand, (c) => IS[c](subject));
+  const rule = ruleFor(on, hand, (c) => (c.startsWith(HAS) ? holds(game.bag, c.slice(HAS.length)) : IS[c as StaticCondition](subject)));
   if (rule) run(rule.do, doer(subject));
   return !!rule;
 }
@@ -976,7 +989,8 @@ function arrive(pick: Pick): void {
     actor.emote('use', performance.now());
     if (!hand) hold('fire');
     else showBag();
-    return think('think.wallTorch');
+    think('think.wallTorch');
+    return reach('got:fire');
   }
   if ('way' in pick) return takeWay(pick.way);
   if ('door' in pick) return atDoor(pick.door);
@@ -995,6 +1009,7 @@ function arrive(pick: Pick): void {
   // What a hand does to a crate, a palm, the burning stump or driftwood is in content/interactions.json.
   if ('item' in pick) return void interact('crate', pick.item);
   if ('palm' in pick) return void interact('palm', pick.palm);
+  if ('campfire' in pick) return void interact('campfire', pick.campfire);
   if ('stump' in pick) return void interact('stump', null);
   if ('loose' in pick && pick.loose.item === 'drift' && interact('drift', pick.loose)) return;
   if (bagFull()) return think('think.full');
@@ -1014,9 +1029,11 @@ function spear(fish: (typeof island.fish)[number]): void {
   actor.emote('use', performance.now());
   if (bagFull()) return think('think.full');
   island.fish.splice(island.fish.indexOf(fish), 1);
-  game.bag.push(FISH_ITEMS[fish.kind % FISH_ITEMS.length]);
+  const caught = FISH_ITEMS[fish.kind % FISH_ITEMS.length];
+  game.bag.push(caught);
   showBag();
   think('think.caught');
+  reach(`got:${caught}`);
   reach('fish');
 }
 
@@ -1036,6 +1053,7 @@ function catchCrab(crab: Crab): void {
   game.bag.push('crab');
   showBag();
   think('think.caught');
+  reach('got:crab');
   reach('crab');
 }
 
@@ -1120,11 +1138,13 @@ function strike(): void {
 }
 function eat(slot: number): void {
   if (paused || sleeping) return;
-  const food = FOOD[game.bag[slot]]!;
+  const item = game.bag[slot];
+  const food = FOOD[item]!;
   game.bag.splice(slot, 1);
   game.hunger = Math.min(1, game.hunger + food.fills);
   showBag();
   think(food.yum);
+  reach(`ate:${item}`);
   reach('eat');
 }
 

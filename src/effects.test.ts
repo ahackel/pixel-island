@@ -8,7 +8,7 @@ const known = { loca, goals: ['eat', 'open'], items: ['crate', 'vine'] };
 function doing(effects: Effect[], full = false): string[] {
   const log: string[] = [];
   const d: Doer = {
-    think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), full: () => full, call: (h) => log.push(`call ${h}`),
+    think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), take: (n) => log.push(`take ${n}`), full: () => full, call: (h) => log.push(`call ${h}`),
     weather: (k) => log.push(`weather ${k}`), washUp: (items) => log.push(`washUp ${items.join(',')}`), stones: (n) => log.push(`stones ${n}`), strike: () => log.push('strike'),
   };
   run(effects, d);
@@ -16,8 +16,8 @@ function doing(effects: Effect[], full = false): string[] {
 }
 
 test('every kind of effect does what it says, in the order written', () => {
-  const all: Effect[] = [{ think: 'think.crate' }, { reach: 'open' }, { give: 'stone' }, { call: 'fell' }, { weather: 'rain' }, { washUp: ['crate', 'vine'] }, { stones: 3 }, { strike: true }];
-  assert.deepEqual(doing(all), ['think think.crate', 'reach open', 'give stone', 'call fell', 'weather rain', 'washUp crate,vine', 'stones 3', 'strike']);
+  const all: Effect[] = [{ think: 'think.crate' }, { reach: 'open' }, { give: 'stone' }, { take: 'fish' }, { call: 'fell' }, { weather: 'rain' }, { washUp: ['crate', 'vine'] }, { stones: 3 }, { strike: true }];
+  assert.deepEqual(doing(all), ['think think.crate', 'reach open', 'give stone', 'take fish', 'call fell', 'weather rain', 'washUp crate,vine', 'stones 3', 'strike']);
 });
 
 test('room stops the list with the bag-full thought, and only when the bag is full', () => {
@@ -37,16 +37,16 @@ test('the goals a list reaches', () => {
 });
 
 test('what a hand may do and what a quest start may do are told apart', () => {
-  assert.deepEqual(checkEffects([{ think: 'think.crate' }, { reach: 'open' }, { give: 'stone' }, { call: 'fell' }, { room: true }], 'rule', 'r', known), []);
-  assert.deepEqual(checkEffects([{ think: 'think.crate' }, { give: 'stone' }, { call: 'fell' }, { weather: 'rain' }, { washUp: ['crate'] }, { stones: 3 }, { strike: true }], 'start', 's', known), []);
+  assert.deepEqual(checkEffects([{ think: 'think.crate' }, { reach: 'open' }, { give: 'stone' }, { take: 'fish' }, { take: 'coconut' }, { call: 'fell' }, { room: true }], 'rule', 'r', known), []);
+  assert.deepEqual(checkEffects([{ think: 'think.crate' }, { give: 'stone' }, { take: 'stone' }, { call: 'fell' }, { weather: 'rain' }, { washUp: ['crate'] }, { stones: 3 }, { strike: true }], 'start', 's', known), []);
   assert.equal(checkEffects([{ weather: 'rain' }, { stones: 1 }], 'rule', 'r', known).length, 2);
   assert.equal(checkEffects([{ reach: 'open' }, { room: true }], 'start', 's', known).length, 2);
 });
 
 test('bad effects are caught', () => {
-  const bad = checkEffects([{ weather: 'snow' }, { washUp: [] }, { washUp: ['boat'] }, { stones: 11 }, { stones: 1.5 }, { strike: false }, { think: 'nope' }, { reach: 'dance' }, { give: 'gold' }, { call: 'explode' }, { room: 1 }, { think: 'think.crate', reach: 'eat' }, { wave: 1 }, 5], 'start', 's', known);
+  const bad = checkEffects([{ weather: 'snow' }, { washUp: [] }, { washUp: ['boat'] }, { stones: 11 }, { stones: 1.5 }, { strike: false }, { think: 'nope' }, { reach: 'dance' }, { give: 'gold' }, { take: 'gold' }, { call: 'explode' }, { room: 1 }, { think: 'think.crate', reach: 'eat' }, { wave: 1 }, 5], 'start', 's', known);
   // Those not for a quest's start are told so before anything else is checked of them.
-  for (const part of ['weather "snow"', 'wash-up in []', 'wash-up in ["boat"]', 'stones must be 1–10', 'strike is written as true', 'text "nope"', '"reach" is not for a quest', 'item "gold"', 'handler "explode"', '"room" is not for a quest', 'exactly one', 'effect "wave"']) {
+  for (const part of ['weather "snow"', 'wash-up in []', 'wash-up in ["boat"]', 'stones must be 1–10', 'strike is written as true', 'text "nope"', '"reach" is not for a quest', 'item "gold"', 'thing "gold"', 'handler "explode"', '"room" is not for a quest', 'exactly one', 'effect "wave"']) {
     assert.ok(bad.some((l) => l.includes(part)), part);
   }
   assert.deepEqual(checkEffects([], 'rule', 'r', known), ['r: needs a list of effects']);

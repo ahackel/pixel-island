@@ -3,16 +3,20 @@
 // each is a list of effects (effects.ts): a thought, a goal reached, a thing into the bag, or a named handler for what only
 // the game can do (a crate falling apart, a palm cut down). Plain rules, no page or engine code, so the tests can use them.
 import data from './content/interactions.json' with { type: 'json' };
-import { BAG_ITEMS, type BagItem } from './crafts.ts';
+import { BAG_ITEMS, isThing, type BagItem } from './crafts.ts';
 import { checkEffects, type Effect } from './effects.ts';
 
 /** The things in the world a hand can act on. */
-export const TARGETS = ['crate', 'palm', 'stump', 'drift'] as const;
+export const TARGETS = ['crate', 'palm', 'stump', 'drift', 'campfire'] as const;
 export type Target = (typeof TARGETS)[number];
 
 /** What a rule may ask about the thing acted on or the game (answered by main.ts). */
 export const CONDITIONS = ['tall', 'byHut', 'wantsFire'] as const;
-export type Condition = (typeof CONDITIONS)[number];
+export type StaticCondition = (typeof CONDITIONS)[number];
+/** Or `has:<thing>`: the bag holds that item, or any item of that group (`has:fish`). */
+export type Condition = StaticCondition | `has:${string}`;
+export const HAS = 'has:';
+export const isCondition = (c: unknown): c is Condition => CONDITIONS.includes(c as StaticCondition) || (typeof c === 'string' && c.startsWith(HAS) && isThing(c.slice(HAS.length)));
 
 /** What a hand holds: an item, or 'empty'. */
 export type Held = BagItem | 'empty';
@@ -38,6 +42,10 @@ export function ruleFor(on: Target, hand: BagItem | null, is: (c: Condition) => 
   return rules.find((r) => r.on === on && (r.hand === undefined || list(r.hand).includes(held)) && list(r.when).every(is) && !list(r.unless).some(is)) ?? null;
 }
 
+/** Whether any rule for `on` fits a hand holding this (`null`: empty), whatever its conditions say. */
+export const hasRule = (on: Target, hand: BagItem | null, rules: readonly Rule[] = RULES): boolean =>
+  rules.some((r) => r.on === on && (r.hand === undefined || list(r.hand).includes(hand ?? 'empty')));
+
 /** What is wrong with the rules, as lines; empty when they are fine. `loca` is the table of texts, `goals` every goal that exists (see quests.ts). */
 export function checkRules(rules: unknown, loca: object, goals: readonly string[]): string[] {
   const out: string[] = [];
@@ -50,7 +58,7 @@ export function checkRules(rules: unknown, loca: object, goals: readonly string[
     if (!TARGETS.includes(r.on)) out.push(`${w}: unknown target "${r.on}"`);
     for (const h of list<unknown>(r.hand)) if (!HELD.includes(h as string)) out.push(`${w}: unknown hand "${h}"`);
     for (const key of ['when', 'unless'] as const) {
-      for (const c of list<unknown>(r[key])) if (!CONDITIONS.includes(c as Condition)) out.push(`${w}: unknown condition "${c}" in ${key}`);
+      for (const c of list<unknown>(r[key])) if (!isCondition(c)) out.push(`${w}: unknown condition "${c}" in ${key}`);
     }
     out.push(...checkEffects(r.do, 'rule', w, { loca, goals, items: [] }));
     if (out.length === before) {

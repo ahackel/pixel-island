@@ -14,5 +14,8 @@
 
  { "on": "drift", "hand": "fire", "when": "byHut", "do": [{ "call": "lightFire" }, { "think": "think.campfire" }, { "reach": "campfire" }] },
  { "on": "drift", "hand": "fire", "when": "wantsFire", "unless": "byHut", "do": [{ "call": "lightFire" }, { "think": "think.fireFar" }] },
- { "on": "drift", "hand": "fire", "do": [{ "call": "lightFire" }, { "think": "think.campfire" }] }
+ { "on": "drift", "hand": "fire", "do": [{ "call": "lightFire" }, { "think": "think.campfire" }] },
+
+ { "on": "campfire", "hand": "pot", "when": "has:fish", "do": [{ "take": "fish" }, { "give": "fishSoup" }, { "think": "think.soupCooked" }, { "reach": "made:fishSoup" }] },
+ { "on": "campfire", "hand": "pot", "do": [{ "think": "think.potEmpty" }] }
 ]

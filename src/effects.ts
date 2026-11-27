@@ -2,7 +2,7 @@
 // quest as it starts (quests.ts) are both short lists of these effects, done in the order written. What an effect does
 // to the game is main.ts's (the `Doer`); what a list may say, and its checks, are here. Plain rules, no page or engine
 // code, so the tests can use them.
-import { BAG_ITEMS, type BagItem } from './crafts.ts';
+import { BAG_ITEMS, isThing, type BagItem } from './crafts.ts';
 
 /** The weather of a day. */
 export const KINDS = ['sunny', 'cloudy', 'windy', 'fog', 'rain', 'storm'] as const;
@@ -19,6 +19,7 @@ export type Handler = (typeof HANDLERS)[number];
  * - `think`: a thought (a text id).
  * - `reach`: a quest goal reached (a goal is any name; a quest waits for it).
  * - `give`: a thing into the bag.
+ * - `take`: the first thing called so (an item, or a group such as `fish`) out of the bag.
  * - `call`: a named handler (`HANDLERS`).
  * - `room`: stop here, saying so, if the bag is full.
  * - `weather`: the weather that lasts from now.
@@ -30,6 +31,7 @@ export type Effect =
   | { think: string }
   | { reach: string }
   | { give: BagItem }
+  | { take: string }
   | { call: Handler }
   | { room: true }
   | { weather: Kind }
@@ -42,6 +44,7 @@ export interface Doer {
   think(id: string): void;
   reach(goal: string): void;
   give(item: BagItem): void;
+  take(name: string): void;
   /** Whether the bag is full. */
   full(): boolean;
   call(handler: Handler): void;
@@ -53,7 +56,7 @@ export interface Doer {
 
 /** A doer that does nothing: spread it and fill in what matters (`{ ...idle, stones }`). */
 export const idle: Doer = {
-  think() {}, reach() {}, give() {}, full: () => false, call() {}, weather() {}, washUp() {}, stones() {}, strike() {},
+  think() {}, reach() {}, give() {}, take() {}, full: () => false, call() {}, weather() {}, washUp() {}, stones() {}, strike() {},
 };
 
 /** Does effects in order. A `room` effect with a full bag says so and stops there. */
@@ -62,6 +65,7 @@ export function run(effects: readonly Effect[], d: Doer): void {
     if ('think' in e) d.think(e.think);
     else if ('reach' in e) d.reach(e.reach);
     else if ('give' in e) d.give(e.give);
+    else if ('take' in e) d.take(e.take);
     else if ('call' in e) d.call(e.call);
     else if ('weather' in e) d.weather(e.weather);
     else if ('washUp' in e) d.washUp(e.washUp);
@@ -77,10 +81,10 @@ export const goalsOf = (effects: readonly Effect[]): string[] => effects.flatMap
 /** Where a list stands, which says what it may use: a hand on a thing (`rule`), or a quest as it starts (`start`). */
 export type Where = 'rule' | 'start';
 const ALLOWED: Record<Where, readonly string[]> = {
-  rule: ['think', 'reach', 'give', 'call', 'room'],
-  start: ['think', 'give', 'call', 'weather', 'washUp', 'stones', 'strike'],
+  rule: ['think', 'reach', 'give', 'take', 'call', 'room'],
+  start: ['think', 'give', 'take', 'call', 'weather', 'washUp', 'stones', 'strike'],
 };
-const ALL = ['think', 'reach', 'give', 'call', 'room', 'weather', 'washUp', 'stones', 'strike'];
+const ALL = ['think', 'reach', 'give', 'take', 'call', 'room', 'weather', 'washUp', 'stones', 'strike'];
 const NAMES: Record<Where, string> = { rule: 'an interaction', start: "a quest's start" };
 
 /** What a list's effects may name: the texts, the goals that exist, and the items the sea may wash up. */
@@ -101,6 +105,7 @@ export function checkEffects(effects: unknown, where: Where, label: string, know
     if (key === 'think' && !(typeof v === 'string' && LOCA_ID.test(v) && v in known.loca)) out.push(`${x}: unknown text "${v}"`);
     else if (key === 'reach' && !known.goals.includes(v)) out.push(`${x}: unknown goal "${v}"`);
     else if (key === 'give' && !BAG_ITEMS.includes(v)) out.push(`${x}: unknown item "${v}"`);
+    else if (key === 'take' && !isThing(v)) out.push(`${x}: unknown thing "${v}"`);
     else if (key === 'call' && !HANDLERS.includes(v)) out.push(`${x}: unknown handler "${v}"`);
     else if (key === 'room' && v !== true) out.push(`${x}: room is written as true`);
     else if (key === 'weather' && !KINDS.includes(v)) out.push(`${x}: unknown weather "${v}"`);

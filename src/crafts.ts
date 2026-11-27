@@ -29,6 +29,20 @@ export type Loose = BagItem;
 export const FISH_ITEMS = BAG_ITEMS.filter((k) => DEFS[k].group === 'fish');
 export type Fish = BagItem;
 
+/** The groups items belong to. */
+export const GROUPS = [...new Set(BAG_ITEMS.flatMap((k) => (DEFS[k].group ? [DEFS[k].group] : [])))] as string[];
+/** Whether `name`, an item or a group, names `item`: "fish" is the fish and every kind of fish. */
+export const isA = (item: BagItem, name: string): boolean => item === name || DEFS[item].group === name;
+/** Whether `name` is an item or a group. */
+export const isThing = (name: unknown): name is string => typeof name === 'string' && (isBagItem(name) || GROUPS.includes(name));
+/** Whether the bag holds a thing called `name` (an item or a group). */
+export const holds = (bag: readonly BagItem[], name: string): boolean => bag.some((item) => isA(item, name));
+/** Takes the first thing called `name` (an item or a group) out of the bag, in place; says which, or null if there is none. */
+export function takeOne(bag: BagItem[], name: string): BagItem | null {
+  const k = bag.findIndex((item) => isA(item, name));
+  return k < 0 ? null : bag.splice(k, 1)[0];
+}
+
 export const FOOD: Partial<Record<BagItem, Food>> = Object.fromEntries(BAG_ITEMS.flatMap((k) => (DEFS[k].food ? [[k, DEFS[k].food]] : [])));
 /** What a bag slot says (a text id): how to eat it if it is food, else the thing's name. */
 export const bagWords = (item: BagItem): string => FOOD[item]?.label ?? item;

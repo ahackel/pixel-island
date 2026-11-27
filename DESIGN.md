@@ -354,14 +354,14 @@ What the draft showed is missing, most useful first:
 | Gap | What the draft needed | The way to close it |
 |---|---|---|
 | **Items are code** | a pot, flint, fish soup | **Done.** `content/items.json` (loose, fish group, food values) and `content/recipes.json`, checked by the tests; `BagItem` is the file's keys, so a missing picture is a type error. The pot, flint and fish soup exist (pictures in `things.ts`, texts in `loca.json`, the cheats' GIVE row). A quest's corner picture is any item's picture or one of three extras, so the closed icon list is gone |
-| **Events keyed by item** | a quest "get the pot", "cook fish soup" | the game reports `got:<item>` when a thing goes into the bag, `made:<item>` when a recipe or cooking makes one, `ate:<item>` when it is eaten; the check knows these patterns |
-| **Things to act on** | a lit campfire (cooking: pot in hand, fish in the bag), a person | more targets in `interactions.ts` (`campfire`, `person` with a `who`), the way `crate` and `palm` are now |
-| **Conditions with a value** | "the bag holds a fish" | `has:<item>` beside `tall`, `byHut`, `wantsFire`; an item group for "any fish" (`FISH_ITEMS`) |
-| **Effects** | using up what is in the hand, a person turning up, talking | `take`, `show` (a person placed hidden in the scene appears) and `talk` (starts a dialogue) |
+| **Events keyed by item** | a quest "get the pot", "cook fish soup" | **Done.** The game reports `got:<item>` (into the bag), `ate:<item>` and `made:<item>` (a recipe); a rule may `reach` `made:` of anything, as cooking does. The checks know these goals |
+| **Things to act on** | a lit campfire (cooking), a person | **Campfire done:** the `campfire` target, which a tap walks up to only if a rule fits what is in hand (so a campfire is still just a walk for any other hand). `person` with a `who` is still to do, with the smuggler scene |
+| **Conditions with a value** | "the bag holds a fish" | **Done:** `has:<item or group>` (`has:fish` is any fish) beside `tall`, `byHut`, `wantsFire` |
+| **Effects** | using up what is in the hand, a person turning up, talking | `take` is **done** (an item or a group out of the bag). `show` (a person placed hidden in the scene appears) and `talk` (starts a dialogue) wait for the smuggler scene |
 | **Dialogue** | the smuggler's first words | a graph of nodes in `dialogues.json`: each says one text, then offers 2–3 replies, goes on, or ends, and a node's `do` is the same effects. `src/island2-draft.test.ts` already checks one (texts exist, every reply goes somewhere, every node is reachable). The UI is `talk.ts`'s story box with reply buttons. Ink only if the branching outgrows this |
 | **Island scoping** | Island 2's own quest chain and rules | each island a bundle in `content/islands/<id>/` (quests, interactions, dialogues, texts); `QUESTS` becomes the current island's, and a save says which island it is on. `byHut` and `HUT_AT` are the first island's, and become scene markers |
 
-Suggested order: items as data (done; it unlocked the pot, flint and every dish after it), then the item events and the new targets, conditions and effects (all small, all tested like the rest), then island bundles, and the dialogue UI last, once the smuggler scene is there to try it in.
+Suggested order: items as data and the item events, `campfire`, `has:` and `take` (all done: the pot cooks fish soup at a lit campfire in the real game, rules in `interactions.json`), then island bundles, and the dialogue UI last, once the smuggler scene is there to try it in.
 
 ## Survivor
 

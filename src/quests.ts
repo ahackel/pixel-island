@@ -3,7 +3,7 @@
 // done before its quest. A finished quest hands over to the next one the following morning, or at once if the next
 // says `now`, or in the night before if it says `night`. Plain data and rules, no page or engine code, so the tests can use it.
 import data from './content/quests.json' with { type: 'json' };
-import { isBagItem, type BagItem } from './crafts.ts';
+import { BAG_ITEMS, FOOD, isBagItem, RECIPES, type BagItem } from './crafts.ts';
 import { checkEffects, goalsOf, KINDS, LOCA_ID, type Effect, type Kind } from './effects.ts';
 
 export { KINDS, type Kind };
@@ -74,10 +74,18 @@ export const weatherOf = (q: Quest | undefined): Kind | undefined => q?.start?.f
 /** Whether a quest that brings stones has started: then a stone is always to be found. */
 export const stonesOut = (quest: number, quests: readonly Quest[] = QUESTS) => quests.slice(0, quest + 1).some((q) => q.start?.some((e) => 'stones' in e));
 
-/** Every goal something reports: the game's own, and those interaction rules reach. */
-export const reportedGoals = (rules: readonly { do: readonly Effect[] }[]): string[] => [...CODE_GOALS, ...rules.flatMap((r) => goalsOf(r.do))];
+/**
+ * The goals the game reports of items by itself: `got:<item>` when a thing goes into the bag, `ate:<item>` when food is
+ * eaten, and `made:<item>` when a recipe makes one (a rule may reach `made:` of its own, as cooking does).
+ */
+export const ITEM_GOALS = [...BAG_ITEMS.map((i) => `got:${i}`), ...BAG_ITEMS.filter((i) => FOOD[i]).map((i) => `ate:${i}`), ...RECIPES.map((r) => `made:${r.makes}`)];
+
+/** Every goal something reports: the game's own, those about items, and those interaction rules reach. */
+export const reportedGoals = (rules: readonly { do: readonly Effect[] }[]): string[] => [...CODE_GOALS, ...ITEM_GOALS, ...rules.flatMap((r) => goalsOf(r.do))];
 /** Every goal a quest waits for. */
 export const wantedGoals = (quests: readonly Quest[]): string[] => quests.map((q) => q.goal);
+/** Every goal a rule may reach: all those the game reports, `made:` of any item (cooking), and those quests wait for. */
+export const knownGoals = (quests: readonly Quest[]): string[] => [...CODE_GOALS, ...ITEM_GOALS, ...BAG_ITEMS.map((i) => `made:${i}`), ...wantedGoals(quests)];
 
 /** A text in every language, by id. A missing language falls back to English. */
 export type Loca = Record<string, { en: string; de?: string }>;

@@ -1,19 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { checkRules, ruleFor, RULES, type Condition, type Rule } from './interactions.ts';
+import { checkRules, hasRule, ruleFor, RULES, type Condition, type Rule } from './interactions.ts';
 import { HANDLERS, idle, run, type Doer } from './effects.ts';
-import { CODE_GOALS, QUESTS, wantedGoals } from './quests.ts';
+import { knownGoals, QUESTS } from './quests.ts';
 import type { BagItem } from './crafts.ts';
 
 /** Every goal that exists: the game's own, and those quests wait for. */
-const GOALS = [...CODE_GOALS, ...wantedGoals(QUESTS)];
+const GOALS = knownGoals(QUESTS);
 
 const none = () => false;
 /** What a rule does, as a list of lines. `full`: the bag has no room. */
 function doing(rule: Rule, full = false): string[] {
   const log: string[] = [];
-  const d: Doer = { ...idle, think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), full: () => full, call: (h) => log.push(`call ${h}`) };
+  const d: Doer = { ...idle, think: (id) => log.push(`think ${id}`), reach: (g) => log.push(`reach ${g}`), give: (i) => log.push(`give ${i}`), take: (n) => log.push(`take ${n}`), full: () => full, call: (h) => log.push(`call ${h}`) };
   run(rule.do, d);
   return log;
 }
@@ -106,4 +106,31 @@ test('driftwood with a torch: a campfire, which counts only by the hut and says 
   // Without a torch it is picked up like any loose thing: no rule.
   assert.equal(on('drift', null), null);
   assert.equal(on('drift', 'wood'), null);
+});
+
+test('cooking: the pot on a lit campfire makes fish soup from a fish, else says what is missing', () => {
+  assert.deepEqual(on('campfire', 'pot', ['has:fish']), ['take fish', 'give fishSoup', 'think think.soupCooked', 'reach made:fishSoup']);
+  assert.deepEqual(on('campfire', 'pot'), ['think think.potEmpty']);
+  // No other hand does anything to a campfire, so a tap on one is only a walk (see hasRule).
+  for (const hand of ['fish', 'wood', 'fire', 'stone', null] as const) assert.equal(on('campfire', hand, ['has:fish']), null);
+});
+
+test('hasRule: a hand has a rule for a target whatever its conditions say, so the game knows a tap is for it', () => {
+  assert.equal(hasRule('campfire', 'pot'), true);
+  assert.equal(hasRule('campfire', null), false);
+  assert.equal(hasRule('campfire', 'fish'), false);
+  assert.equal(hasRule('crate', null), true);
+  const rules: Rule[] = [{ on: 'campfire', do: [{ think: 'think.crate' }] }];
+  assert.equal(hasRule('campfire', null, rules), true);
+  assert.equal(hasRule('palm', null, rules), false);
+});
+
+test('has: conditions name an item or a group, and an unknown one is caught', () => {
+  const rule = (when: unknown) => checkRules([{ on: 'campfire', hand: 'pot', when, do: [{ think: 'think.crate' }] }], loca, GOALS);
+  assert.deepEqual(rule('has:fish'), []);
+  assert.deepEqual(rule('has:coconut'), []);
+  assert.deepEqual(rule(['has:fish', 'wantsFire']), []);
+  assert.equal(rule('has:gold').length, 1);
+  assert.equal(rule('has:').length, 1);
+  assert.equal(rule('hasfish').length, 1);
 });

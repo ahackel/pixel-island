@@ -498,5 +498,13 @@
  "think.yumSoup": {
   "en": "Warm, salty and filling. Wonderful.",
   "de": "Warm, salzig und sättigend. Herrlich."
+ },
+ "think.soupCooked": {
+  "en": "Fish soup! It smells wonderful.",
+  "de": "Fischsuppe! Das riecht wunderbar."
+ },
+ "think.potEmpty": {
+  "en": "An empty pot isn’t much of a meal. I need a fish.",
+  "de": "Ein leerer Topf ist kein Essen. Ich brauche einen Fisch."
  }
 }

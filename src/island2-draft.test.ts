@@ -11,7 +11,7 @@ import rules2 from './content/drafts/island2/interactions.json' with { type: 'js
 import dialogues2 from './content/drafts/island2/dialogues.json' with { type: 'json' };
 import { checkEffects, type Known } from './effects.ts';
 import { checkRules, RULES } from './interactions.ts';
-import { checkContent, CODE_GOALS, reportedGoals, wantedGoals } from './quests.ts';
+import { checkContent, knownGoals, reportedGoals } from './quests.ts';
 import { LOOSE } from './crafts.ts';
 
 const texts = { ...loca, ...loca2 };
@@ -20,19 +20,11 @@ const rules = rules2 as any[];
 
 /** What the game cannot do yet, as the checks say it: one line each, grouped by what is missing. */
 const GAPS = [
-  // Events keyed by item (got:pot) are not reported by anything; only what main.ts calls reach for, or a rule reaches, is.
-  'quest 1: nothing reports the goal "got:pot"',
   // A person to meet: no way to bring one into the scene, to act on one, or to talk (and `talked:` is reached only inside the dialogue).
   'quest 3, effect 1: unknown effect "show"',
-  'interaction 4: unknown target "person"',
-  'interaction 4, effect 1: unknown effect "talk"',
+  'interaction 2: unknown target "person"',
+  'interaction 2, effect 1: unknown effect "talk"',
   'quest 3: nothing reports the goal "talked:smuggler"',
-  // Cooking: a lit campfire is not a thing a hand can act on, "the bag holds a fish" is not a condition, and a hand's item cannot be used up.
-  'interaction 1: unknown target "campfire"',
-  'interaction 2: unknown target "campfire"',
-  'interaction 3: unknown target "campfire"',
-  'interaction 1: unknown condition "has:fish" in when',
-  'interaction 1, effect 1: unknown effect "take"',
   // A quest's corner picture is an item's or one of a few extras (pictures.ts); there is none yet for talking.
   'quest 3: unknown icon "talk"',
 ];
@@ -41,7 +33,7 @@ test('the Island 2 draft needs exactly what the game cannot do yet', () => {
   const goals = reportedGoals([...RULES, ...rules]);
   const found = [
     ...checkContent(quests, texts, ['crate', ...LOOSE], goals),
-    ...checkRules(rules, texts, [...CODE_GOALS, ...wantedGoals(quests)]),
+    ...checkRules(rules, texts, knownGoals(quests)),
   ];
   assert.deepEqual([...found].sort(), [...GAPS].sort());
 });
@@ -82,7 +74,7 @@ function checkDialogue(id: string, d: Dialogue, known: Known): string[] {
 }
 
 test('the draft dialogue is well formed, with effects checked like any other', () => {
-  const known: Known = { loca: texts, goals: [...CODE_GOALS, ...wantedGoals(quests)], items: [] };
+  const known: Known = { loca: texts, goals: knownGoals(quests), items: [] };
   for (const [id, d] of Object.entries(dialogues2)) assert.deepEqual(checkDialogue(id, d as Dialogue, known), []);
 });
 

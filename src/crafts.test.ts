@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
 import items from './content/items.json' with { type: 'json' };
-import { bagWords, BAG_ITEMS, BUILDS, checkItems, checkRecipes, FISH_ITEMS, FOOD, HUT_PLAN, lacking, LOOSE, partsOf, RECIPES, recipeFor, recipeOnto, takeFrom, type BagItem } from './crafts.ts';
+import { bagWords, BAG_ITEMS, BUILDS, checkItems, checkRecipes, FISH_ITEMS, FOOD, GROUPS, holds, HUT_PLAN, isA, isThing, lacking, LOOSE, takeOne, partsOf, RECIPES, recipeFor, recipeOnto, takeFrom, type BagItem } from './crafts.ts';
 import { LOOT } from '@pixel/engine/world/loot.ts';
 
 test('every thing the scene editor can put in a chest is a bag item', () => {
@@ -83,4 +83,21 @@ test('bad items and recipes are caught', () => {
   const worse = checkRecipes([{ needs: ['wood'], makes: 'gold', thought: 'nope' }, { needs: ['wood', 'stone'], makes: 'wood', thought: 'think.spear' }, 4], loca);
   for (const part of ['two or more', 'unknown item "gold"', 'unknown text "nope"', 'makes what it needs', 'not an object']) assert.ok(worse.some((l) => l.includes(part)), part);
   assert.deepEqual(checkRecipes({}, loca), ['recipes: not a list']);
+});
+
+test('an item is called by its own name or its group: "fish" is every kind of fish', () => {
+  assert.deepEqual(GROUPS, ['fish']);
+  assert.ok(isA('wrasse', 'fish') && isA('fish', 'fish') && isA('wrasse', 'wrasse'));
+  assert.ok(!isA('crab', 'fish') && !isA('wrasse', 'snapper'));
+  assert.ok(isThing('fish') && isThing('pot') && !isThing('gold') && !isThing(3));
+  assert.ok(holds(['stone', 'snapper'], 'fish') && holds(['stone', 'snapper'], 'snapper') && !holds(['stone', 'snapper'], 'wrasse') && !holds([], 'fish'));
+});
+
+test('taking a thing out of the bag takes the first, by item or group, and says which', () => {
+  const bag: BagItem[] = ['stone', 'wrasse', 'fish', 'pot'];
+  assert.equal(takeOne(bag, 'fish'), 'wrasse');
+  assert.deepEqual(bag, ['stone', 'fish', 'pot']);
+  assert.equal(takeOne(bag, 'pot'), 'pot');
+  assert.equal(takeOne(bag, 'crab'), null);
+  assert.deepEqual(bag, ['stone', 'fish']);
 });
