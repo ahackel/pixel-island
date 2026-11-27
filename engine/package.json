@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "bake": "node scripts/bake.mjs",
     "check:turntable": "node scripts/turntable-check.mjs",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test": "node --test tests/*.test.ts"
   },
   "devDependencies": {
     "pngjs": "^7.0.0",

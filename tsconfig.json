@@ -14,5 +14,5 @@
     "resolveJsonModule": true,
     "paths": { "@pixel/*": ["./engine/*"] }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "engine/tests", "vite.config.ts"]
 }

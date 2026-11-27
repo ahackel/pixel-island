@@ -2,8 +2,8 @@
 // beside it keeps its own height and walls stand on the floor, not on the rock.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cornersOf, heightAt, isLand, isRock, ROCK_LEVEL, setLevel, type HeightMap } from '../engine/engine/world/terrain.ts';
-import { endHeights } from '../engine/engine/world/building/building.ts';
+import { cornersOf, heightAt, isLand, isRock, ROCK_LEVEL, setLevel, type HeightMap } from '../engine/world/terrain.ts';
+import { endHeights } from '../engine/world/building/building.ts';
 
 const FLOOR = 3;
 /** A cave of rows of text: `#` rock, `.` floor at FLOOR, and rock beyond the map. */

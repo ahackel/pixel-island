@@ -2,8 +2,8 @@
 // behind it dissolves while it stands in front of the survivor near that floor, a whole joined mass at a time, and holds.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FADE_MS, FRONT, RockFade, rockView, STANDS } from '../engine/engine/world/front-rock.ts';
-import { BRICK, ROCK_LEVEL, type HeightMap } from '../engine/engine/world/terrain.ts';
+import { FADE_MS, FRONT, RockFade, rockView, STANDS } from '../engine/world/front-rock.ts';
+import { BRICK, ROCK_LEVEL, type HeightMap } from '../engine/world/terrain.ts';
 
 /** A cave of rows: `#` rock, `.` floor at level 3. */
 const cave = (...rows: string[]): HeightMap => ({
