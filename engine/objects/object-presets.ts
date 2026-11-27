@@ -163,6 +163,19 @@ export const OBJECT_PRESETS: { id: string; name: string; prop: Build }[] = [
     box(3, 0, 3, 10, 2, 10, 'bark'), box(3, 6, 3, 10, 2, 10, 'bark'),
     box(3, 0, 3, 2, 8, 2, 'bark'), box(11, 0, 3, 2, 8, 2, 'bark'), box(3, 0, 11, 2, 8, 2, 'bark'), box(11, 0, 11, 2, 8, 2, 'bark'),
   ]) },
+  // A ladder against a cave wall (the back, -z, at turn 0): two rails and a rung every 6 px, a person high.
+  { id: 'ladder', name: 'Ladder', prop: make('furniture', 1, 1, [
+    box(3, 0, 1, 2, 42, 2, 'wood'), box(11, 0, 1, 2, 42, 2, 'wood'),
+    ...[3, 9, 15, 21, 27, 33, 39].map((y) => box(5, y, 1, 6, 1, 2, 'bark')),
+  ]) },
+  // A hole in the floor: a dark pit in a ring of stone (the pit first, so the ring shows round it), the top of a ladder
+  // standing out of it at the back.
+  { id: 'hole', name: 'Hole with ladder', prop: make('furniture', 1, 1, [
+    cyl(3, 0, 3, 10, 3, 10, 'black', { paint: 'dark' }),
+    cyl(1, 0, 1, 14, 3, 14, 'stone'),
+    box(5, 1, 3, 1, 14, 1, 'wood'), box(10, 1, 3, 1, 14, 1, 'wood'),
+    box(6, 6, 3, 4, 1, 1, 'bark'), box(6, 11, 3, 4, 1, 1, 'bark'),
+  ]) },
   { id: 'chest', name: 'Treasure chest', prop: chest(chestLid) },
   { id: 'hay', name: 'Hay', prop: make('furniture', 1, 1, [
     box(2, 0, 3, 12, 9, 10, 'straw'),

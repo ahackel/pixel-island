@@ -5,26 +5,6 @@
   height: 288px;
 }
 
-/* Four variants of the chosen plant, as small pictures in one row. */
-.variants {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-.variant {
-  display: grid;
-  place-items: center;
-  height: 52px;
-  padding: 2px;
-  border: 2px solid transparent;
-  background: var(--sand);
-  min-width: 0;
-  overflow: hidden;
-}
-.variant[aria-checked='true'] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
-}
 .card__picture {
   overflow: hidden;
 }
@@ -60,13 +40,6 @@
 .recipe__status[data-kind='error'] {
   color: #b3262d;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .recipe__status[data-kind='warn'] { color: #e0b060; }
-  :root:not([data-theme='light']) .recipe__status[data-kind='error'] { color: #ff8a8a; }
-}
-:root[data-theme='dark'] .recipe__status[data-kind='warn'] { color: #e0b060; }
-:root[data-theme='dark'] .recipe__status[data-kind='error'] { color: #ff8a8a; }
-
 /* The island, in its own tab. */
 .scene__frame {
   display: grid;

@@ -1,0 +1,6 @@
+{
+  // The tests run in Node, so they get Node's types; the engine itself (../tsconfig.json) is browser code and does not.
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["."]
+}

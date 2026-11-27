@@ -3,6 +3,9 @@
 // A tool only declares its tabs, preview rows and what Shuffle does.
 import './ui.css';
 import { currentLang, LANGS, setLang, type Lang } from './lang.ts';
+import { choice, field, header, sidebarButton, slider as pixelSlider, textField, section as pixelSection, toggle as pixelToggle, pixelButton, type Option as Pick } from '../ui/components.ts';
+import { TOOLS, toolHref, type ToolId } from './tools.ts';
+import { textWidth } from './pixel-font.ts';
 
 // ------------------------------------------------------------------ elements
 
@@ -142,71 +145,27 @@ export function icon(name: IconName): SVGSVGElement {
   return svg;
 }
 
-// ------------------------------------------------------------------ flags
-
-const FLAGS: Record<Lang, string> = {
-  en: '<clipPath id="flag-uk-t"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><path d="M0 0h60v30H0z" fill="#012169"/><path d="M0 0l60 30M60 0L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30M60 0L0 30" clip-path="url(#flag-uk-t)" stroke="#c8102e" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#c8102e" stroke-width="6"/>',
-  de: '<path d="M0 0h60v10H0z" fill="#000"/><path d="M0 10h60v10H0z" fill="#dd0000"/><path d="M0 20h60v10H0z" fill="#ffce00"/>',
-};
-/** A small flag for a language: the Union Jack for English, the German flag for German. */
-export function flag(lang: Lang): SVGSVGElement {
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 60 30');
-  svg.setAttribute('class', 'flag');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.innerHTML = FLAGS[lang];
-  return svg;
-}
-
 // ------------------------------------------------------------------ shell words
 
 const WORDS = {
   en: {
-    tools: 'Tools', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', parts: 'Parts',
-    animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
+    tools: 'Tools', saveAsk: 'Save your changes to the project before leaving?', save: 'Save', dontSave: "Don't save", cancel: 'Cancel', sidebar: 'Side panel', inspector: 'Inspector', home: 'Home', wardrobe: 'Wardrobe', animals: 'Animals', objects: 'Objects', flora: 'Flora', scene: 'Scene', props: 'Props', walls: 'Walls', particles: 'Particles', parts: 'Parts',
+    icons: 'Icons', ui: 'Interface', animate: 'Animate', about: 'About this tool', more: 'More', undo: 'Undo', redo: 'Redo', shuffle: 'Shuffle all', language: 'Language', preview: 'Preview',
     name: 'Name', rollName: 'Roll a name', picture: 'Save a picture', rollTab: 'Shuffle this tab', lock: 'Keep this tab when shuffling all',
-    pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones',
+    pickStart: 'Pick a start', pickStartHint: 'You can change everything after.', close: 'Close', rollThree: 'Roll three new ones', search: 'Search', nothing: 'Nothing matches',
   },
   de: {
-    tools: 'Werkzeuge', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', parts: 'Teile',
-    animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
+    tools: 'Werkzeuge', saveAsk: 'Änderungen vor dem Verlassen im Projekt speichern?', save: 'Speichern', dontSave: 'Nicht speichern', cancel: 'Abbrechen', sidebar: 'Seitenleiste', inspector: 'Inspektor', home: 'Start', wardrobe: 'Garderobe', animals: 'Tiere', objects: 'Objekte', flora: 'Flora', scene: 'Szene', props: 'Requisiten', walls: 'Wände', particles: 'Partikel', parts: 'Teile',
+    icons: 'Symbole', ui: 'Oberfläche', animate: 'Bewegen', about: 'Über dieses Werkzeug', more: 'Mehr', undo: 'Rückgängig', redo: 'Wiederholen', shuffle: 'Alles würfeln', language: 'Sprache', preview: 'Vorschau',
     name: 'Name', rollName: 'Namen würfeln', picture: 'Bild speichern', rollTab: 'Diesen Reiter würfeln', lock: 'Beim Würfeln behalten',
-    pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln',
+    pickStart: 'Wähle einen Anfang', pickStartHint: 'Danach kannst du alles ändern.', close: 'Schließen', rollThree: 'Drei neue würfeln', search: 'Suchen', nothing: 'Nichts passt',
   },
 } satisfies Record<Lang, Record<string, string>>;
 export const word = (key: keyof typeof WORDS.en): string => WORDS[currentLang()][key];
 
-export type ToolId = 'home' | 'wardrobe' | 'parts' | 'animals' | 'props' | 'objects' | 'flora' | 'walls' | 'scene';
-const TOOLS: { id: ToolId; href: string; icon: IconName }[] = [
-  { id: 'home', href: '../../', icon: 'home' },
-  { id: 'wardrobe', href: '../wardrobe/', icon: 'shirt' },
-  { id: 'parts', href: '../parts/', icon: 'scissors' },
-  { id: 'animals', href: '../animals/', icon: 'paw' },
-  { id: 'props', href: '../props/', icon: 'props' },
-  { id: 'objects', href: '../objects/', icon: 'armchair' },
-  { id: 'flora', href: '../flora/', icon: 'sprout' },
-  { id: 'walls', href: '../walls/', icon: 'wall' },
-  { id: 'scene', href: '../scene/', icon: 'mountain' },
-];
+export { type ToolId } from './tools.ts';
 
-// ------------------------------------------------------------------ popovers
-
-/** Opens `pop` under `anchor` with the native popover: outside taps and Escape close it. */
-export function attachPopover(anchor: HTMLElement, pop: HTMLElement): void {
-  pop.popover = 'auto';
-  pop.id ||= `pop-${Math.random().toString(36).slice(2)}`;
-  anchor.setAttribute('aria-haspopup', 'true');
-  anchor.setAttribute('aria-expanded', 'false');
-  anchor.addEventListener('click', () => pop.togglePopover());
-  pop.addEventListener('toggle', (event) => {
-    const open = (event as ToggleEvent).newState === 'open';
-    anchor.setAttribute('aria-expanded', String(open));
-    if (!open) return;
-    const r = anchor.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 6}px`;
-    pop.style.left = `${Math.max(10, Math.min(r.left, window.innerWidth - pop.offsetWidth - 10))}px`;
-  });
-}
+// ------------------------------------------------------------------ menu items
 
 export interface MenuItem {
   label: string;
@@ -214,18 +173,10 @@ export interface MenuItem {
   run: () => void;
   danger?: boolean;
   disabled?: boolean;
-}
-export function menu(label: string, items: MenuItem[]): HTMLElement {
-  const pop = h('div', { class: 'pop', role: 'menu', 'aria-label': label });
-  for (const item of items) {
-    const b = button({ class: item.danger ? 'mi mi--danger' : 'mi', role: 'menuitem' }, () => {
-      pop.hidePopover();
-      item.run();
-    }, icon(item.icon), item.label);
-    b.disabled = !!item.disabled;
-    pop.append(b);
-  }
-  return pop;
+  /** A main action (save): a button in the bar instead of an item in the menu. */
+  main?: boolean;
+  /** For a main action: whether there is anything to save (greys the button) and a way to save, asked about on leaving. */
+  track?: { unsaved: () => boolean; saveNow: () => Promise<boolean> };
 }
 
 // ------------------------------------------------------------------ top bar
@@ -234,9 +185,17 @@ export interface TopBar {
   tool: ToolId;
   title: string;
   about: string[];
+  /** The name of the thing being edited, a text field right after the page's icon. */
+  name?: Node;
+  /** Whether the tool has a left panel: adds the button that shows or hides it. */
+  sidebar?: boolean;
+  /** Whether the tool has a right panel (the inspector): adds the button that shows or hides it. */
+  inspector?: boolean;
   /** The "My things" picker, if the tool keeps a list. */
   things?: Node;
   more: MenuItem[];
+  /** Buttons for actions on the whole thing (new, duplicate), in their own group of the bar. */
+  actions?: MenuItem[];
   status: HTMLElement;
   undo?: () => void;
   redo?: () => void;
@@ -249,42 +208,16 @@ export interface TopBar {
 export function topBar(o: TopBar): { bar: HTMLElement; undo: HTMLButtonElement | null; redo: HTMLButtonElement | null; pops: HTMLElement[] } {
   // F2 goes to where the dev server starts: the game when a game serves the tools, else the start page.
   if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (location.href = '/'));
-  const me = TOOLS.find((x) => x.id === o.tool)!;
-  const switcher = h('button', { type: 'button', class: 'switch', 'aria-label': `${o.title}, ${word('tools')}` },
-    h('span', { class: 'switch__icon' }, icon(me.icon)), h('h1', {}, o.title), icon('chevron'));
-  const tools = h('nav', { class: 'pop', 'aria-label': word('tools') },
-    // Links are written from a tool's folder; the start page sits one level up.
-    ...TOOLS.map((x) => h('a', { class: 'mi', href: o.tool === 'home' ? x.href.replace('../', './') : x.href, ...(x.id === o.tool ? { 'aria-current': 'page' } : {}) }, icon(x.icon), word(x.id))));
-  attachPopover(switcher, tools);
-
-  const info = h('button', { type: 'button', class: 'ib bar__info', 'aria-label': word('about'), title: word('about') }, icon('info'));
-  const about = h('div', { class: 'pop pop--text', role: 'dialog', 'aria-label': word('about') }, ...o.about.map((p) => h('p', {}, p)));
-  attachPopover(info, about);
-
-  const moreButton = h('button', { type: 'button', class: 'ib bar__more', 'aria-label': word('more'), title: word('more') }, icon('more'));
-  const more = menu(word('more'), o.more);
-  attachPopover(moreButton, more);
-
-  const undo = o.undo ? button({ class: 'ib', 'aria-label': word('undo'), title: word('undo') }, o.undo, icon('undo')) : null;
-  const redo = o.redo ? button({ class: 'ib', 'aria-label': word('redo'), title: word('redo') }, o.redo, icon('redo')) : null;
-  const me2 = LANGS.find((l) => l.id === currentLang())!;
-  const langButton = h('button', { type: 'button', class: 'lang bar__langs', 'aria-label': `${word('language')}: ${me2.name}`, title: word('language') }, flag(me2.id), icon('chevron'));
-  const langMenu = h('div', { class: 'pop', role: 'menu', 'aria-label': word('language') },
-    ...LANGS.map((l) => button({ class: 'mi', role: 'menuitemradio', 'aria-checked': String(l.id === me2.id), lang: l.id }, () => {
-      langMenu.hidePopover();
-      if (l.id === currentLang()) return;
-      setLang(l.id);
-      o.relabel();
-    }, flag(l.id), l.name)));
-  attachPopover(langButton, langMenu);
-
-  const bar = h('header', { class: 'bar' },
-    switcher, info, h('span', { class: 'bar__sep' }), o.things, moreButton, o.status, h('span', { class: 'bar__break' }),
-    h('span', { class: 'bar__spacer' }), undo, redo,
-    o.shuffle && button({ class: 'btn', title: word('shuffle') }, o.shuffle, icon('die'), h('span', { class: 'btn__label' }, word('shuffle'))),
-    o.extra, langButton,
-  );
-  return { bar, undo, redo, pops: [tools, about, more, langMenu] };
+  const tools = TOOLS.map((x) => ({ ...x, name: word(x.id as keyof typeof WORDS.en), href: toolHref(x.id) }));
+  const { bar, undo, redo } = header({
+    tools, tool: o.tool, about: o.about, name: o.name, sidebar: o.sidebar ? sidebarButton(word('sidebar')) : undefined, inspector: o.inspector ? sidebarButton(word('inspector'), 'right') : undefined, status: o.status, things: o.things, undo: o.undo, redo: o.redo, shuffle: o.shuffle, extra: o.extra,
+    more: o.more.filter((m) => !m.main).map((m) => ({ icon: m.icon, label: m.label, on: m.run, danger: m.danger, disabled: m.disabled })),
+    actions: o.actions?.map((m) => ({ icon: m.icon, label: m.label, on: m.run, disabled: m.disabled })),
+    save: o.more.filter((m) => m.main).map((m) => ({ label: m.label, on: m.run, disabled: m.disabled, ...m.track }))[0],
+    languages: { current: currentLang(), ids: LANGS.map((l) => l.id), pick: (id) => { setLang(id as Lang); o.relabel(); } },
+    labels: { about: word('about'), more: word('more'), undo: word('undo'), redo: word('redo'), shuffle: word('shuffle'), language: word('language'), tools: word('tools'), saveAsk: word('saveAsk'), save: word('save'), dontSave: word('dontSave'), cancel: word('cancel') },
+  });
+  return { bar, undo, redo, pops: [] };
 }
 
 // ------------------------------------------------------------------ inspector parts
@@ -294,44 +227,83 @@ export interface Option<T extends string> {
   label: string;
   icon?: IconName;
 }
-/** A pick-one row: one segmented bar on one line. Icon options show their label as a tooltip. */
-export function segmented<T extends string>(label: string, options: Option<T>[], value: T, pick: (id: T) => void, className = 'seg'): HTMLElement {
-  return h('div', { class: className, role: 'radiogroup', 'aria-label': label },
-    ...options.map((o) => button({ role: 'radio', 'aria-checked': String(o.id === value), ...(o.icon ? { 'aria-label': o.label, title: o.label } : {}) }, () => pick(o.id), o.icon ? icon(o.icon) : o.label)));
+
+/** The pixel icon of the library for an old shell icon name; none: the words are shown instead. */
+const PIXEL_ICON: Partial<Record<string, string>> = {
+  shirt: 'clothes', body: 'body', face: 'face', scissors: 'scissors', paw: 'paw', props: 'tool', armchair: 'chair', sprout: 'sprout',
+  wall: 'wall', mountain: 'mountain', grid: 'grid', home: 'home', pencil: 'pencil', eye: 'eye', sun: 'sun', moon: 'moon', lock: 'lock', unlock: 'unlock',
+  turnRight: 'redo', turnLeft: 'undo', shapes: 'shapes', sliders: 'sliders', palette: 'palette', spots: 'spots', ear: 'ear', tail: 'tail', box: 'box', pin: 'pin',
+  palm: 'palm', grass: 'grass', cactus: 'cactus', leaf: 'leaf', rock: 'rock', driftwood: 'driftwood', camera: 'camera', die: 'dice', plus: 'plus', trash: 'trash',
+  eraser: 'eraser', line: 'line', male: 'male', female: 'female',
+};
+/** A label shortened for pixel text (it is hard to read at length): up to a colon or bracket, else its first two words. The full label stays the tooltip. */
+const brief = (label: string): string => {
+  const head = label.split(/[:(]/)[0].trim();
+  return head.length <= 14 ? head : head.split(/\s+/).slice(0, 2).join(' ');
+};
+const asPick = <T extends string>(o: Option<T>): Pick => ({ id: o.id, icon: o.icon && PIXEL_ICON[o.icon], words: brief(o.label) });
+
+/** A pick-one row: the pixel `choice` with all options in a row. Options without a pixel icon show their words. */
+export function segmented<T extends string>(label: string, options: Option<T>[], value: T, pick: (id: T) => void, _className = 'seg'): HTMLElement {
+  let current: string = value;
+  return choice(label, options.map(asPick), () => current, (id) => { current = id; pick(id as T); }, 'buttons');
 }
 
-/** A labelled inspector row. `value` is shown under the label, for sliders and icon rows. */
+/** A labelled inspector row: its name, then the control; the value (if any) after the control. */
 export function row(label: string, control: Node, value?: string | HTMLElement): HTMLElement {
-  return h('div', { class: 'row' }, h('span', { class: 'row__label' }, label, value !== undefined && (typeof value === 'string' ? h('b', {}, value) : value)), control);
+  const shown = value === undefined ? control : h('span', { class: 'urow' }, control, typeof value === 'string' ? h('b', {}, value) : value);
+  return field({ words: brief(label), tip: label }, shown);
 }
 
-/** A collapsible section; it remembers being closed for this visit. */
+/** A foldable section of the pixel kit; it remembers being closed for this visit. Consecutive rows line up in one grid. */
 const closed = new Set<string>();
 export function section(title: string, ...children: Child[]): HTMLElement {
-  const details = h('details', { class: 'sec' }, h('summary', {}, title), h('div', { class: 'sec__body' }, ...children));
-  details.open = !closed.has(title);
-  details.addEventListener('toggle', () => (details.open ? closed.delete(title) : closed.add(title)));
-  return details;
+  const nodes: Node[] = [];
+  let grid: HTMLElement | null = null;
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    if (typeof c !== 'string' && c instanceof HTMLElement && c.classList.contains('note')) continue; // pixel pages say little: notes live in the about popup
+    const node = typeof c === 'string' ? document.createTextNode(c) : c;
+    if (node instanceof HTMLElement && node.classList.contains('ufield')) {
+      if (!grid) { grid = h('div', { class: 'ufields' }); nodes.push(grid); }
+      grid.append(node);
+    } else { grid = null; nodes.push(node); }
+  }
+  return pixelSection({ words: brief(title), tip: title }, nodes, !closed.has(title), (open) => (open ? closed.delete(title) : closed.add(title)));
 }
 
-/** A plain checkbox with its label, for on/off settings such as whether the preview moves. */
-export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLLabelElement {
-  const input = h('input', { type: 'checkbox' });
-  input.checked = checked;
-  input.addEventListener('change', () => change(input.checked));
-  return h('label', { class: 'check' }, input, label);
+/**
+ * A drop-in for `<input type="range">` (give it the same attributes: min, max, step, value, aria-label) drawn as the pixel
+ * slider. Its `value` is a string like the input's, and it fires `input` while dragged and `change` on release.
+ */
+export function rangeInput(attrs: Record<string, string>): HTMLElement & { value: string } {
+  const min = Number(attrs.min ?? 0), max = Number(attrs.max ?? 100), step = Number(attrs.step ?? 1);
+  let current = Number(attrs.value ?? min);
+  const wrap = h('span', { class: 'urange' }) as HTMLElement & { value: string };
+  const build = () => wrap.replaceChildren(pixelSlider(attrs['aria-label'] ?? '', (current - min) / (max - min || 1), (n) => {
+    const next = Number((Math.round((min + n * (max - min) - min) / step) * step + min).toFixed(6));
+    if (next === current) return;
+    current = next;
+    wrap.dispatchEvent(new Event('input'));
+  }, 40, undefined, () => wrap.dispatchEvent(new Event('change'))));
+  Object.defineProperty(wrap, 'value', { get: () => String(current), set: (v: string) => { if (Number(v) === current) return; current = Number(v); build(); } });
+  build();
+  return wrap;
+}
+
+/** An on/off setting: a button lit while on. */
+export function checkbox(label: string, checked: boolean, change: (on: boolean) => void): HTMLElement {
+  return pixelToggle(label, { words: brief(label) }, checked, change);
 }
 
 export function toggle(label: string, pressed: boolean, flip: () => void): HTMLButtonElement {
-  return button({ class: 'toggle', 'aria-pressed': String(pressed) }, flip, label);
+  return pixelButton(label, { words: brief(label), pressed }, flip);
 }
 
-/** Icon tabs with the current tab's name on the right. */
-export function tabs<T extends string>(label: string, list: Option<T>[], current: T, choose: (id: T) => void, locked: ReadonlySet<T> = new Set(), tools: Node[] = []): HTMLElement {
-  const name = list.find((x) => x.id === current)?.label ?? '';
-  return h('nav', { class: 'tabs', role: 'tablist', 'aria-label': label },
-    ...list.map((x) => button({ class: locked.has(x.id) ? 'tab tab--locked' : 'tab', role: 'tab', 'aria-selected': String(x.id === current), 'aria-label': x.label, title: x.label }, () => choose(x.id), icon(x.icon ?? 'more'))),
-    h('span', { class: 'tabs__name', 'aria-hidden': 'true' }, name), ...tools);
+/** Tabs: the pixel `choice` of icon buttons (words where the library has no icon yet), then the tab's tools. */
+export function tabs<T extends string>(label: string, list: Option<T>[], current: T, choose: (id: T) => void, _locked: ReadonlySet<T> = new Set(), tools: Node[] = []): HTMLElement {
+  const wrap = h('div', { class: 'urow' }, segmented(label, list, current, choose), ...tools);
+  return wrap;
 }
 
 // ------------------------------------------------------------------ undo
@@ -354,30 +326,6 @@ export function undoKeys(undo: () => void, redo: () => void): void {
   });
 }
 
-/** A sideways swipe on the stage turns the subject one side per swipe. */
-export function dragToTurn(el: HTMLElement, turn: (step: 1 | -1) => void): void {
-  // Every 24 pixels dragged sideways turns one step, while the drag goes on.
-  const STEP = 24;
-  let x0: number | null = null;
-  el.style.touchAction = 'pan-y';
-  el.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button, input, [contenteditable]')) return;
-    x0 = e.clientX;
-    el.setPointerCapture(e.pointerId);
-  });
-  el.addEventListener('pointermove', (e) => {
-    if (x0 === null) return;
-    while (Math.abs(e.clientX - x0) >= STEP) {
-      const step = e.clientX > x0 ? 1 : -1;
-      turn(step);
-      x0 += step * STEP;
-    }
-  });
-  const end = () => (x0 = null);
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-}
-
 // ------------------------------------------------------------------ small joys
 
 /** Friendly names that read the same in English and German. */
@@ -394,27 +342,21 @@ export function cheer(stage: HTMLElement): void {
 }
 
 /**
- * The name on the stage: type to rename, or roll a random one. `rename` gets the new name when
+ * The name of the thing being edited, in the top bar: type to rename. `rename` gets the new name when
  * editing ends, so a half-typed name is not saved.
  */
 export function nameTag(): { el: HTMLElement; set: (name: string, placeholder: string) => void; onRename: (fn: (name: string) => void) => void } {
-  const input = h('input', { type: 'text', class: 'name__input', 'aria-label': word('name'), maxlength: '40', enterkeyhint: 'done' });
+  const el = h('div', { class: 'name' });
   let rename: (name: string) => void = () => {};
-  const done = () => {
-    const name = input.value.trim();
-    if (name) rename(name);
-  };
-  input.addEventListener('change', done);
-  input.addEventListener('keydown', (e) => e.key === 'Enter' && input.blur());
-  const roll = button({ class: 'name__roll', 'aria-label': word('rollName'), title: word('rollName') }, () => {
-    input.value = pick(NAMES.filter((n) => n !== input.value));
-    done();
-  }, icon('die'));
   return {
-    el: h('div', { class: 'name' }, input, roll),
+    el,
+    // A pixel text field; redrawn on every set, so typing in it is not interrupted by a render only when it has focus.
     set: (name, placeholder) => {
-      if (document.activeElement !== input) input.value = name;
-      input.placeholder = placeholder;
+      if (el.contains(document.activeElement)) return;
+      el.replaceChildren(textField(word('name'), name, () => {}, {
+        placeholder, width: Math.min(120, Math.max(30, textWidth((name || placeholder).toUpperCase()) + 8)), flat: true,
+        done: (v) => { if (v.trim()) rename(v.trim()); },
+      }));
     },
     onRename: (fn) => (rename = fn),
   };
@@ -435,14 +377,14 @@ export function savePicture(canvas: HTMLCanvasElement, name: string, scale = 8):
 }
 
 export function snapButton(take: () => void): HTMLButtonElement {
-  return button({ class: 'stage__button', 'aria-label': word('picture'), title: word('picture') }, take, icon('camera'));
+  return pixelButton(word('picture'), { icon: 'camera' }, take);
 }
 
 /** Die and lock beside the tab name: shuffle only this tab, or keep it when shuffling all. */
 export function tabTools(roll: () => void, locked = false, toggleLock?: () => void): Node[] {
   return [
-    button({ class: 'ib', 'aria-label': word('rollTab'), title: word('rollTab') }, roll, icon('die')),
-    toggleLock ? button({ class: 'ib', 'aria-pressed': String(locked), 'aria-label': word('lock'), title: word('lock') }, toggleLock, icon(locked ? 'lock' : 'unlock')) : null,
+    pixelButton(word('rollTab'), { icon: 'dice' }, roll),
+    toggleLock ? pixelButton(word('lock'), { icon: locked ? 'lock' : 'unlock', pressed: locked }, toggleLock) : null,
   ].filter((n): n is HTMLButtonElement => !!n);
 }
 

@@ -63,12 +63,37 @@ export function light(image: { data: Uint8ClampedArray; width?: number }, t: Tin
   const d = image.data;
   const w = image.width ?? 0;
   const lit = w > 0 && t.amount > 0 ? lamps.map((l) => ({ ...l, c: l.color ? rgb(l.color) : LAMP })) : [];
-  for (let k = 0; k < d.length; k += 4) {
-    if (d[k + 3] === GLOW_ALPHA) continue;
-    let r = fr, g = fg, b = fb;
-    if (lit.length) {
-      const x = (k >> 2) % w, y = Math.floor((k >> 2) / w);
-      for (const l of lit) {
+  // Whole pixels as 32-bit words, to pass over black and glowing ones in one read.
+  const px = new Uint32Array(d.buffer, d.byteOffset, d.length >> 2);
+  const rows = lit.length ? px.length / w : 1, cols = lit.length ? w : px.length;
+  // Away from every lamp each channel is multiplied alike: a table of the 256 values per channel, rounded as the picture
+  // rounds, lights such a pixel with one write.
+  const table = new Uint8ClampedArray(768);
+  for (let c = 0; c < 256; c++) table[c] = c * fr, table[256 + c] = c * fg, table[512 + c] = c * fb;
+  // The lamps whose patch a row crosses: with a little to spare for rounding, as the exact test below decides.
+  const near: typeof lit = [];
+  for (let y = 0; y < rows; y++) {
+    near.length = 0;
+    // And the span of the row they can reach: a pixel outside it is lit by the table.
+    let from = Infinity, to = -Infinity;
+    for (const l of lit) {
+      const across = l.r * l.r * 1.0001 - ((y - l.y) * 1.6) ** 2;
+      if (across <= 0) continue;
+      near.push(l);
+      from = Math.min(from, l.x - Math.sqrt(across) - 1);
+      to = Math.max(to, l.x + Math.sqrt(across) + 1);
+    }
+    for (let x = 0, p = y * cols; x < cols; x++, p++) {
+      const v = px[p];
+      // Black stays black, and glowing pixels keep their own light.
+      if (!(v & 0xffffff) || v >>> 24 === GLOW_ALPHA) continue;
+      if (x < from || x > to) {
+        // Little-endian: the red byte is the lowest.
+        px[p] = (v & 0xff000000) | (table[512 + ((v >>> 16) & 255)] << 16) | (table[256 + ((v >>> 8) & 255)] << 8) | table[v & 255];
+        continue;
+      }
+      let r = fr, g = fg, b = fb;
+      for (const l of near) {
         const q = 1 - ((x - l.x) ** 2 + ((y - l.y) * 1.6) ** 2) / (l.r * l.r);
         if (q <= 0) continue;
         // The patch's edge falls off softly; at its middle, nearly day, a touch of the lamp's colour.
@@ -77,17 +102,28 @@ export function light(image: { data: Uint8ClampedArray; width?: number }, t: Tin
         g += (keep * (l.c[1] / 255) - g) * e;
         b += (keep * (l.c[2] / 255) - b) * e;
       }
+      const k = p * 4;
+      d[k] *= r;
+      d[k + 1] *= g;
+      d[k + 2] *= b;
     }
-    d[k] *= r;
-    d[k + 1] *= g;
-    d[k + 2] *= b;
   }
+}
+
+/** Whether a lamp of a light field is in reach of a spot in a straight line, with a little to spare for rounding. */
+function inReach(lamps: TileLight['lamps'], si: number, sj: number): boolean {
+  for (let k = 0; k < lamps.length; k++) {
+    const l = lamps[k], di = si - l.i, dj = sj - l.j;
+    if (di * di + dj * dj <= l.r * l.r * 1.0001) return true;
+  }
+  return false;
 }
 
 /**
  * Lights a picture like `light`, but the lamps' light comes from a light field (`World.lightField`): each pixel is
  * lifted by the light at its spot on the map (`World.spots`), by its distance to each lamp plus the detour round walls,
- * so light stops at walls and a thing is lit as one by the light where it stands. Pixels with no spot take the tint.
+ * so light stops at walls and a thing is lit as one by the light where it stands. Pixels with no spot take the tint, but
+ * with `field.outside` (daylight beyond the map) those and the ones off the map keep their colour.
  */
 export function lightByTile(
   image: { data: Uint8ClampedArray; width?: number },
@@ -101,14 +137,28 @@ export function lightByTile(
   const fg = (1 - t.amount + (t.amount * t.g) / 255) * keep;
   const fb = (1 - t.amount + (t.amount * t.b) / 255) * keep;
   const d = image.data;
-  const { w, h, open, lamps } = field;
+  const { w, h, open, lamps, outside } = field;
   const cells = [0, 0, 0, 0], weights = [0, 0, 0, 0];
-  for (let p = 0; p < d.length >> 2; p++) {
+  // A thing's pixels all take its spot: the light worked out for one serves the run of them after it.
+  let lastI = NaN, lastJ = NaN, lastR = fr, lastG = fg, lastB = fb;
+  // Whole pixels as 32-bit words, to pass over black (most of a cave seen from afar) and glowing ones in one read.
+  const px = new Uint32Array(d.buffer, d.byteOffset, d.length >> 2);
+  for (let p = 0; p < px.length; p++) {
+    const v = px[p];
+    // Black stays black, and glowing pixels keep their own light.
+    if (!(v & 0xffffff) || v >>> 24 === GLOW_ALPHA) continue;
     const o = p * 4;
-    if (d[o + 3] === GLOW_ALPHA) continue;
     let r = fr, g = fg, b = fb;
     const si = spots.i[p], sj = spots.j[p];
-    if (si === si && lamps.length) {
+    // With daylight beyond the map, what lies off it (the open sea) is only faded.
+    if (outside && !(si >= 0 && sj >= 0 && si < w && sj < h)) {
+      d[o] *= keep; d[o + 1] *= keep; d[o + 2] *= keep;
+      continue;
+    }
+    if (si === lastI && sj === lastJ) {
+      r = lastR; g = lastG; b = lastB;
+    } else if (si === si && inReach(lamps, si, sj)) {
+      // Only where some lamp is in reach in a straight line (see below), with a little to spare for rounding.
       // The open cells among the four whose middles are round the spot, and how much each counts.
       const fi = si - 0.5, fj = sj - 0.5;
       const i0 = Math.floor(fi), j0 = Math.floor(fj);
@@ -124,9 +174,15 @@ export function lightByTile(
         // Lamps add up as light does, each pulling the colour toward its own by how much it gives.
         let dark = 1, lk = 0, lr = 0, lg = 0, lb = 0;
         for (const lamp of lamps) {
+          // The detour only adds: out of a lamp's reach in a straight line is out of it. Squared first, with a little to
+          // spare for rounding, as hypot is slow; the exact test after it decides.
+          const di = si - lamp.i, dj = sj - lamp.j;
+          if (di * di + dj * dj > lamp.r * lamp.r * 1.0001) continue;
+          const straight = Math.hypot(di, dj);
+          if (straight >= lamp.r) continue;
           let detour = 0;
           for (let c = 0; c < n; c++) detour += lamp.detour[cells[c]] * weights[c];
-          const dist = Math.hypot(si - lamp.i, sj - lamp.j) + detour / sum;
+          const dist = straight + detour / sum;
           if (dist >= lamp.r) continue;
           const q = 1 - dist / lamp.r;
           const v = lamp.amount * q * q * (3 - 2 * q);
@@ -140,6 +196,7 @@ export function lightByTile(
           b += (keep * (lb / lk / 255) - b) * e;
         }
       }
+      lastI = si; lastJ = sj; lastR = r; lastG = g; lastB = b;
     }
     d[o] *= r;
     d[o + 1] *= g;

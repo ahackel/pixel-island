@@ -1,39 +1,8 @@
-/* The props tool: library | stage | panel. */
-/* Doubled class: the shared stylesheet loads after this one. */
-.shell__main.props__main { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(320px, 420px); }
-.props__library { display: flex; flex-direction: column; min-height: 0; }
-.props__libhead { display: grid; gap: 8px; padding: 12px 12px 4px; }
-.props__searchrow { display: flex; align-items: center; gap: 6px; }
-.props__searchrow .icon { width: 18px; height: 18px; flex: none; }
-.props__search { width: 100%; min-height: 34px; padding: 4px 10px; border: 2px solid var(--fg); border-radius: 8px; font: inherit; background: var(--panel, #fff); }
-.props__chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.props__chip { padding: 2px 8px; font-size: 12px; min-height: 26px; }
-.props__chipsep { width: 100%; height: 0; }
-.props__grid .card { position: relative; }
-.props__badges { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; }
-.props__badge { font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 8px; background: #0001; line-height: 16px; display: inline-flex; align-items: center; }
-.props__badge .icon { width: 11px; height: 11px; }
-.props__badge--painted { background: #f7d6e4; }
-.props__badge--grown { background: #d4ecc8; }
-.props__badge--built { background: #d8e3f3; }
-.props__badge--locked { background: #ffe9a8; }
+/* The props tool: library | stage | panel, on a workspace. */
 .stage.props__stage { min-height: 46vh; }
 .props__under { flex: none; }
-.props__ring { position: relative; width: 168px; height: 168px; margin: 8px auto; border-radius: 50%; border: 2px dashed #0002; }
-.props__dir {
-  position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px; border-radius: 50%; padding: 0;
-  border: 2px solid var(--fg); background: var(--panel, #fff); font-weight: 700; font-size: 13px;
-  transform: rotate(var(--a)) translateY(-66px) rotate(calc(-1 * var(--a)));
-}
-.props__dir--shared { opacity: 0.45; }
-.props__dir--mirror { font-style: italic; background: #e8eef9; }
-.props__dir[aria-checked='true'] { background: var(--accent); color: #fff; }
-.props__stagetools { justify-content: center; flex-wrap: wrap; }
 .props__feature { display: grid; gap: 0; margin-bottom: 6px; }
 .props__feature .note { margin: 0 0 0 26px; }
 .props__recipe { width: 100%; min-height: 320px; font: 12px/1.4 ui-monospace, Menlo, monospace; border: 2px solid var(--fg); border-radius: 8px; padding: 8px; resize: vertical; }
 .props__subtabs { padding: 4px 0 8px; }
 .props__freeze { margin-top: 8px; }
-@media (max-width: 1023px) {
-  .shell__main.props__main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
-}

@@ -1,0 +1,130 @@
+/* The pixel interface's own CSS: nearly everything is drawn into canvases; this only places them. */
+/* `--ui-paper` is a button's colour; `--ui-panel` the slightly darker ground of panels, popups and the header, so buttons stand out (theme.ts `C`). */
+:root { --ui-paper: #f6ecd2; --ui-panel: #e9dcb9; }
+.pbtn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
+.pbtn:disabled { cursor: default; opacity: 0.5; }
+/* Pressed or toggled on: a button with a shadow moves one pixel down onto it (the shadow row is cut off while held). A flat one has no shadow, so it stays as it is. */
+.pbtn--on:not(.pbtn--flat) canvas, .pbtn:not(.pbtn--flat):not(:disabled):not([aria-disabled='true']):active canvas { transform: translateY(4px); }
+.pbtn:not(.pbtn--flat):not(:disabled):active canvas { clip-path: inset(0 0 4px 0); }
+canvas { image-rendering: pixelated; }
+
+/* A box for DOM content with the pixel look: a corner pixel cut off all round and a shadow line under it. */
+.ubox { --s: 4px; filter: drop-shadow(0 var(--s) 0 #00000040); }
+.ubox__in {
+  background: var(--ui-panel); color: #2b1d12; padding: calc(var(--s) * 3);
+  clip-path: polygon(var(--s) 0, calc(100% - var(--s)) 0, calc(100% - var(--s)) var(--s), 100% var(--s), 100% calc(100% - var(--s)), calc(100% - var(--s)) calc(100% - var(--s)),
+    calc(100% - var(--s)) 100%, var(--s) 100%, var(--s) calc(100% - var(--s)), 0 calc(100% - var(--s)), 0 var(--s), var(--s) var(--s));
+}
+.urow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.upage { margin: 0; min-height: 100dvh; background: #8cc3c9; font-family: 'Pixelify Sans', ui-monospace, monospace; }
+.upage__main { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; padding: 16px; max-width: 960px; margin: 0 auto; }
+.upage input { font: inherit; font-size: 16px; padding: 6px 8px; border: 0; background: #e2d3ae; color: #2b1d12; width: 12ch; }
+.ucell { margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 120px; padding: 8px 0 16px; }
+.ubar { display: block; line-height: 0; touch-action: none; cursor: pointer; }
+.uchooser { position: relative; display: block; line-height: 0; }
+.uchooser__half { position: absolute; top: 0; bottom: 4px; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
+.uchooser__prev { left: 0; }
+.uchooser__next { right: 0; }
+.uchooser__half:active { background: #2b1d1222; }
+.uslider { display: inline-flex; align-items: center; gap: 8px; }
+.upopwrap { position: relative; display: inline-block; }
+.upop { position: fixed; z-index: 150; width: max-content; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; }
+.ufield { display: flex; align-items: center; gap: 12px; }
+.uname { display: block; min-width: var(--name-w, 0); line-height: 0; }
+.usection { display: grid; gap: 8px; }
+.usection__body { display: grid; gap: 8px; justify-items: start; }
+.upage__main > header { flex-basis: 100%; }
+.uslider { touch-action: none; cursor: pointer; line-height: 0; }
+.uslider__track { display: block; }
+.urange { display: inline-block; touch-action: none; cursor: pointer; line-height: 0; }
+.urange__track { display: block; }
+.ufields { display: grid; grid-template-columns: max-content max-content; align-items: center; gap: 8px 12px; }
+.ufields > .ufield { display: contents; }
+.ugroup { position: relative; display: block; line-height: 0; }
+.ugroup__seg { position: absolute; top: 0; bottom: 4px; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
+.ugroup__seg:active { background: #2b1d1222; }
+.unumber { position: relative; display: block; line-height: 0; }
+.unumber__grab { position: absolute; left: 0; top: 0; bottom: 4px; cursor: ew-resize; touch-action: none; }
+.unumber__value { position: absolute; right: 0; top: 0; bottom: 4px; padding: 0; border: 0; background: none; cursor: text; }
+.unumber__input { position: absolute; right: 0; top: 0; bottom: 4px; width: auto; box-sizing: border-box; font: inherit; font-size: 16px; border: 0; background: #f6ecd2; color: #2b1d12; text-align: right; padding: 0 8px; outline: none; }
+.ucomp { flex-basis: 100%; display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 16px; padding: 12px 0; }
+.ucomp__name { line-height: 0; }
+
+/* The header of the tool pages: a paper bar with the controls left and right. */
+.uheader { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 4px 12px; background: var(--ui-panel); box-shadow: 0 4px 0 #00000040; position: relative; z-index: 5; }
+.uheader > .urow { flex-wrap: nowrap; }
+.uheader__lang { margin-left: 16px; }
+.uheader .name { position: static; }
+.udivider { flex: none; width: 4px; height: 36px; background: #cdbb8c; }
+.udivider:has(+ :empty), .udivider:last-child { display: none; }
+.uabout { width: min(60ch, 70vw); font: 500 14px/1.4 'Pixelify Sans', ui-monospace, monospace; }
+.uabout p { margin: 0 0 8px; } .uabout p:last-child { margin: 0; }
+.uheader .bar__status { font: 500 14px 'Pixelify Sans', ui-monospace, monospace; color: #2b1d12; }
+
+/* The icon editor: a full-height library panel on the left (drag its right edge), the work area beside it. */
+.upage--fill { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+.uworkspace { flex: 1; min-height: 0; display: flex; overflow: hidden; background: #8cc3c9; }
+/* The header's side panel button hides every left panel. */
+.uside-off-left .uside--left, .uside-off-right .uside--right { display: none; }
+/* A side panel: full height, content in its body, a grip on the inner edge. */
+.uside { position: relative; flex: none; display: flex; flex-direction: column; padding: 12px; background: var(--ui-panel); min-width: 0; z-index: 2; }
+.uside--left { box-shadow: 4px 0 0 #00000040; }
+.uside--right { box-shadow: -4px 0 0 #00000040; }
+.uside__body { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto; }
+.uside__list { overflow-y: auto; align-content: flex-start; flex: 1; min-height: 0; gap: 8px; }
+.uside__grip { position: absolute; top: 0; bottom: 0; width: 12px; cursor: col-resize; touch-action: none; z-index: 3; }
+.uside--left .uside__grip { right: -6px; }
+.uside--right .uside__grip { left: -6px; }
+.uside__grip:hover { background: #2b1d1222; }
+/* The work area between the panels: the thing being edited, its tools floating below. */
+.uwork { flex: 1; min-width: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: safe center; gap: 16px; }
+
+/* The search field: drawn on the raster; the input over it is transparent, it only takes the typing. */
+.usearch { position: relative; display: block; width: 100%; min-width: 0; overflow: hidden; line-height: 0; }
+.usearch .usearch__input { position: absolute; top: 0; height: calc(13 * 4px); border: 0; padding: 0; background: none; color: transparent; caret-color: transparent; font: inherit; font-size: 16px; outline: none; width: auto; }
+.usearch__clear { position: absolute; top: 0; right: 0; width: calc(11 * 4px); height: calc(13 * 4px); padding: 0; border: 0; background: none; cursor: pointer; }
+
+/* Tiles to pick from, a frame for a preview, the confirm box and the toast. */
+.utiles { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+.utile { display: block; padding: 0; border: 0; background: none; cursor: pointer; filter: drop-shadow(0 4px 0 #00000040); }
+.utile__in { position: relative; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 64px; height: 64px; padding: 6px; overflow: hidden; background: #f6ecd2; line-height: 0;
+  clip-path: polygon(4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px), 0 4px, 4px 4px); }
+.utile--on .utile__in { background: #e8862a; }
+/* In the library the tiles are pictures alone on the panel: no paper, no shadow; the chosen one keeps its orange. */
+.ulibrary .utile { filter: none; }
+.ulibrary .utile:not(.utile--on) .utile__in { background: none; }
+.utile__mark { position: absolute; right: 4px; bottom: 4px; }
+.utoggle { display: inline-block; }
+.uform__title { margin-bottom: 12px; line-height: 0; }
+.umodal .ubox__in { display: grid; gap: 12px; justify-items: start; min-width: 240px; }
+.uturn { position: absolute; bottom: 10px; }
+.uturn--left { left: 10px; }
+.uturn--right { right: 10px; }
+/* The options of a preview, a column at its top right. */
+.uview { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.uframe { position: relative; display: block; }
+.uframe__tag { position: absolute; left: 8px; top: 8px; }
+.uframe__tools { position: absolute; right: 8px; top: 8px; }
+.umodal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #2b1d1280; }
+.umodal__text { margin: 0 0 12px; max-width: 36ch; font: 500 16px/1.4 'Pixelify Sans', ui-monospace, monospace; }
+.utoast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; font: 500 16px 'Pixelify Sans', ui-monospace, monospace; }
+.utile__in > canvas, .utile__in > img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
+
+/* A workspace stacks on a phone: the middle first, then the panels one under the other, the page scrolling. */
+.uwork .stage { width: min(100%, 560px); flex: none; }
+@media (max-width: 699px) {
+  .uworkspace { flex-direction: column; overflow: visible; }
+  .uside { width: auto !important; flex: none; box-shadow: 0 4px 0 #00000040; }
+  .uside__grip { display: none; }
+  .uside__body, .uside__list { overflow: visible; }
+  .uwork { order: -1; flex: none; overflow: visible; padding: 12px; }
+}
+
+/* The library: the left panel of every editor, search on top, filters, then the tiles filling the rest. */
+.ulibrary { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; }
+.ulibrary__filters { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Colour fields and their popups. */
+.ucolor { display: inline-block; line-height: 0; }
+.uswatches { display: block; line-height: 0; cursor: pointer; }
+.uhsv { display: grid; gap: 8px; justify-items: start; }
+.uhsv > canvas { cursor: crosshair; }

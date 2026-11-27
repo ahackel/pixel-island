@@ -8,7 +8,6 @@ import { objectPresetById } from '../engine/objects/object-presets.ts';
 import { drawPlant, FRAMES, grow, type Raster } from '../engine/flora/flora.ts';
 import { FLORA } from '../engine/flora/flora-catalog.ts';
 import { middleOf, paintIsland, scatter, stamp, type Pixels, type Thing } from '../engine/world/island.ts';
-import { isShadow } from '../engine/core/palette.ts';
 import { AUTHORED, type Clip } from '../engine/core/poses.ts';
 import { CHARACTER_ORIGIN, drawCharacter, SPRITE_H, SPRITE_W, type Facing, type Look, type Sprite } from '../engine/core/puppet.ts';
 import { generateIsland, renderTerrain } from '../engine/world/terrain.ts';
@@ -19,6 +18,7 @@ import { propKind, propPicture } from '../engine/world/prop.ts';
 import { createHeightMap } from '../engine/world/terrain.ts';
 import { BuildingView, edgeKey, emptyBuilding } from '../engine/world/building/building.ts';
 import { edgeKindOf, wallKinds } from '../engine/world/building/walls.ts';
+import { BUILT_IN, ParticlePreview, particleSystem } from '../engine/world/particles.ts';
 
 // The start page of the published site: what the tools are, each with a small live picture
 // drawn by the same code as the tool itself.
@@ -34,6 +34,7 @@ const en = {
   'scene.short': 'Shape an island.',
   'props.short': 'Find any prop, freeze it, polish its pixels.',
   'walls.short': 'Walls for huts, painted over by hand.',
+  'particles.short': 'Sparks and the glow round a fire.',
   'parts.short': 'Touch up hats, hair and clothes.',
   'things': 'My things',
   'things.note': 'Pick up where you left off.',
@@ -54,6 +55,7 @@ const de: Record<Key, string> = {
   'scene.short': 'Forme eine Insel.',
   'props.short': 'Finde jede Requisite, friere sie ein, poliere ihre Pixel.',
   'walls.short': 'Wände für Hütten, von Hand übermalt.',
+  'particles.short': 'Funken und der Schein eines Feuers.',
   'parts.short': 'Bessere Hüte, Haare und Kleidung nach.',
   'things': 'Meine Sachen',
   'things.note': 'Mach weiter, wo du warst.',
@@ -227,6 +229,10 @@ const propsCanvas = h('canvas', { class: 'tool__canvas', width: String(PROPS_SIZ
 const wallsImage = wallsPicture();
 const wallsCanvas = h('canvas', { class: 'tool__canvas', width: String(wallsImage.width), height: String(wallsImage.height) });
 const partsCanvas = h('canvas', { class: 'tool__canvas', width: String(PARTS_SIZE.w), height: String(PARTS_SIZE.h) });
+/** Sparks off a flame at night, the halo lighting the ground: a game's campfire if it has one, else the engine's sparks. */
+const sparksPreview = new ParticlePreview(64, 48);
+const sparksCanvas = h('canvas', { class: 'tool__canvas', width: '64', height: '48' });
+const sparksAt = (ms: number) => sparksPreview.frame(particleSystem('campfire') ?? BUILT_IN[0], ms, { on: 'flame', night: true });
 
 function paint(canvas: HTMLCanvasElement, image: Pixels): void {
   canvas.getContext('2d')!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), 0, 0);
@@ -260,11 +266,11 @@ function madeThings(): Made[] {
   });
   const animals: Made[] = savedAnimals().slice(-SHOWN).map((s) => {
     const { sprite } = drawAnimal(s.animal, 'idle', 0, 0);
-    return { name: s.name, tool: 'animals', href: './tools/animals/', pick: () => writeStore(ANIMAL_STORE.current, s.id), picture: trimmed(sprite, ANIMAL_W, ANIMAL_H, THING_BOX, isShadow, true) };
+    return { name: s.name, tool: 'animals', href: './tools/animals/', pick: () => writeStore(ANIMAL_STORE.current, s.id), picture: trimmed(sprite, ANIMAL_W, ANIMAL_H, THING_BOX) };
   });
   const objects: Made[] = savedProps().slice(-SHOWN).map((s) => {
     const { sprite } = drawObject(s.prop, 0);
-    return { name: s.name, tool: 'objects', href: './tools/objects/', pick: () => writeStore(OBJECT_STORE.current, s.id), picture: trimmed(sprite, OBJECT_W, OBJECT_H, THING_BOX, isShadow, true) };
+    return { name: s.name, tool: 'objects', href: './tools/objects/', pick: () => writeStore(OBJECT_STORE.current, s.id), picture: trimmed(sprite, OBJECT_W, OBJECT_H, THING_BOX) };
   });
   const out: Made[] = [];
   for (let i = 1; out.length < SHOWN && i <= Math.max(people.length, animals.length, objects.length); i++) {
@@ -315,6 +321,7 @@ function mount(): void {
           card('objects', './tools/objects/', setCanvas, 'cast'),
           card('flora', './tools/flora/', islandCanvas, 'island'),
           card('walls', './tools/walls/', wallsCanvas, 'cast'),
+          card('particles', './tools/particles/', sparksCanvas, 'cast'),
           card('scene', './tools/scene/', sceneCanvas, 'island'),
         ),
         h('section', { class: 'mine', 'aria-label': t('things') },
@@ -329,7 +336,7 @@ function mount(): void {
 
 /** Whole-number enlargement that fits the card, so the pixels stay square. */
 function fit(): void {
-  for (const canvas of [castCanvas, herdCanvas, setCanvas, islandCanvas, sceneCanvas]) {
+  for (const canvas of [castCanvas, herdCanvas, setCanvas, islandCanvas, sceneCanvas, sparksCanvas]) {
     const box = canvas.parentElement;
     if (!box) continue;
     const room = box.clientWidth - 16;
@@ -346,6 +353,8 @@ let shown = '';
 let time = 0;
 const tick = (ms: number) => {
   if (!paused) time = ms;
+  // Sparks move every frame.
+  if (!paused) paint(sparksCanvas, sparksAt(time));
   const frame = Math.floor((time / 1000) * 6) % FRAMES;
   const key = `${frame}|${Math.floor((time / 1000) * 10)}`;
   if (key !== shown) {

@@ -2,7 +2,7 @@
 // the shallows. They are drawn on the ground image with the water over them, like decor, so they
 // never cover the beach, waves or anything standing.
 import { PALETTE, type PaletteKey } from '../core/palette.ts';
-import { heightAt, inside, SEA_LEVEL, type HeightMap } from './terrain.ts';
+import { heightAt, inside, waterOf, type HeightMap } from './terrain.ts';
 
 export interface Fish {
   /** Where it is, in metres from the north corner of the map. */
@@ -24,7 +24,7 @@ const SPEED = [0.35, 0.7] as const;
 
 /** Whether a fish may be at a map point. */
 export const swimmable = (map: HeightMap, i: number, j: number) =>
-  inside(map, Math.floor(i), Math.floor(j)) && SEA_LEVEL - heightAt(map, i, j) >= FISH_DEPTH;
+  inside(map, Math.floor(i), Math.floor(j)) && waterOf(map) - heightAt(map, i, j) >= FISH_DEPTH;
 
 /** Up to `count` fish at random spots deep enough for them. */
 export function spawnFish(map: HeightMap, count: number, random: () => number): Fish[] {

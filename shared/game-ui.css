@@ -1,5 +1,0 @@
-/* The pixel buttons of shared/game-ui.ts: flat pictures in canvases, so a button is only a place to tap. */
-.pbtn { display: block; padding: 0; border: 0; background: none; cursor: pointer; }
-.pbtn:disabled { cursor: default; }
-/* Pressed: the colours turned round, as in Lop Hop. */
-.pbtn:not(:disabled):not([aria-disabled='true']):active canvas { filter: invert(1) hue-rotate(180deg); }

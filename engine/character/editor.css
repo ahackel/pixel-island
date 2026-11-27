@@ -1,10 +1,10 @@
 /* The character editor (editor.ts), over what the page shows: the survivor turning, tabs, a row per choice. */
 .editor { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 32px; background: #0006; padding: 12px; overflow-y: auto; }
-.editor .editor__stage { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.editor .editor__stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .editor .editor__preview { touch-action: none; cursor: grab; }
 .editor .editor__preview.editor__hop { animation: hop 0.35s ease-out; }
 @keyframes hop { 40% { transform: translateY(-16px); } }
-.editor .editor__turn, .editor .editor__end { display: flex; gap: 8px; }
+.editor .editor__end { display: flex; gap: 8px; }
 .editor .editor__end { position: absolute; right: max(var(--gap), env(safe-area-inset-right)); bottom: max(var(--gap), env(safe-area-inset-bottom)); }
 .editor .editor__side { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .editor .editor__tabs { display: flex; gap: 8px; }
@@ -12,10 +12,4 @@
 /* As tall as the longest tab, so switching tabs does not move the buttons. */
 .editor .editor__rows { display: flex; flex-direction: column; gap: 8px; min-height: 336px; }
 .editor .editor__row { display: grid; grid-template-columns: var(--name-w) auto; gap: 12px; align-items: center; }
-.editor .editor__pick { position: relative; }
 /* The two halves of a choice's box, over its picture: tapped, one steps back, the other on. */
-.editor .editor__half { position: absolute; top: 0; bottom: 4px; width: 50%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
-.editor .editor__half.editor__prev { left: 0; }
-.editor .editor__half.editor__next { right: 0; }
-.editor .editor__half:active { background: #2b1d1222; }
-.editor .editor__bar { touch-action: none; cursor: pointer; }

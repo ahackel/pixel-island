@@ -4,16 +4,21 @@ import { AUTHORED, STAND, type Clip } from '../core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, FACING_RING, handsOn, SPRITE_H, SPRITE_W, turnFacing, type Facing, type Look, type Lying, type Sprite } from '../core/puppet.ts';
 import { SHADOW } from '../core/palette.ts';
 import type { Picture } from './island.ts';
-import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt } from './terrain.ts';
+import { heightAt, LEVEL_PX, SEA_LEVEL, standingHeight, underwater, waterAt, waterOf } from './terrain.ts';
 import { ocean, rgb } from './ocean.ts';
 import type { Thing, World } from './world.ts';
+import type { Climb } from './ways.ts';
+import { drew, slots } from '../../shared/stats.ts';
+import { cached, idOf } from '../core/cache.ts';
 
 export const EMOTES = ['wave', 'use'] as const;
 export type Emote = (typeof EMOTES)[number];
-type ClipId = 'idle' | 'walk' | 'run' | 'carry' | 'hold' | 'sitDown' | 'sit' | 'lieDown' | 'lie' | 'sitUp' | 'standUp' | Emote;
+type ClipId = 'idle' | 'walk' | 'run' | 'carry' | 'hold' | 'sitDown' | 'sit' | 'lieDown' | 'lie' | 'sitUp' | 'standUp' | 'climb' | Emote;
 
 /** Metres per second. */
 const SPEED = { walk: 1.7, run: 3.6 };
+/** Levels per second up or down a ladder. */
+const CLIMB_SPEED = 2.6;
 /** How many times an emote plays before the character goes back to standing: a wave goes on a little, a use is one go. */
 const EMOTE_LOOPS: Record<Emote, number> = { wave: 2, use: 1 };
 /** Wading is slower than walking on land. */
@@ -128,12 +133,11 @@ export class Actor {
   /** Held in one frame of a clip, as a prop: no fidgets, no blinks, no moving on. */
   frozen: { clip: string; frame: number } | null = null;
   private look: Look;
-  private frames = new Map<string, Sprite>();
-  /** Drawn frames kept per look, so going back to a look (a flickering torch) draws nothing again. */
-  private framesOf = new WeakMap<Look, Map<string, Sprite>>();
   /** Wading pictures of each drawn picture, by rows under water. */
   private wet = new WeakMap<Picture, Map<number, Picture>>();
   private drops: Drop[] = [];
+  /** The water line where the character last stood, which the splash drops fall back to. */
+  private waterLine = SEA_LEVEL;
   private splashClock = 0;
   /** Distance walked since the last footprint, and which foot is next. */
   private stride = 0;
@@ -151,6 +155,8 @@ export class Actor {
   /** How the character lies once down: the view and face up or down. */
   private lies: Lying = {};
   private nextFidget = 0;
+  /** A ladder being climbed: the way (ways.ts `Climb`), the point of it gone for next, and the level the character is at. */
+  private climbing: { way: Climb; k: number; level: number } | null = null;
   /** What is held, if anything; the character walks (never runs) while carrying. */
   carrying: Carried | null = null;
   private held = new WeakMap<Picture, Map<string, Picture>>();
@@ -162,9 +168,8 @@ export class Actor {
   }
 
   setLook(look: Look): void {
-    this.framesOf.set(this.look, this.frames);
+    // Frames are kept per look, so going back to a look (a flickering torch) draws nothing again.
     this.look = look;
-    this.frames = this.framesOf.get(look) ?? new Map();
   }
 
   emote(emote: Emote, ms: number): void {
@@ -197,6 +202,30 @@ export class Actor {
     this.asleep = asleep;
     this.lies = how;
     this.play(this.clip === 'sit' ? 'lieDown' : 'sitDown', ms);
+  }
+
+  /**
+   * Climbs a ladder along a way of points (ways.ts `climbOf`), facing the ladder, from the first point to the last; it
+   * does nothing else until it is there. A carried thing is held on.
+   */
+  climb(way: Climb, ms: number): void {
+    if (way.length < 2) return;
+    const first = way[0], last = way[way.length - 1];
+    const up = last.level > first.level;
+    // Toward the ladder: from its foot toward its top, whichever way the climb goes.
+    const di = up ? last.i - first.i : first.i - last.i, dj = up ? last.j - first.j : first.j - last.j;
+    if (Math.hypot(di, dj) > 1e-6) {
+      this.facing = this.aim = facingOf(di, dj, this.facing);
+      this.heading = Math.atan2(dj, di);
+    }
+    this.i = first.i;
+    this.j = first.j;
+    this.climbing = { way, k: 1, level: first.level };
+    this.play('climb', ms);
+  }
+  /** Whether the character is on a ladder. */
+  get onLadder(): boolean {
+    return !!this.climbing;
   }
 
   /** Whether the character is getting up and will not walk until it stands. */
@@ -247,11 +276,13 @@ export class Actor {
   }
 
   /**
-   * Moves by a direction on the map (any length; it is normalised) for `dt` seconds. A zero
-   * direction stands still, letting an emote finish.
+   * Moves toward the point `di`, `dj` away on the map for `dt` seconds, at walking or running speed but no further than
+   * that point (a direction of length 1 or more, as the keys give, just goes that way). A zero direction stands still,
+   * letting an emote finish.
    */
   update(world: World, dt: number, di: number, dj: number, run: boolean, ms: number): void {
     this.fly(Math.min(dt, 0.1));
+    if (this.climbing) return this.climbOn(Math.min(dt, 0.1), ms);
     const length = Math.hypot(di, dj);
     if (length > 1e-6) {
       this.aim = facingOf(di, dj, this.aim);
@@ -291,7 +322,8 @@ export class Actor {
     if (this.carrying) run = false;
     this.play(this.carrying ? 'carry' : run ? 'run' : 'walk', ms);
     const depth = this.depth(world);
-    const step = (run ? SPEED.run : SPEED.walk) * (depth > 0 ? WADING : 1) * Math.min(dt, 0.1);
+    // No further than asked: a walker sent to a point stops on it rather than past it, on the way it was planned along.
+    const step = Math.min(length, (run ? SPEED.run : SPEED.walk) * (depth > 0 ? WADING : 1) * Math.min(dt, 0.1));
     if (depth > 0) this.splash(Math.min(dt, 0.1), run);
     const mi = (di / length) * step;
     const mj = (dj / length) * step;
@@ -315,9 +347,35 @@ export class Actor {
     }
   }
 
+  /** Goes on up or down the ladder for `dt` seconds; at the end of the way, stands again. */
+  private climbOn(dt: number, ms: number): void {
+    const c = this.climbing!;
+    while (dt > 0 && c.k < c.way.length) {
+      const to = c.way[c.k];
+      const up = Math.abs(to.level - c.level) / CLIMB_SPEED, along = Math.hypot(to.i - this.i, to.j - this.j) / SPEED.walk;
+      const need = Math.max(up, along);
+      if (need <= dt) {
+        this.i = to.i; this.j = to.j; c.level = to.level;
+        c.k++;
+        dt -= need;
+        continue;
+      }
+      const f = dt / need;
+      this.i += (to.i - this.i) * f;
+      this.j += (to.j - this.j) * f;
+      c.level += (to.level - c.level) * f;
+      dt = 0;
+    }
+    if (c.k >= c.way.length) {
+      this.climbing = null;
+      this.play(this.carrying ? 'hold' : 'idle', ms);
+    }
+  }
+
   /** How deep the character stands in water, in levels; 0 on land. */
   private depth(world: World): number {
-    return Math.max(0, SEA_LEVEL - heightAt(world.floor, this.i, this.j));
+    this.waterLine = waterOf(world.floor);
+    return Math.max(0, this.waterLine - heightAt(world.floor, this.i, this.j));
   }
 
   private splash(dt: number, run: boolean): void {
@@ -352,7 +410,7 @@ export class Actor {
     const white = ocean.wave;
     const pale = ocean.shore;
     return this.drops.map((d) => ({
-      spot: { i: d.i, j: d.j, level: SEA_LEVEL + d.z },
+      spot: { i: d.i, j: d.j, level: this.waterLine + d.z },
       picture: d.pale ? dot(pale) : dot(white),
       w: 1, h: 1, foot: { x: 0, y: 0 },
     }));
@@ -360,8 +418,7 @@ export class Actor {
 
   /** The character standing in a three-quarter front view, whatever it is doing: for a portrait. */
   portrait(): { picture: Picture; w: number; h: number } {
-    let body = this.frames.get('portrait');
-    if (!body) this.frames.set('portrait', (body = drawCharacter(this.look, STAND, 0)));
+    const body = cached('character', `${idOf(this.look)}|portrait`, () => drawCharacter(this.look, STAND, 0), () => slots(SPRITE_W, SPRITE_H, 1));
     return { picture: body, w: SPRITE_W, h: SPRITE_H };
   }
 
@@ -376,30 +433,32 @@ export class Actor {
     const facing = fidget?.glance ? turnFacing(this.facing, fidget.glance) : this.facing;
     const key = `${this.frozen?.clip ?? this.clip}|${n}|${facing}|${face}|${look}|${!!this.carrying}|${!!this.lies.back}|${!!this.lies.down}`;
     const pose = look ? { ...STAND, look } : clip.frames[n];
-    let body = this.frames.get(key);
-    // Hands full, the tool is put away.
-    if (!body) {
+    const body = cached('character', `${idOf(this.look)}|${key}`, () => {
+      // Hands full, the tool is put away.
       const worn = this.carrying ? { ...this.look, items: this.look.items.filter((it) => it.slot !== 'tool') } : this.look;
-      this.frames.set(key, (body = drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies })));
-    }
+      return drawCharacter(worn, pose, facing, { face, swing: clip.swing, lying: this.lies });
+    }, () => slots(SPRITE_W, SPRITE_H, 1));
     let sprite: Picture = body;
     if (this.carrying) {
       const held = this.carrying(facing, ms);
       let kept = this.held.get(held.picture);
       if (!kept) this.held.set(held.picture, (kept = new Map()));
       let both = kept.get(key);
-      if (!both) kept.set(key, (both = holding(body, held, handsOn(pose, facing))));
+      if (!both) kept.set(key, (both = drew('holding', () => holding(body, held, handsOn(pose, facing)), () => slots(SPRITE_W, SPRITE_H))));
       sprite = both;
     }
+    // A carried thing puts the tool away, so only the body's own tool brings its particle system.
+    const fx = this.carrying ? undefined : body.fx ?? undefined;
+    if (this.climbing) return { spot: { i: this.i, j: this.j, level: this.climbing.level }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, fx };
     const depth = this.depth(world);
-    if (depth <= 0) return { spot: { i: this.i, j: this.j, level: standingHeight(world.map, this.i, this.j) }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie };
+    if (depth <= 0) return { spot: { i: this.i, j: this.j, level: standingHeight(world.map, this.i, this.j) }, picture: sprite, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, fx };
     // In the shallows the feet stand on the sea floor, under the surface.
     const rows = Math.round(depth * LEVEL_PX);
     let wet = this.wet.get(sprite);
     if (!wet) this.wet.set(sprite, (wet = new Map()));
     let picture = wet.get(rows);
-    if (!picture) wet.set(rows, (picture = wading(sprite, rows)));
-    return { spot: { i: this.i, j: this.j, level: SEA_LEVEL - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie };
+    if (!picture) wet.set(rows, (picture = drew('wading', () => wading(sprite, rows), () => slots(SPRITE_W, SPRITE_H))));
+    return { spot: { i: this.i, j: this.j, level: waterOf(world.floor) - depth }, picture, w: SPRITE_W, h: SPRITE_H, foot: FEET, flat: pose.lie, fx };
   }
 }
 

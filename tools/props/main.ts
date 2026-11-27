@@ -4,7 +4,7 @@
 // Pixels. Any prop can be frozen into pixels and polished by hand; a catalogue prop is then locked,
 // and scenes and games draw the painted version (docs/props.md).
 import './style.css';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import { PROP_STORE } from '../../engine/world/prop.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
@@ -14,16 +14,19 @@ import { FLORA_STORE, plantById } from '../../engine/flora/flora-catalog.ts';
 import { cleanBuild, OBJECT_STORE, savedProps, type Build } from '../../engine/objects/object.ts';
 import { gridsOf, toArt, type Grid } from '../../engine/core/stamp.ts';
 import {
-  changeKind, deleteKind, dirOfView, duplicateKind, FEATURES, generatedViews, importPropKind, isHidden, lockKind, newPainted, ownViews, propKind, propKinds,
+  blockRadius, changeKind, deleteKind, dirOfView, duplicateKind, FEATURES, generatedViews, importPropKind, isHidden, lockKind, newPainted, ownViews, propKind, propKinds,
   propKindFile, propPicture, reloadProps, setEditedPlant, setHidden, SOURCES, unlockKind, VIEW_COUNTS, viewOf, type Feature, type PropKind, type Source, type ViewCount,
 } from '../../engine/world/prop.ts';
 import { freeze } from '../../engine/core/stamp.ts';
 import { buildPanel, type BuildTab } from '../objects/build-panel.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { button, checkbox, h, history, icon, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
+import { choice, filterToggles, library, pixelButton, toggle, turnView, viewTools, type Library, type Option as Pick, confirmDialog, workspace } from '../../ui/components.ts';
+import { checkbox, h, history, nameTag, row, savePicture, section, segmented, snapButton, tabs, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, pictureCache, trimmed } from '../../shared/pixels.ts';
+import { castShadow } from '../../engine/world/island.ts';
+import { SHADOW } from '../../engine/core/palette.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
 
@@ -45,14 +48,14 @@ const DIR_NAMES = ['0°', '45°', '90°', '135°', '180°', '225°', '270°', '3
 // ------------------------------------------------------------------ state
 
 interface Prefs {
-  id: string; tab: Tab; dir: number; query: string; source: Source | 'all'; feature: Feature | 'all';
-  hidden: boolean; person: boolean; ground: string; playing: boolean; view: number; shape: BuildTab;
+  id: string; tab: Tab; dir: number; source: Source | 'all'; feature: Feature | 'all';
+  hidden: boolean; person: boolean; colliders: boolean; ground: string; playing: boolean; view: number; shape: BuildTab;
 }
 type Tab = 'views' | 'shape' | 'features' | 'pixels';
 const PREFS_KEY = 'pixel-props-tool';
 const GROUNDS = [['Sand', 'Sand', '#e9d9a0'], ['Grass', 'Gras', '#8fcf78'], ['Floor', 'Boden', '#d9d3c4'], ['Rock', 'Fels', '#aeaba3']] as const;
 const prefs: Prefs = {
-  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, query: '', source: 'all', feature: 'all', hidden: false, person: true,
+  id: propKinds()[0]?.id ?? '', tab: 'views', dir: 0, source: 'all', feature: 'all', hidden: false, person: true, colliders: false,
   ground: GROUNDS[0][2], playing: true, view: 0, shape: 'parts',
   ...readStore<Partial<Prefs>>(PREFS_KEY, {}),
 };
@@ -149,74 +152,62 @@ function drawStage(frame: number): void {
     }
   };
   const back = [3, 4, 5].includes(prefs.dir);
-  const person = () => { const s = survivor(frame); draw({ get: (x, y) => s.get(x, y), w: SPRITE_W, h: SPRITE_H, foot: FEET }, cx - 40, cy - 4); };
-  if (prefs.person && !back) person();
+  const s = survivor(frame);
+  const man = { get: (x: number, y: number) => s.get(x, y), w: SPRITE_W, h: SPRITE_H, foot: FEET };
+  const person = () => draw(man, cx - 40, cy - 4);
   const p = propPicture(k, prefs.dir, frame, prefs.playing ? 1 : 0);
+  // Their shadows, cast from the sun, laid on the ground once where they overlap.
+  const mask = new Uint8Array(STAGE_W * STAGE_H);
+  if (p) castShadow(mask, STAGE_W, STAGE_H, p, p.w, p.h, cx - p.foot.x, cy - p.foot.y, p.foot);
+  if (prefs.person) castShadow(mask, STAGE_W, STAGE_H, s, SPRITE_W, SPRITE_H, cx - 40 - FEET.x, cy - 4 - FEET.y, FEET);
+  for (let q = 0; q < mask.length; q++) if (mask[q]) put(q % STAGE_W, Math.floor(q / STAGE_W), SHADOW);
+  if (prefs.person && !back) person();
   if (p) draw(p, cx, cy);
   if (prefs.person && back) person();
+  // The collider: the ground circle walkers keep out of (red), over everything so it shows through the prop.
+  const r = blockRadius(k);
+  if (prefs.colliders && r) {
+    for (let y = 0; y < STAGE_H; y++) for (let x = 0; x < STAGE_W; x++) {
+      const d = Math.hypot((x - cx) / 48 + (y - cy) / 24, (y - cy) / 24 - (x - cx) / 48);
+      if (d <= r) put(x, y, d > r - 0.07 ? '#e0332ee6' : '#e0332e33');
+    }
+  }
   ctx.putImageData(image, 0, 0);
 }
 
-/** The eight directions round the stage: which views are a prop's own, shared or mirrored. */
-function ring(): HTMLElement {
+/** Which of the prop's views the direction shows: its own, shared with one drawn before, or mirrored. */
+function viewWord(): string {
   const k = kind();
-  const seen = new Set<number>();
-  return h('div', { class: 'props__ring', role: 'radiogroup', 'aria-label': L('Direction', 'Richtung') },
-    ...DIR_NAMES.map((name, d) => {
-      const { view, mirror } = viewOf(k.views, k.mirror, d);
-      const own = !mirror && !seen.has(view);
-      if (!mirror) seen.add(view);
-      const what = mirror ? L(`view ${view + 1}, mirrored`, `Ansicht ${view + 1}, gespiegelt`) : own ? L(`view ${view + 1}`, `Ansicht ${view + 1}`) : L(`shares view ${view + 1}`, `teilt Ansicht ${view + 1}`);
-      return button({ class: `props__dir props__dir--${mirror ? 'mirror' : own ? 'own' : 'shared'}`, role: 'radio', 'aria-checked': String(d === prefs.dir), title: `${name}: ${what}`, 'aria-label': `${name}: ${what}`, style: `--a: ${d * 45}deg` }, () => {
-        prefs.dir = d;
-        savePrefs();
-        render();
-      }, mirror ? `${view + 1}′` : String(view + 1));
-    }));
+  const { view, mirror } = viewOf(k.views, k.mirror, prefs.dir);
+  const own = !mirror && [...Array(prefs.dir).keys()].every((d) => viewOf(k.views, k.mirror, d).view !== view || viewOf(k.views, k.mirror, d).mirror);
+  return mirror ? L(`view ${view + 1}, mirrored`, `Ansicht ${view + 1}, gespiegelt`) : own ? L(`view ${view + 1}`, `Ansicht ${view + 1}`) : L(`shares view ${view + 1}`, `teilt Ansicht ${view + 1}`);
 }
+
+const FEATURE_ICON: Record<Feature, string> = { wind: 'storm', loop: 'reset', glow: 'sun', blocks: 'box', carry: 'hand' };
+const SOURCE_ICON: Record<string, string> = { painted: 'pencil', grown: 'sprout', built: 'tool' };
 
 // ------------------------------------------------------------------ the library
 
 function matches(k: PropKind): boolean {
   if (!prefs.hidden && isHidden(k.id)) return false;
   if (prefs.source !== 'all' && k.source !== prefs.source) return false;
-  if (prefs.feature !== 'all' && !k.features.includes(prefs.feature)) return false;
-  const q = prefs.query.trim().toLowerCase();
-  if (!q) return true;
-  const hay = [k.name, k.id, sourceWord(k.source), k.source, ...k.tags, ...k.features, k.locked ? 'locked frozen' : ''].join(' ').toLowerCase();
-  return q.split(/\s+/).every((w) => hay.includes(w));
+  return prefs.feature === 'all' || k.features.includes(prefs.feature);
 }
 
-const libraryGrid = h('div', { class: 'grid grid--small props__grid' });
-const search = h('input', { type: 'search', class: 'props__search', placeholder: '', 'aria-label': '' });
-search.addEventListener('input', () => {
-  prefs.query = search.value;
-  savePrefs();
-  renderLibrary();
-});
-function renderLibrary(): void {
-  const list = propKinds().filter(matches);
-  libraryGrid.replaceChildren(...list.map((k) => {
-    const card = button({ class: 'card', 'aria-pressed': String(k.id === prefs.id), title: `${k.name} · ${sourceWord(k.source)}` }, () => pickKind(k.id),
-      h('span', { class: 'card__picture' }, thumb(k)),
-      h('span', { class: 'card__label' }, k.name),
-      h('span', { class: 'props__badges' },
-        h('span', { class: `props__badge props__badge--${k.source}` }, sourceWord(k.source)),
-        k.locked ? h('span', { class: 'props__badge props__badge--locked', title: L('Frozen: drawn from its pixels', 'Eingefroren: aus seinen Pixeln gezeichnet') }, icon('lock')) : null,
-        isHidden(k.id) ? h('span', { class: 'props__badge' }, L('hidden', 'verborgen')) : null));
-    return card;
-  }), list.length ? '' : h('p', { class: 'note' }, L('Nothing matches.', 'Nichts passt.')));
-}
+/** The library's tiles: the kinds the source, feature and hidden filters let through; the search finds them by kind, tags and features too. */
+const libraryItems = () => propKinds().filter(matches).map((k) => ({
+  id: k.id, picture: thumb(k), words: `${k.name} · ${sourceWord(k.source)}`, mark: k.locked ? 'lock' : undefined,
+  find: [k.source, ...k.tags, ...k.features, k.locked ? 'locked frozen' : ''].join(' '),
+}));
+let shelf: Library | undefined;
+const renderLibrary = () => shelf?.redraw();
 function chips(): HTMLElement {
-  const chip = (text: string, on: boolean, flip: () => void) => button({ class: 'toggle props__chip', 'aria-pressed': String(on) }, () => { flip(); savePrefs(); render(); }, text);
-  return h('div', { class: 'props__chips' },
-    chip(L('All', 'Alle'), prefs.source === 'all', () => (prefs.source = 'all')),
-    ...SOURCES.map((s) => chip(sourceWord(s), prefs.source === s, () => (prefs.source = prefs.source === s ? 'all' : s))),
-    h('span', { class: 'props__chipsep' }),
-    ...FEATURES.map((f) => chip(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), prefs.feature === f, () => (prefs.feature = prefs.feature === f ? 'all' : f))),
-    h('span', { class: 'props__chipsep' }),
-    chip(L('Hidden too', 'Auch verborgene'), prefs.hidden, () => (prefs.hidden = !prefs.hidden)),
-  );
+  const flip = (change: () => void) => { change(); savePrefs(); render(); };
+  const sources: Pick[] = SOURCES.map((id) => ({ id, icon: SOURCE_ICON[id], words: sourceWord(id) }));
+  return h('div', { class: 'urow' },
+    filterToggles(sources, () => prefs.source, (id) => flip(() => (prefs.source = id as typeof prefs.source))),
+    ...FEATURES.map((f) => toggle(L(FEATURE_WORDS[f][0], FEATURE_WORDS[f][1]), { icon: FEATURE_ICON[f] }, prefs.feature === f, () => flip(() => (prefs.feature = prefs.feature === f ? 'all' : f)))),
+    toggle(L('Hidden too', 'Auch verborgene'), { icon: 'eye' }, prefs.hidden, () => flip(() => (prefs.hidden = !prefs.hidden))));
 }
 
 // ------------------------------------------------------------------ the panel
@@ -257,14 +248,15 @@ function onionOf(k: PropKind): ((view: number) => Grid | null) | undefined {
 }
 
 function freezeButton(k: PropKind): HTMLElement {
-  return button({ class: 'btn props__freeze' }, () => {
+  const label = k.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren');
+  return h('div', { class: 'props__freeze' }, pixelButton(label, { icon: 'freeze' }, () => {
     lockKind(kind());
     grids = null;
     prefs.tab = 'pixels';
     message = k.builtin ? L(`${k.name} is frozen: scenes now draw its pixels.`, `${k.name} ist eingefroren: Szenen zeichnen jetzt seine Pixel.`) : L('Frozen into pixels.', 'In Pixel eingefroren.');
     undo.commit();
     render();
-  }, icon('lock'), h('span', { class: 'btn__label' }, k.builtin ? L('Freeze and lock', 'Einfrieren und sperren') : L('Freeze into pixels', 'In Pixel einfrieren')));
+  }));
 }
 
 function panelFor(tab: Tab): (Node | string)[] {
@@ -289,10 +281,9 @@ function panelFor(tab: Tab): (Node | string)[] {
       return [section(L('Views', 'Ansichten'),
         row(L('How many', 'Wie viele'), segmented(L('Views', 'Ansichten'), VIEW_COUNTS.map((n) => ({ id: String(n), label: String(n) })), String(k.views), (v) => setCount(Number(v) as ViewCount))),
         row('', checkbox(L('Mirror: the far half shows the near half flipped', 'Spiegeln: die hintere Hälfte zeigt die vordere umgedreht'), k.mirror, setMirror)),
-        ring(),
         h('p', { class: 'note' }, L(
-          `Each of the eight directions shows one of ${k.views} view${k.views > 1 ? 's' : ''}. A number is a view of its own, a faint one shares a view drawn before it, a ′ is mirrored. ${ownViews(k)} picture${ownViews(k) > 1 ? 's are' : ' is'} drawn${k.art ? ' and painted' : ''}. Tap a direction to look from there.`,
-          `Jede der acht Richtungen zeigt eine von ${k.views} Ansicht${k.views > 1 ? 'en' : ''}. Eine Zahl ist eine eigene Ansicht, eine blasse teilt eine vorher gezeichnete, ein ′ ist gespiegelt. ${ownViews(k)} Bild${ownViews(k) > 1 ? 'er werden' : ' wird'} gezeichnet${k.art ? ' und gemalt' : ''}. Tippe eine Richtung an, um von dort zu schauen.`)),
+          `Each of the eight directions shows one of ${k.views} view${k.views > 1 ? 's' : ''}. The tag under the picture says which, and whether it is mirrored or shares a view drawn before. ${ownViews(k)} picture${ownViews(k) > 1 ? 's are' : ' is'} drawn${k.art ? ' and painted' : ''}. Turn the picture to look from there.`,
+          `Jede der acht Richtungen zeigt eine von ${k.views} Ansicht${k.views > 1 ? 'en' : ''}. Die Beschriftung unter dem Bild sagt welche, und ob sie gespiegelt ist oder eine vorher gezeichnete teilt. ${ownViews(k)} Bild${ownViews(k) > 1 ? 'er werden' : ' wird'} gezeichnet${k.art ? ' und gemalt' : ''}. Drehe das Bild, um von dort zu schauen.`)),
       )];
     }
     case 'shape':
@@ -334,26 +325,26 @@ function panelFor(tab: Tab): (Node | string)[] {
         k.locked ? section(L('Locked', 'Gesperrt'),
           h('p', { class: 'note' }, L('Scenes and games draw these pixels instead of the rule. Unlocking goes back to the rule and loses the painting.', 'Szenen und Spiele zeichnen diese Pixel statt der Regel. Entsperren geht zur Regel zurück, die Malerei geht verloren.')),
           h('div', { class: 'toggles' },
-            button({ class: 'toggle' }, () => {
-              if (!confirm(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?'))) return;
+            pixelButton(L('Unlock', 'Entsperren'), { icon: 'unlock' }, async () => {
+              if (!(await confirmDialog(L('Unlock and lose the painted pixels?', 'Entsperren und die gemalten Pixel verlieren?')))) return;
               unlockKind(k.id);
               grids = null;
               message = L(`${k.name} is drawn by its rule again.`, `${k.name} wird wieder nach seiner Regel gezeichnet.`);
               undo.reset();
               render();
-            }, L('Unlock', 'Entsperren')),
-            button({ class: 'toggle' }, () => {
+            }),
+            pixelButton(L('Painted copy', 'Gemalte Kopie'), { icon: 'copy' }, () => {
               const id = duplicateKind(kind());
               message = L('A painted copy is in the library.', 'Eine gemalte Kopie ist in der Bibliothek.');
               pickKind(id);
-            }, L('Painted copy', 'Gemalte Kopie')))) : '',
+            }))) : '',
       ];
     }
   }
 }
 
 function flexSlider(k: PropKind): HTMLElement {
-  const input = h('input', { type: 'range', class: 'slider', min: '0', max: '6', step: '0.5', 'aria-label': L('Bend', 'Biegung') });
+  const input = rangeInput({ min: '0', max: '6', step: '0.5', 'aria-label': L('Bend', 'Biegung') });
   input.value = String(k.flex);
   const out = h('b', {}, `${k.flex} px`);
   input.addEventListener('input', () => { changeKind(k.id, { flex: Number(input.value) }); out.textContent = `${input.value} px`; });
@@ -407,7 +398,7 @@ function shapePanel(k: PropKind): (Node | string)[] {
     area.addEventListener('input', apply);
     area.addEventListener('change', () => renderLibrary());
     return [section(L('Recipe', 'Rezept'), area, note,
-      builtin ? button({ class: 'toggle' }, () => { area.value = pretty(original); apply(); }, L('Back to the original', 'Zurück zum Original')) : '',
+      builtin ? pixelButton(L('Back to the original', 'Zurück zum Original'), { icon: 'reset' }, () => { area.value = pretty(original); apply(); }) : '',
       h('p', { class: 'note' }, L('The flora recipe this plant grows from (docs/specs/spec-plant.md). Edits show at once.', 'Das Flora-Rezept, aus dem diese Pflanze wächst (docs/specs/spec-plant.md). Änderungen zeigen sich sofort.')))];
   }
   if (k.source === 'built' && k.build) {
@@ -415,7 +406,7 @@ function shapePanel(k: PropKind): (Node | string)[] {
       return [section(L('Parts', 'Teile'), h('p', { class: 'note' }, L(
         'A preset of the engine. Duplicate it to change its size and parts; the copy is yours.',
         'Eine Vorlage der Engine. Dupliziere sie, um Größe und Teile zu ändern; die Kopie gehört dir.')),
-        button({ class: 'btn' }, () => pickKind(duplicateKind(k)), icon('copy'), h('span', { class: 'btn__label' }, L('Duplicate to edit', 'Zum Bearbeiten duplizieren'))))];
+        pixelButton(L('Duplicate to edit', 'Zum Bearbeiten duplizieren'), { icon: 'copy' }, () => pickKind(duplicateKind(k))))];
     }
     const build = structuredClone(k.build);
     const save = () => {
@@ -449,10 +440,11 @@ const root = document.getElementById('props')!;
 const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 const barSlot = h('div', { style: 'display: contents' });
-const ringSlot = h('div', { class: 'props__under' });
-const libraryHead = h('div', { class: 'props__libhead' });
+const views = viewTools();
+// Arrows at its sides and a drag on it turn the prop an eighth at a time.
+const arrows = turnView(stage, (step) => { prefs.dir = (prefs.dir + step + 8) % 8; savePrefs(); render(); });
 const name = nameTag();
 name.onRename((n) => {
   if (!n.trim() || n === kind().name) return;
@@ -478,8 +470,10 @@ async function importFile(): Promise<void> {
 function renderBar(): void {
   const k = kind();
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'props',
     title: word('props'),
+    name: name.el,
     about: [
       L('Everything that stands in the world, in one library: plants grown by rule, objects built from parts, decorations, and props painted on this device. Search by name, tag, source or feature.',
         'Alles, was in der Welt steht, in einer Bibliothek: nach Regeln gewachsene Pflanzen, aus Teilen gebaute Objekte, Dekorationen und auf diesem Gerät gemalte Requisiten. Suche nach Name, Schlagwort, Herkunft oder Eigenschaft.'),
@@ -487,17 +481,19 @@ function renderBar(): void {
         'Friere jede Requisite ein, um ihre Pixel zu behalten und von Hand nachzuarbeiten. Eine eingefrorene Katalog-Requisite ist gesperrt: Szeneneditor und Spiele zeichnen die gemalten Pixel statt der Regel, bis sie entsperrt wird.'),
       L('Props are kept on this device (engine/world/prop.ts) and exported as JSON of type "pixel-prop".', 'Requisiten bleiben auf diesem Gerät (engine/world/prop.ts) und werden als JSON vom Typ „pixel-prop“ exportiert.'),
     ],
-    more: [
+    actions: [
       { label: L('New painted prop', 'Neue gemalte Requisite'), icon: 'plus', run: () => pickKind(newPainted(L('Painted prop', 'Gemalte Requisite'))) },
       { label: L('Duplicate', 'Duplizieren'), icon: 'copy', run: () => pickKind(duplicateKind(k)) },
+    ],
+    more: [
       { label: k.art ? L('Already frozen', 'Schon eingefroren') : L('Freeze into pixels', 'In Pixel einfrieren'), icon: 'lock', disabled: !!k.art, run: () => { lockKind(k); grids = null; prefs.tab = 'pixels'; undo.commit(); render(); } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${k.name}.json`, propKindFile(k)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([PROP_STORE, FLORA_STORE, OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([PROP_STORE, FLORA_STORE, OBJECT_STORE.roster]), run: () => void saveStores([PROP_STORE, FLORA_STORE, OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       k.builtin
         ? { label: isHidden(k.id) ? L('Show in the library', 'In der Bibliothek zeigen') : L('Hide from the library', 'In der Bibliothek verbergen'), icon: 'close', run: () => { setHidden(k.id, !isHidden(k.id)); render(); } }
-        : { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: k.id.startsWith('my-object:'), run: () => {
-          if (!confirm(L(`Delete "${k.name}" from this device?`, `„${k.name}“ von diesem Gerät löschen?`))) return;
+        : { label: L('Delete', 'Löschen'), icon: 'trash', danger: true, disabled: k.id.startsWith('my-object:'), run: async () => {
+          if (!(await confirmDialog(L(`Delete "${k.name}" from this device?`, `„${k.name}“ von diesem Gerät löschen?`)))) return;
           deleteKind(k.id);
           message = L(`Deleted "${k.name}".`, `„${k.name}“ gelöscht.`);
           pickKind(propKinds()[0].id);
@@ -518,19 +514,13 @@ function render(): void {
   stage.style.setProperty('--ground', prefs.ground);
   renderBar();
   name.set(k.name, L('Prop', 'Requisite'));
-  stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
-  search.value = prefs.query;
-  search.placeholder = L('Search props', 'Requisiten suchen');
-  search.setAttribute('aria-label', L('Search props', 'Requisiten suchen'));
-  libraryHead.replaceChildren(h('label', { class: 'props__searchrow' }, icon('search'), search), chips(),
-    h('div', { class: 'toggles' }, button({ class: 'toggle' }, () => pickKind(newPainted(L('Painted prop', 'Gemalte Requisite'))), `+ ${L('Paint new', 'Neu malen')}`),
-      button({ class: 'toggle' }, () => pickKind(duplicateKind(k)), L('Duplicate', 'Duplizieren'))));
+  stageTag.textContent = `${DIR_NAMES[prefs.dir]} · ${viewWord()} · ${sourceWord(k.source)}${k.locked ? ` · ${L('frozen', 'eingefroren')}` : ''}`;
   renderLibrary();
-  ringSlot.replaceChildren(ring(),
-    h('div', { class: 'toggles props__stagetools' },
-      checkbox(L('Wind', 'Wind'), prefs.playing, (on) => { prefs.playing = on; savePrefs(); stageDirty = true; }),
-      checkbox(L('Survivor', 'Gestrandeter'), prefs.person, (on) => { prefs.person = on; savePrefs(); stageDirty = true; }),
-      segmented(L('Ground', 'Boden'), GROUNDS.map(([en, de, c]) => ({ id: c as string, label: L(en, de) })), prefs.ground, (c) => { prefs.ground = c; savePrefs(); stageDirty = true; render(); })));
+  views.replaceChildren(snapButton(() => savePicture(hero, kind().name)),
+    toggle(L('Wind', 'Wind'), { icon: 'storm' }, prefs.playing, (on) => { prefs.playing = on; savePrefs(); stageDirty = true; }),
+    toggle(L('Survivor', 'Gestrandeter'), { icon: 'person' }, prefs.person, (on) => { prefs.person = on; savePrefs(); stageDirty = true; }),
+    toggle(L('Colliders', 'Kollision'), { icon: 'collider' }, prefs.colliders, (on) => { prefs.colliders = on; savePrefs(); stageDirty = true; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, de, color]) => ({ id: color as string, words: L(en, de), color })), () => prefs.ground, (c) => { prefs.ground = c; savePrefs(); stageDirty = true; render(); }, 'list'));
   tabSlot.replaceChildren(tabs(L('Sections', 'Bereiche'), TABS.map(([id, en, de, ic]) => ({ id, label: L(en, de), icon: ic })), prefs.tab, (id) => {
     prefs.tab = id;
     savePrefs();
@@ -546,22 +536,13 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Props', 'Requisiten');
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, kind().name)));
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot,
-    h('main', { class: 'shell__main props__main' },
-      h('section', { class: 'library props__library', 'aria-label': L('Library', 'Bibliothek') }, libraryHead, h('div', { class: 'library__body' }, libraryGrid)),
-      h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, ringSlot),
-      h('section', { class: 'library', 'aria-label': L('Prop', 'Requisite') }, tabSlot, panel))));
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
+  shelf = library({ key: 'pixel-props', label: word('search'), empty: word('nothing'), items: libraryItems, selected: () => prefs.id, pick: pickKind, filters: () => [chips()] });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
+    key: 'pixel-props', left: [shelf], centre: [stage], right: [tabSlot, panel], leftWidth: 280, rightWidth: 380,
+  })));
 }
 
-window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLCanvasElement || e.metaKey || e.ctrlKey) return;
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    prefs.dir = (prefs.dir + (e.key === 'ArrowRight' ? 1 : 7)) % 8;
-    savePrefs();
-    render();
-  }
-});
 undoKeys(undo.undo, undo.redo);
 // Another page (the object editor, the flora tool) may have changed what the library shows.
 window.addEventListener('focus', () => { reloadProps(); render(); });

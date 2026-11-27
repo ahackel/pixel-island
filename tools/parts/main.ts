@@ -3,7 +3,7 @@
 // all eight sides, with wear. Edits are kept on this device per item (engine/character/parts.ts) and
 // worn everywhere here: the wardrobe, scenes and games read the catalogue with them laid over.
 import '../props/style.css';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import { PARTS_STORE } from '../../engine/character/parts.ts';
 import './style.css';
 import { CATALOG, type Entry } from '../../engine/character/catalog.ts';
@@ -11,25 +11,28 @@ import { baseLook, DEFAULT_FACE, facesFor, wear } from '../../engine/character/b
 import { copyItem, dropEdits, importPart, isEdited, layersOf, partFile, saveEdits, type Layer } from '../../engine/character/parts.ts';
 import { WEAR_MAX, weathered } from '../../engine/character/wear.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
-import { drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, SLOTS, type Facing, type Item, type Slot } from '../../engine/core/puppet.ts';
-import { SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
+import { CHARACTER_ORIGIN, drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, SLOTS, type Facing, type Item, type Slot } from '../../engine/core/puppet.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
+import { PALETTE, SKIN_KEYS, type PaletteKey } from '../../engine/core/palette.ts';
 import { type Grid } from '../../engine/core/stamp.ts';
 import { pixelEditor } from '../paint/pixel-editor.ts';
 import { download, pickFile, readStore, writeStore } from '../../shared/files.ts';
-import { button, h, history, icon, row, savePicture, section, segmented, snapButton, topBar, undoKeys, word } from '../../shared/shell.ts';
+import { box, choice, confirmDialog, filterToggles, library, pixelButton, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { h, history, row, savePicture, section, snapButton, topBar, undoKeys, word, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
+const SLOT_ICON: Partial<Record<Slot, string>> = { top: 'clothes', hair: 'hair', tool: 'tool' };
 const SLOT_WORDS: Record<Slot, [string, string]> = {
   hair: ['Hair', 'Haare'], beard: ['Beards', 'Bärte'], hat: ['Hats', 'Hüte'], top: ['Tops', 'Oberteile'], bottom: ['Bottoms', 'Hosen'], shoes: ['Shoes', 'Schuhe'], tool: ['Tools', 'Werkzeuge'],
 };
 
 // ------------------------------------------------------------------ state
 
-interface Prefs { id: string; slot: Slot | 'all'; query: string; layer: string; facing: Facing; wear: number; skin: PaletteKey; hair: PaletteKey }
+interface Prefs { id: string; slot: Slot | 'all'; layer: string; facing: Facing; wear: number; skin: PaletteKey; hair: PaletteKey }
 const PREFS_KEY = 'pixel-parts-tool';
-const prefs: Prefs = { id: CATALOG[0].id, slot: 'all', query: '', layer: '', facing: 4, wear: 0, skin: 'skinC', hair: 'hairBrown', ...readStore<Partial<Prefs>>(PREFS_KEY, {}) };
+const prefs: Prefs = { id: CATALOG[0].id, slot: 'all', layer: '', facing: 4, wear: 0, skin: 'skinC', hair: 'hairBrown', ...readStore<Partial<Prefs>>(PREFS_KEY, {}) };
 if (!CATALOG.some((e) => e.id === prefs.id)) prefs.id = CATALOG[0].id;
 const savePrefs = () => writeStore(PREFS_KEY, prefs);
 const entry = (): Entry => CATALOG.find((e) => e.id === prefs.id)!;
@@ -68,28 +71,13 @@ function pick(id: string): void {
 // ------------------------------------------------------------------ the figure
 
 const lookWith = (item: Item) => ({ ...wear(baseLook(prefs.skin, prefs.hair), weathered(item, prefs.wear)), faces: facesFor(prefs.skin, DEFAULT_FACE, prefs.hair, 'happy') });
-const figures = h('canvas', { class: 'parts__figures' });
 const big = h('canvas', { class: 'stage__sprite parts__big' });
-/** All eight sides in a row, and the picked one large. */
+/** The picked side, large. */
 function drawFigures(): void {
   const look = lookWith(shown);
   const pose = AUTHORED.idle.frames[0];
-  const cell = 40;
-  figures.width = cell * 8;
-  figures.height = 56;
-  const ctx = figures.getContext('2d')!;
-  const image = ctx.createImageData(figures.width, figures.height);
-  FACING_RING.forEach((facing, k) => {
-    const s = drawCharacter(look, pose, facing);
-    for (let y = 0; y < 56; y++) for (let x = 0; x < cell; x++) {
-      const hex = s.get(x + (SPRITE_W - cell) / 2, y + 6);
-      const o = (y * figures.width + k * cell + x) * 4;
-      if (hex) { for (let c = 0; c < 3; c++) image.data[o + c] = parseInt(hex.slice(1 + 2 * c, 3 + 2 * c), 16); image.data[o + 3] = hex.length === 9 ? parseInt(hex.slice(7, 9), 16) : 255; }
-      else if (facing === prefs.facing) { image.data[o] = 58; image.data[o + 1] = 123; image.data[o + 2] = 213; image.data[o + 3] = 30; }
-    }
-  });
-  ctx.putImageData(image, 0, 0);
-  const s = drawCharacter(look, pose, prefs.facing);
+  // With its shadow cast from the sun on flat ground, as far as the picture reaches.
+  const s = withSunShadow(drawCharacter(look, pose, prefs.facing), SPRITE_W, SPRITE_H, CHARACTER_ORIGIN);
   big.width = SPRITE_W;
   big.height = SPRITE_H;
   const bctx = big.getContext('2d')!;
@@ -104,10 +92,9 @@ function drawFigures(): void {
   bctx.putImageData(bi, 0, 0);
   big.style.width = big.style.height = `${SPRITE_W * 6}px`;
 }
-figures.addEventListener('click', (e) => {
-  const r = figures.getBoundingClientRect();
-  const k = Math.floor(((e.clientX - r.left) / r.width) * 8);
-  prefs.facing = FACING_RING[Math.max(0, Math.min(7, k))];
+/** Turns the figure to the next side round, to the layer that side shows where the item has one. */
+function turnFigure(step: number): void {
+  prefs.facing = FACING_RING[(FACING_RING.indexOf(prefs.facing) + step + 8) % 8];
   // The layer that side shows, where the item has one.
   const side = [5, 7].includes(prefs.facing) ? 'E' : [2, 3, 6].includes(prefs.facing) ? 'back' : 'front';
   const layers = layersOf(working);
@@ -115,7 +102,7 @@ figures.addEventListener('click', (e) => {
   if (want) prefs.layer = want.key;
   savePrefs();
   render();
-});
+}
 
 // ------------------------------------------------------------------ library
 
@@ -126,18 +113,12 @@ function thumb(e: Entry): HTMLCanvasElement {
     return trimmed(s, SPRITE_W, SPRITE_H, 52);
   });
 }
-const grid = h('div', { class: 'grid grid--small props__grid' });
-const search = h('input', { type: 'search', class: 'props__search' });
-search.addEventListener('input', () => { prefs.query = search.value; savePrefs(); renderLibrary(); });
-function renderLibrary(): void {
-  const q = prefs.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const list = CATALOG.filter((e) => (prefs.slot === 'all' || e.slot === prefs.slot) && q.every((w) => `${e.label} ${e.id} ${e.slot} ${isEdited(e.id) ? 'edited' : ''}`.toLowerCase().includes(w)));
-  grid.replaceChildren(...list.map((e) => button({ class: 'card', 'aria-pressed': String(e.id === prefs.id), title: e.label }, () => pick(e.id),
-    h('span', { class: 'card__picture' }, thumb(e)),
-    h('span', { class: 'card__label' }, e.label),
-    h('span', { class: 'props__badges' }, h('span', { class: 'props__badge' }, L(...SLOT_WORDS[e.slot])),
-      isEdited(e.id) ? h('span', { class: 'props__badge props__badge--painted' }, L('polished', 'überarbeitet')) : null))));
-}
+/** The library's tiles: the items of the kind chosen; the search finds them by slot and "edited" too. */
+const libraryItems = () => CATALOG.filter((e) => prefs.slot === 'all' || e.slot === prefs.slot).map((e) => ({
+  id: e.id, picture: thumb(e), words: `${e.label} · ${L(...SLOT_WORDS[e.slot])}`, mark: isEdited(e.id) ? 'pencil' : undefined, find: `${e.slot} ${isEdited(e.id) ? 'edited' : ''}`,
+}));
+let shelf: Library | undefined;
+const renderLibrary = () => shelf?.redraw();
 
 // ------------------------------------------------------------------ panel
 
@@ -159,23 +140,22 @@ function layerPanel(): (Node | string)[] {
   });
   return [
     section(L('Layer', 'Ebene'),
-      h('div', { class: 'seg seg--wrap', role: 'radiogroup', 'aria-label': L('Layer', 'Ebene') },
-        ...layers.map((l) => button({ role: 'radio', 'aria-checked': String(l.key === layer.key) }, () => { prefs.layer = l.key; savePrefs(); render(); }, L(l.what.en, l.what.de)))),
+      choice(L('Layer', 'Ebene'), layers.map((l) => ({ id: l.key, words: L(l.what.en, l.what.de) })), () => layer.key, (k) => { prefs.layer = k; savePrefs(); render(); }, 'list'),
       h('p', { class: 'note' }, L(
         'The puppet draws these stamps on the moving body: the head ones turn with the head, the torso with the chest, a sleeve or trouser strip runs from the joint down. Tap a side of the figure to pick the layer it shows.',
         'Die Puppe zeichnet diese Stempel auf den bewegten Körper: Kopfstempel drehen mit dem Kopf, der Rumpf mit der Brust, ein Ärmel- oder Hosenstreifen läuft vom Gelenk nach unten. Tippe eine Seite der Figur an, um ihre Ebene zu wählen.'))),
     section(L('Pixels', 'Pixel'), editor.el),
     section(L('Original', 'Original'),
       h('p', { class: 'note' }, isEdited(e.id) ? L('Polished on this device. The onion skin shows what the rules made.', 'Auf diesem Gerät überarbeitet. Die Zwiebelhaut zeigt, was die Regeln gemacht haben.') : L('As the rules made it.', 'Wie die Regeln es gemacht haben.')),
-      button({ class: 'toggle' }, () => {
-        if (!confirm(L('Go back to the original and lose the painting?', 'Zum Original zurück und die Malerei verlieren?'))) return;
+      pixelButton(L('Back to the original', 'Zurück zum Original'), { icon: 'reset' }, async () => {
+        if (!(await confirmDialog(L('Go back to the original and lose the painting?', 'Zum Original zurück und die Malerei verlieren?')))) return;
         dropEdits(e.id);
         working = copyItem(originalOf(e));
         store();
         shown = copyItem(working);
         undo.commit();
         render();
-      }, L('Back to the original', 'Zurück zum Original'))),
+      })),
   ];
 }
 
@@ -184,15 +164,16 @@ function layerPanel(): (Node | string)[] {
 const root = document.getElementById('parts')!;
 const stage = h('div', { class: 'stage props__stage' });
 const stageTag = h('span', { class: 'stage__tag' });
+const arrows = turnView(stage, turnFigure);
 const under = h('div', { class: 'props__under' });
-const head = h('div', { class: 'props__libhead' });
-const panel = h('div', { class: 'library__body' });
+const panel = h('div', { class: 'uside__list' });
 const barSlot = h('div', { style: 'display: contents' });
 let dirty = true;
 
 function renderBar(): void {
   const e = entry();
   const { bar, undo: u, redo: r, pops } = topBar({
+    sidebar: true,
     tool: 'parts',
     title: word('parts'),
     about: [
@@ -203,7 +184,7 @@ function renderBar(): void {
     ],
     more: [
       { label: L('Export', 'Exportieren'), icon: 'download', disabled: !isEdited(e.id), run: () => download(`${e.label}.json`, partFile(e.id)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([PARTS_STORE]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([PARTS_STORE]), run: () => void saveStores([PARTS_STORE]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void (async () => {
         try {
           const id = importPart(await pickFile());
@@ -229,20 +210,13 @@ function render(): void {
   renderBar();
   const e = entry();
   stageTag.textContent = `${e.label} · ${L(...SLOT_WORDS[e.slot])}`;
-  search.value = prefs.query;
-  search.placeholder = L('Search parts', 'Teile suchen');
-  search.setAttribute('aria-label', L('Search parts', 'Teile suchen'));
-  const chip = (text: string, on: boolean, flip: () => void) => button({ class: 'toggle props__chip', 'aria-pressed': String(on) }, () => { flip(); savePrefs(); render(); }, text);
-  head.replaceChildren(h('label', { class: 'props__searchrow' }, icon('search'), search), h('div', { class: 'props__chips' },
-    chip(L('All', 'Alle'), prefs.slot === 'all', () => (prefs.slot = 'all')),
-    ...SLOTS.map((s) => chip(L(...SLOT_WORDS[s]), prefs.slot === s, () => (prefs.slot = prefs.slot === s ? 'all' : s)))));
   renderLibrary();
-  const wearInput = h('input', { type: 'range', class: 'slider', min: '0', max: String(WEAR_MAX), step: '1', 'aria-label': L('Wear', 'Abnutzung') });
+  const wearInput = rangeInput({ min: '0', max: String(WEAR_MAX), step: '1', 'aria-label': L('Wear', 'Abnutzung') });
   wearInput.value = String(prefs.wear);
   wearInput.addEventListener('input', () => { prefs.wear = Number(wearInput.value); savePrefs(); dirty = true; });
-  under.replaceChildren(figures,
+  under.replaceChildren(
     row(L('Wear', 'Abnutzung'), wearInput),
-    row(L('Skin', 'Haut'), segmented(L('Skin', 'Haut'), SKIN_KEYS.map((k, n) => ({ id: k, label: String(n + 1) })), prefs.skin, (k) => { prefs.skin = k; savePrefs(); thumbs.of('', () => h('canvas')); render(); })));
+    row(L('Skin', 'Haut'), choice(L('Skin', 'Haut'), SKIN_KEYS.map((k) => ({ id: k, color: PALETTE[k].base })), () => prefs.skin, (k) => { prefs.skin = k as PaletteKey; savePrefs(); thumbs.of('', () => h('canvas')); render(); }, 'colors', 44)));
   const scroll = panel.scrollTop;
   panel.replaceChildren(...layerPanel());
   panel.scrollTop = scroll;
@@ -252,12 +226,15 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Parts', 'Teile');
-  stage.replaceChildren(big, stageTag, snapButton(() => savePicture(big, entry().label)));
-  root.replaceChildren(h('div', { class: 'shell' }, barSlot,
-    h('main', { class: 'shell__main props__main' },
-      h('section', { class: 'library props__library', 'aria-label': L('Parts', 'Teile') }, head, h('div', { class: 'library__body' }, grid)),
-      h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, under),
-      h('section', { class: 'library', 'aria-label': L('Part', 'Teil') }, h('div'), panel))));
+  stage.replaceChildren(big, stageTag, ...arrows, viewTools(snapButton(() => savePicture(big, entry().label))));
+  const slots = () => SLOTS.map((id) => ({ id, icon: SLOT_ICON[id], words: L(...SLOT_WORDS[id]) }));
+  shelf = library({
+    key: 'pixel-parts', label: word('search'), empty: word('nothing'), items: libraryItems, selected: () => prefs.id, pick,
+    filters: () => [filterToggles(slots(), () => prefs.slot, (id) => { prefs.slot = id as typeof prefs.slot; savePrefs(); render(); })],
+  });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({
+    key: 'pixel-parts', left: [shelf], centre: [stage, box(under)], right: [panel], leftWidth: 280, rightWidth: 380,
+  })));
 }
 
 undoKeys(undo.undo, undo.redo);

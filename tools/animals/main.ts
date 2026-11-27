@@ -1,10 +1,11 @@
 // The animal editor: pick a species, then style its coat, markings, ears, tail and face from
 // pictures. The body sliders that make new species live in the Shape tab, behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { box, tileGrid, confirmDialog, library, section as pixelSection, choice, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import {
-  ANCHORS, ANIMAL_H, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
-  isShadow, MARKS, NUMBERS, PLANS, readAnimalFile, ROLES, savedAnimals, sizeClassOf, TAILS,
+  ANCHORS, ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_STORE, ANIMAL_W, AnimalSprite, animalFile, CLIP_IDS, CLIPS, COLOR_KEYS, cleanAnimal, DEFAULT_ANIMAL, drawAnimal, EARS, heightOf, HORNS,
+  MARKS, NUMBERS, PLANS, readAnimalFile, ROLES, savedAnimals, sizeClassOf, TAILS,
   type Animal, type AnimalFrame, type ClipId, type Feature, type Mark, type NumberKey,
 } from '../../engine/animals/animal.ts';
 import { PRESETS } from '../../engine/animals/animal-presets.ts';
@@ -12,11 +13,11 @@ import { download, newId, pickFile, readStore, writeStore } from '../../shared/f
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { FACING_NAMES, turnFacing, type Facing } from '../../engine/core/puppet.ts';
 import {
-  checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word,
-  type IconName,
-} from '../../shared/shell.ts';
+  cheer, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word,
+  type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
 import { drawSymptom, SYMPTOMS } from './symptoms.ts';
 
 // ------------------------------------------------------------------ words
@@ -99,13 +100,12 @@ function cropFor(a: Animal): Rect {
   let x0 = ANIMAL_W, y0 = ANIMAL_H, x1 = 0, y1 = 0;
   for (const id of CLIP_IDS) {
     for (const f of [0, Math.floor(CLIPS[id].frames / 2)]) {
-      for (const at of [0, 3] as const) {
-        const { sprite } = drawAnimal(a, id, f, at);
-        for (let y = 0; y < ANIMAL_H; y++) for (let x = 0; x < ANIMAL_W; x++) {
-          if (!sprite.get(x, y)) continue;
-          x0 = Math.min(x0, x, ANIMAL_W - 1 - x); x1 = Math.max(x1, x, ANIMAL_W - 1 - x);
-          y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-        }
+      // The mirrored facings too: the sun casts their shadows another way.
+      for (const at of [0, 1, 2, 3] as const) {
+        // The animal and its shadow, cast from the sun; the crop stays centred, so as wide on each side.
+        const b = withSunShadow(drawAnimal(a, id, f, at).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN).bounds;
+        x0 = Math.min(x0, b.x0, ANIMAL_W - 1 - b.x1); x1 = Math.max(x1, b.x1, ANIMAL_W - 1 - b.x0);
+        y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1);
       }
     }
   }
@@ -115,7 +115,7 @@ function cropFor(a: Animal): Rect {
 
 /** A small standing picture of an animal, trimmed to what it paints. */
 function thumbnail(a: Animal, box = 60): HTMLCanvasElement {
-  return thumbs.of(`${box}|${JSON.stringify(a)}`, () => trimmed(drawAnimal(a, 'idle', 0, 0).sprite, ANIMAL_W, ANIMAL_H, box, isShadow));
+  return thumbs.of(`${box}|${JSON.stringify(a)}`, () => trimmed(withSunShadow(drawAnimal(a, 'idle', 0, 0).sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN), ANIMAL_W, ANIMAL_H, box));
 }
 /** The panel is rebuilt on every change and shows the same presets and saved animals again: their pictures are drawn once. */
 const thumbs = pictureCache('thumb');
@@ -179,9 +179,9 @@ function renameThing(name: string): void {
   } else addThing(name, animal);
   render();
 }
-function remove(): void {
+async function remove(): Promise<void> {
   const saved = current();
-  if (!saved || !confirm(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`))) return;
+  if (!saved || !(await confirmDialog(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`)))) return;
   roster = roster.filter((s) => s !== saved);
   setCurrent(null);
   storeRoster(L(`Deleted "${saved.name}".`, `„${saved.name}“ gelöscht.`));
@@ -266,24 +266,19 @@ function shuffle(only?: TabId): void {
 
 /** Picture cards: each shows the current animal with that one choice made. */
 function cards<V>(values: readonly V[], text: (v: V) => string, chosen: (v: V) => boolean, apply: (a: Animal, v: V) => void): HTMLElement {
-  return h('div', { class: 'grid' }, ...values.map((v) => {
+  const tiles = values.map((v, i) => {
     const look = structuredClone(animal);
     apply(look, v);
-    const b = h('button', { type: 'button', class: 'card', 'aria-pressed': String(chosen(v)) },
-      h('span', { class: 'card__picture' }, thumbnail(look)), h('span', { class: 'card__label' }, text(v)));
-    b.addEventListener('click', () => {
-      apply(animal, v);
-      changed();
-    });
-    return b;
-  }));
+    return { id: String(i), picture: thumbnail(look), words: text(v) };
+  });
+  return tileGrid(tiles, String(values.findIndex(chosen)), (id) => { apply(animal, values[Number(id)]); changed(); });
 }
 
 /** A slider. The preview follows while dragging; the panel is rebuilt only on release, so the drag is not interrupted. */
 function slider(key: NumberKey): HTMLElement {
   const range = NUMBERS[key];
   const text = label(key === 'fur' ? 'shaggy' : key);
-  const input = h('input', { type: 'range', class: 'slider', min: String(range.min), max: String(range.max), step: String(range.step), 'aria-label': text });
+  const input = rangeInput({ min: String(range.min), max: String(range.max), step: String(range.step), 'aria-label': text });
   input.value = String(animal[key]);
   const value = h('b', {}, String(animal[key]));
   input.addEventListener('input', () => {
@@ -305,32 +300,15 @@ function featureToggles(values: readonly Feature[]): HTMLElement {
 }
 
 function swatches(title: string, selected: PaletteKey, choose: (key: PaletteKey) => void): HTMLElement {
-  return row(title, h('div', { class: 'swatches' }, ...COLOR_KEYS.map((key) => {
-    const b = h('button', {
-      type: 'button', class: 'swatch', 'aria-pressed': String(key === selected), 'aria-label': `${title}: ${key}`, title: key,
-      style: `--swatch: ${PALETTE[key].base}; --swatch-shade: ${PALETTE[key].shade}`,
-    });
-    b.addEventListener('click', () => choose(key));
-    return b;
-  })));
+  return row(title, choice(title, COLOR_KEYS.map((key) => ({ id: key, color: PALETTE[key].base })), () => selected, (key) => choose(key as PaletteKey), 'colors', 60));
 }
 
 function panelFor(id: TabId): HTMLElement[] {
   const sliders = (group: string) => (Object.keys(NUMBERS) as NumberKey[]).filter((k) => NUMBERS[k].group === group).map(slider);
   switch (id) {
     case 'species': {
-      const grid = h('div', { class: 'grid' });
-      for (const preset of PRESETS) {
-        const card = h('button', { type: 'button', class: 'card', 'aria-pressed': String(JSON.stringify(preset.animal) === JSON.stringify(animal)) },
-          h('span', { class: 'card__picture' }, thumbnail(preset.animal)),
-          h('span', { class: 'card__label' }, preset.name),
-        );
-        card.addEventListener('click', () => {
-          animal = structuredClone(preset.animal);
-          changed();
-        });
-        grid.append(card);
-      }
+      const grid = tileGrid(PRESETS.map((p, i) => ({ id: String(i), picture: thumbnail(p.animal), words: p.name })), String(PRESETS.findIndex((p) => JSON.stringify(p.animal) === JSON.stringify(animal))),
+        (id) => { animal = structuredClone(PRESETS[Number(id)].animal); changed(); });
       return [section(L('Species', 'Tierart'), grid, h('p', { class: 'note' }, L('The 21 animals of Lop Hop, redrawn by rule. Pick one, then style it in the other tabs.', 'Die 21 Tiere aus Lop Hop, nach Regeln neu gezeichnet. Wähle eines und gestalte es in den anderen Reitern.')))];
     }
     case 'coat':
@@ -394,40 +372,52 @@ const root = document.getElementById('animals')!;
 const stage = h('div', { class: 'stage' });
 const hero = h('canvas', { class: 'stage__sprite' });
 const stageTag = h('span', { class: 'stage__tag' });
-const previewRows = h('div', { class: 'sec__body' });
+const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
 panel.addEventListener('click', (e) => (e.target as Element).closest('button') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const name = nameTag();
 name.onRename(renameThing);
+const views = viewTools();
 const FACING_DE = ['vorne rechts', 'vorne links', 'hinten links', 'hinten rechts', 'vorne', 'links', 'hinten', 'rechts'];
 const facingName = (at: Facing) => L(FACING_NAMES[at], FACING_DE[at]);
 let sizeText = '';
+// Arrows at its sides and a drag on it turn the animal round, an eighth of a turn at a time.
+const arrows = turnView(stage, (step) => setFacing(turnFacing(facing, step)));
 
 function setFacing(next: Facing): void {
   facing = next;
   stageTag.textContent = `${facingName(facing)} · ${sizeText}`;
 }
 
+
+// ------------------------------------------------------------------ the library: My things
+
+let shelf: Library | undefined;
+/** My things as tiles; while the one shown is not kept yet, it leads as a tile of its own. */
+const shelfItems = () => [
+  ...(current() ? [] : [{ id: '', picture: thumbnail(animal), words: L('Not saved yet', 'Noch nicht gespeichert'), mark: 'pencil' }]),
+  ...roster.map((s) => ({ id: s.id, picture: thumbnail(s.animal), words: s.name })),
+];
+function pickThing(id: string): void {
+  const chosen = roster.find((s) => s.id === id);
+  message = '';
+  if (chosen) load(chosen.animal, chosen.id);
+  else {
+    setCurrent(null);
+    render();
+  }
+}
+
 function renderBar(): void {
   const saved = current();
-  const picker = h('select', { class: 'select bar__things', 'aria-label': L('My things', 'Meine Sachen') },
-    h('option', { value: '' }, L('Not saved yet', 'Noch nicht gespeichert')), ...roster.map((s) => h('option', { value: s.id }, s.name)));
-  picker.value = currentId ?? '';
-  picker.addEventListener('change', () => {
-    const chosen = roster.find((s) => s.id === picker.value);
-    message = '';
-    if (chosen) load(chosen.animal, chosen.id);
-    else {
-      setCurrent(null);
-      render();
-    }
-  });
   const fileName = saved?.name ?? L('Animal', 'Tier');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'animals',
     title: word('animals'),
+    name: name.el,
     about: [
       L('Pick a species, then style its coat, markings, ears, tail and face. Rules draw it in the island look, in eight facings and six actions. Made for Animal Hospital.',
         'Wähle eine Tierart und gestalte Fell, Zeichnung, Ohren, Schwanz und Gesicht. Regeln zeichnen es im Insel-Stil, in acht Blickrichtungen und sechs Aktionen. Gemacht für Animal Hospital.'),
@@ -436,7 +426,6 @@ function renderBar(): void {
       L(`Files are JSON of type "pixel-animal". The game draws them with drawAnimal() from engine/animals/animal.ts, which also gives the anchor points ${ANCHORS.join(', ')} for every frame.`,
         `Dateien sind JSON vom Typ „pixel-animal“. Das Spiel zeichnet sie mit drawAnimal() aus engine/animals/animal.ts, das für jedes Bild auch die Ankerpunkte ${ANCHORS.join(', ')} liefert.`),
     ],
-    things: picker,
     more: [
       { label: L('New animal', 'Neues Tier'), icon: 'plus', run: newThing },
       { label: saved ? L('Make a copy', 'Kopie machen') : L('Keep in My things', 'In Meine Sachen behalten'), icon: 'copy', run: () => {
@@ -448,7 +437,7 @@ function renderBar(): void {
         changed();
       } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${fileName}.json`, animalFile(fileName, animal)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([ANIMAL_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([ANIMAL_STORE.roster]), run: () => void saveStores([ANIMAL_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       { label: expert ? L('Expert tools: on', 'Expertenwerkzeuge: an') : L('Expert tools: off', 'Expertenwerkzeuge: aus'), icon: 'sliders', run: () => {
         expert = !expert;
@@ -494,6 +483,7 @@ function newThing(): void {
 function render(): void {
   stage.style.setProperty('--ground', ground);
   renderBar();
+  shelf?.redraw();
   setFacing(facing);
   name.set(current()?.name ?? '', L('Not saved yet', 'Noch nicht gespeichert'));
   const shownTabs = TABS.filter(([id]) => id !== 'shape' || expert);
@@ -509,11 +499,12 @@ function render(): void {
   panel.replaceChildren(...panelFor(tab));
   panel.scrollTop = scroll;
 
-  const symptoms = h('select', { class: 'select', 'aria-label': 'Symptom' }, h('option', { value: '' }, L('None', 'Keins')), ...Object.keys(SYMPTOMS).map((s) => h('option', { value: s }, s)));
-  symptoms.value = symptom;
-  symptoms.addEventListener('change', () => {
-    symptom = symptoms.value;
-  });
+  views.replaceChildren(snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))),
+    // Unticked holds the frame shown.
+    pixelToggle(word('animate'), { icon: 'play' }, !paused, (on) => { paused = !on; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, words: L(en, german), color })), () => ground, (color) => { ground = color; render(); }, 'list'),
+    ...(expert ? [pixelToggle(L('Show anchor points', 'Ankerpunkte zeigen'), { icon: 'pin' }, showPoints, (on) => { showPoints = on; render(); })] : []));
+  const symptoms = choice('Symptom', [{ id: '', words: L('None', 'Keins') }, ...Object.keys(SYMPTOMS).map((s) => ({ id: s, words: s }))], () => symptom, (id) => { symptom = id; }, 'list');
   const actions = CLIP_IDS.map((id) => ({ id: id as string, label: id === 'run' && animal.hops ? L('Hop', 'Hoppeln') : L(CLIPS[id].name, CLIP_DE[id]) }));
   previewRows.replaceChildren(
     row(L('Action', 'Aktion'), segmented(L('Action', 'Aktion'), actions, clip, (id) => {
@@ -521,19 +512,7 @@ function render(): void {
       paused = false;
       render();
     })),
-    // Unticked holds the frame shown.
-    row('', checkbox(word('animate'), !paused, (on) => {
-      paused = !on;
-    })),
-    row(L('Ground', 'Boden'), segmented(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, label: L(en, german) })), ground, (color) => {
-      ground = color;
-      render();
-    })),
     row('Symptom', symptoms),
-    expert ? row(L('Points', 'Punkte'), h('div', { class: 'toggles' }, toggle(L('Show anchor points', 'Ankerpunkte zeigen'), showPoints, () => {
-      showPoints = !showPoints;
-      render();
-    }))) : '',
   );
 }
 
@@ -541,26 +520,12 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Animal Editor', 'Tier-Editor');
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Animal', 'Tier'))));
-  const preview = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  preview.open = true;
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, preview),
-        h('section', { class: 'library', 'aria-label': L('Animal', 'Tier') }, tabSlot, panel),
-      ),
-    ),
-  );
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
+  const preview = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
+  shelf = library({ key: 'pixel-animals', label: word('search'), empty: word('nothing'), items: shelfItems, selected: () => currentId ?? '', pick: pickThing });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-animals', left: [shelf], centre: [stage, box(preview)], right: [tabSlot, panel], leftWidth: 240, rightWidth: 460 })));
 }
 
-// Dragging sideways on the preview turns the animal round, an eighth of a turn at a time.
-dragToTurn(stage, (step) => setFacing(turnFacing(facing, step)));
-window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
-  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') setFacing(turnFacing(facing, event.key === 'ArrowRight' ? 1 : -1));
-});
 undoKeys(undo.undo, undo.redo);
 
 mount();
@@ -602,7 +567,8 @@ const tick = (ms: number) => {
     }
     if (symptom) drawSymptom(sprite, symptom, anchors, facing, ms / 1000);
     if (showPoints) for (const n of ANCHORS) sprite.set(anchors[n].x, anchors[n].y, anchors[n].visible ? '#ff00ff' : '#ff00ff66');
-    paintSprite(hero, sprite, crop);
+    // Its shadow cast from the sun, from the frame itself, not the marks on the copy.
+    paintSprite(hero, withSunShadow(cached.sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN, false, sprite), crop);
     // As large as the stage allows, in whole-number steps.
     fitWhole(hero, Math.min(stage.clientWidth, stage.clientHeight) - 40);
   }

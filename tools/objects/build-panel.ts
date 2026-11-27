@@ -1,9 +1,10 @@
 // The object editor's panels for a built thing (its size, parts and points), shared by the object
 // editor and the Shape tab of the props tool. They change the build they are given in place and say so
 // through the context.
+import { choice as pixelChoice, pixelButton, textField } from '../../ui/components.ts';
 import { AXES, COLOR_KEYS, KINDS, LOOPS, MAX_HEIGHT, MAX_PARTS, MAX_TILES, newPart, PAINTS, SHAPES, UNIT, type Build, type Part } from '../../engine/objects/object.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
-import { button, h, row, section, segmented } from '../../shared/shell.ts';
+import { h, row, section, segmented, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 export type BuildTab = 'size' | 'parts' | 'points';
@@ -37,7 +38,7 @@ export const label = (key: string) => (LABEL[key] ? LABEL[key][de() ? 1 : 0] : k
 
 /** A slider. The preview follows while dragging; the panel is rebuilt only on release, so the drag is not interrupted. */
 function slider(ctx: BuildContext, title: string, value: number, min: number, max: number, set: (v: number) => void): HTMLElement {
-  const input = h('input', { type: 'range', class: 'slider', min: String(min), max: String(max), step: '1', 'aria-label': title });
+  const input = rangeInput({ min: String(min), max: String(max), step: '1', 'aria-label': title });
   input.value = String(value);
   const out = h('b', {}, String(value));
   input.addEventListener('input', () => {
@@ -58,23 +59,13 @@ function choice<T extends string>(ctx: BuildContext, title: string, values: read
 }
 
 function swatches(ctx: BuildContext, title: string, value: PaletteKey, set: (key: PaletteKey) => void): HTMLElement {
-  return row(title, h('div', { class: 'swatches' }, ...COLOR_KEYS.map((key) => {
-    const b = h('button', {
-      type: 'button', class: 'swatch', 'aria-pressed': String(key === value), 'aria-label': `${title}: ${key}`, title: key,
-      style: `--swatch: ${PALETTE[key].base}; --swatch-shade: ${PALETTE[key].shade}`,
-    });
-    b.addEventListener('click', () => {
-      set(key);
-      ctx.changed();
-    });
-    return b;
-  })));
+  return row(title, pixelChoice(title, COLOR_KEYS.map((key) => ({ id: key, color: PALETTE[key].base })), () => value, (key) => { set(key as PaletteKey); ctx.changed(); }, 'colors', 60));
 }
 
+const ICONS_FOR: Record<string, string> = { Duplicate: 'copy', Verdoppeln: 'copy', Delete: 'trash', Löschen: 'trash' };
 const press = (text: string, onClick: () => void, pressed?: boolean, disabled = false) => {
-  const b = button({ class: 'toggle', ...(pressed === undefined ? {} : { 'aria-pressed': String(pressed) }) }, onClick, text);
-  b.disabled = disabled;
-  return b;
+  const icon = ICONS_FOR[text];
+  return Object.assign(pixelButton(text, { icon, words: icon ? undefined : text, pressed }, onClick), { disabled });
 };
 const partName = (p: Part, i: number) => `${i + 1} ${label(p.shape)}`;
 
@@ -96,7 +87,7 @@ export function buildPanel(id: BuildTab, ctx: BuildContext): HTMLElement[] {
       )];
     case 'parts': {
       const part = prop.parts[selected];
-      const list = h('div', { class: 'toggles' }, ...prop.parts.map((p, i) => press(partName(p, i), () => {
+      const list = h('div', { class: 'urow' }, ...prop.parts.map((p, i) => press(partName(p, i), () => {
         select(i);
         ctx.render();
       }, i === selected)));
@@ -106,7 +97,7 @@ export function buildPanel(id: BuildTab, ctx: BuildContext): HTMLElement[] {
         select(prop.parts.length - 1);
         ctx.changed();
       };
-      const actions = h('div', { class: 'toggles' },
+      const actions = h('div', { class: 'urow' },
         ...SHAPES.map((s) => press(`+ ${label(s)}`, () => add(s), undefined, prop.parts.length >= MAX_PARTS)),
         press(L('Duplicate', 'Verdoppeln'), () => {
           prop.parts.splice(selected + 1, 0, { ...part, x: part.x + 2 });
@@ -140,14 +131,13 @@ export function buildPanel(id: BuildTab, ctx: BuildContext): HTMLElement[] {
     }
     case 'points': {
       const rows = prop.points.map((pt, i) => {
-        const name = h('input', { type: 'text', class: 'select', value: pt.name, maxlength: '16', 'aria-label': L('Point name', 'Name des Punkts') });
-        name.addEventListener('change', () => {
-          const v = name.value.trim().toLowerCase();
+        const name = textField(L('Point name', 'Name des Punkts'), pt.name, () => {}, { width: 50, done: (value) => {
+          const v = value.trim().toLowerCase();
           if (/^[a-z][a-z0-9]{0,15}$/.test(v)) pt.name = v;
           ctx.changed();
-        });
+        } });
         return section(pt.name,
-          h('div', { class: 'toggles' }, name, press(L('Delete', 'Löschen'), () => {
+          h('div', { class: 'urow' }, name, press(L('Delete', 'Löschen'), () => {
             prop.points.splice(i, 1);
             ctx.changed();
           })),
@@ -158,7 +148,7 @@ export function buildPanel(id: BuildTab, ctx: BuildContext): HTMLElement[] {
       });
       return [
         ...rows,
-        h('div', { class: 'toggles', style: 'margin-top: 12px' }, press(L('+ Point', '+ Punkt'), () => {
+        h('div', { class: 'urow', style: 'margin-top: 12px' }, press(L('+ Point', '+ Punkt'), () => {
           prop.points.push({ name: `point${prop.points.length + 1}`, x: prop.w * 8, y: 10, z: prop.d * 8 });
           ctx.changed();
         }, undefined, prop.points.length >= 8)),

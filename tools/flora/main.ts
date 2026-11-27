@@ -1,24 +1,26 @@
 import './style.css';
+import { box, filterToggles, tileGrid, library, section as pixelSection, choice, pixelButton, toast, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
 import { outfitLook } from '../../engine/character/character.ts';
 import {
   CATEGORIES, colorChoices, drawPlant, FLORA_H, FLORA_ORIGIN, FLORA_W, FRAMES, grow, plantColors, Raster, recolorPlant, SIZE_MAX, SIZE_MIN, tryPlant, TURNS,
   type Category, type Grown, type Plant,
 } from '../../engine/flora/flora.ts';
 import { generateIsland, renderTerrain, type HeightMap, type TerrainImage } from '../../engine/world/terrain.ts';
-import { castShadow, layShadow, middleOf, paintIsland, scatter, stamp, type Scattered, type Spot, type Thing } from '../../engine/world/island.ts';
+import { castShadow, layShadow, middleOf, paintIsland, scatter, stamp, withSunShadow, type Scattered, type Spot, type Thing } from '../../engine/world/island.ts';
 import { cleanSwap, FLORA, FLORA_CALLS, FLORA_REJECTED, FLORA_STORE, plantById, type PlantEntry } from '../../engine/flora/flora-catalog.ts';
 import { PALETTE, type PaletteKey } from '../../engine/core/palette.ts';
 import { AUTHORED } from '../../engine/core/poses.ts';
 import { CHARACTER_ORIGIN as FEET, drawCharacter, SPRITE_H, SPRITE_W, type Sprite } from '../../engine/core/puppet.ts';
-import { button, cheer, dragToTurn, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, toggle, topBar, undoKeys, word, type IconName } from '../../shared/shell.ts';
+import { cheer, h, history, pick, row, savePicture, section, segmented, snapButton, tabs, tabTools, topBar, undoKeys, word, type IconName, rangeInput } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import { missingPlantNames, plantName, t, type Key } from './i18n.ts';
 
 // ------------------------------------------------------------------ state
 
 type Tab = 'all' | Category;
 const TABS: Tab[] = ['all', ...CATEGORIES];
+const WIND_ICON: Record<string, string> = { calm: 'sun', breeze: 'leaf', storm: 'storm' };
 const WINDS = { calm: 0, breeze: 1, storm: 2.5 } as const;
 type Wind = keyof typeof WINDS;
 const GROUNDS = [
@@ -197,18 +199,15 @@ function survivorAt(ms: number): Sprite {
 
 /** A picture of one plant, cropped to what it paints and fitted to a box. */
 function thumb(raster: Raster, box: number): HTMLCanvasElement {
-  let x0 = raster.w, y0 = raster.h, x1 = 0, y1 = 0;
-  for (let y = 0; y < raster.h; y++) for (let x = 0; x < raster.w; x++) {
-    if (!raster.get(x, y) && !raster.shaded(x, y)) continue;
-    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-  }
+  // Cropped to the plant and its shadow, cast from the sun on flat ground.
+  const { x0, y0, x1, y1 } = withSunShadow(raster, raster.w, raster.h, raster.origin).bounds;
   const w = Math.max(1, x1 - x0 + 1);
   const hgt = Math.max(1, y1 - y0 + 1);
   const canvas = h('canvas', { class: 'thumb', width: String(w), height: String(hgt) });
   const ctx = canvas.getContext('2d')!;
   const image = ctx.createImageData(w, hgt);
   const mask = new Uint8Array(w * hgt);
-  castShadow(mask, w, hgt, raster, raster.w, raster.h, -x0, -y0);
+  castShadow(mask, w, hgt, raster, raster.w, raster.h, -x0, -y0, raster.origin);
   layShadow(image, mask);
   stamp(image, raster, raster.w, raster.h, -x0, -y0);
   ctx.putImageData(image, 0, 0);
@@ -229,8 +228,9 @@ try {
 } catch {
   // Without storage expert tools start off.
 }
-type Panel = Tab | 'island';
-let panelTab: Panel = state.tab;
+/** The right panel: the plant shown (its colours, its recipe) or the island scene. */
+type Panel = 'plant' | 'island';
+let panelTab: Panel = 'plant';
 
 const undo = history(() => state, (value) => {
   state = value;
@@ -254,41 +254,46 @@ const SCENE_W = 16 * 32;
 const SCENE_H = 318;
 const stage = h('div', { class: 'stage' });
 const preview = h('canvas', { class: 'flora-preview', width: String(FLORA_W), height: String(FLORA_H) });
-const drySlider = h('input', { type: 'range', class: 'slider', min: '0', max: '1', step: '0.05' });
+const drySlider = rangeInput({ min: '0', max: '1', step: '0.05' });
 const dryValue = h('b');
-const sizeSlider = h('input', { type: 'range', class: 'slider', min: String(SIZE_MIN), max: String(SIZE_MAX), step: '0.05' });
+const sizeSlider = rangeInput({ min: String(SIZE_MIN), max: String(SIZE_MAX), step: '0.05' });
 const sizeValue = h('b');
-const turnSlider = h('input', { type: 'range', class: 'slider', min: '0', max: String(TURNS - 1), step: '1' });
-const turnValue = h('b');
-const previewRows = h('div', { class: 'sec__body' });
+const views = viewTools();
+const previewRows = h('div', { class: 'ufields' });
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
-panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
+panel.addEventListener('click', (e) => (e.target as Element).closest('.utile, .ubar, .uslider') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const editor = h('div', { class: 'recipe' });
 const sceneCanvas = h('canvas', { class: 'scene__canvas', width: String(SCENE_W), height: String(SCENE_H) });
 const cardPictures = new Map<string, HTMLElement>();
 let editorFor = '';
 
-const TAB_ICONS: Record<Panel, IconName> = { all: 'grid', palm: 'palm', grass: 'grass', cactus: 'cactus', jungle: 'leaf', rock: 'rock', driftwood: 'driftwood', island: 'mountain' };
+const TAB_ICONS: Record<Tab | 'island', IconName> = { all: 'grid', palm: 'palm', grass: 'grass', cactus: 'cactus', jungle: 'leaf', rock: 'rock', driftwood: 'driftwood', island: 'mountain' };
 const dryName = (d: number) => t(`dry.${Math.round(d * 2)}` as Key);
-const turnName = (n: number) => `${(n * 360) / TURNS}°`;
 const sizeName = (s: number) => `${Math.round(sizeStep(s) * 100)}%`;
 
 /** The plants of the group picked. */
 const pool = () => FLORA.filter((e) => state.tab === 'all' || e.category === state.tab);
 
-function cards(): HTMLElement {
+/** The library's tiles: the plants of the group picked; the search finds them by group and "edited" too. */
+function cards() {
   cardPictures.clear();
-  return h('div', { class: 'grid' }, ...pool().map((entry) => {
+  return pool().map((entry) => {
     const picture = h('span', { class: 'card__picture' }, thumb(rasterOf(entry, 0, 0, 0, state.dryness, 1), 60));
     cardPictures.set(entry.id, picture);
-    return button({ class: 'card', 'aria-pressed': String(entry.id === state.selected) }, () => {
-      state.selected = entry.id;
-      state.seed = 0;
-      changed();
-    }, picture, h('span', { class: 'card__label' }, plantName(entry.id, entry.label)), state.custom[entry.id] ? h('span', { class: 'card__label', style: 'opacity: .7; font-weight: 500' }, t('recipe.edited')) : null);
-  }));
+    return { id: entry.id, picture, words: plantName(entry.id, entry.label), mark: state.custom[entry.id] ? 'pencil' : undefined, find: `${entry.category} ${t(`cat.${entry.category}` as Key)} ${state.custom[entry.id] ? 'edited' : ''}` };
+  });
+}
+let shelf: Library | undefined;
+/** Shows another group of plants in the library; the preview follows to its first plant unless the current one belongs to it. */
+function pickGroup(id: Tab): void {
+  state.tab = id;
+  if (id !== 'all' && selectedEntry().category !== id) {
+    state.selected = FLORA.find((e) => e.category === id)?.id ?? state.selected;
+    state.seed = 0;
+  }
+  changed();
 }
 
 function colours(): HTMLElement[] {
@@ -298,19 +303,15 @@ function colours(): HTMLElement[] {
     const keys = colorChoices(from, entry.category).slice(1);
     const title = i === 0 ? t('color.main') : t('color.second');
     const current = state.colors[entry.id]?.[from] ?? null;
-    return row(title, h('div', { class: 'swatches' }, ...[null, ...keys].map((key) => {
-      const name = key ? t(`palette.${key}` as Key) : t('color.original');
-      return button({
-        class: key === null ? 'swatch swatch--own' : 'swatch', 'aria-pressed': String(key === current), 'aria-label': `${title}: ${name}`, title: name,
-        style: key ? `--swatch: ${PALETTE[key].base}; --swatch-shade: ${PALETTE[key].shade}` : '',
-      }, () => {
-        const next = { ...state.colors[entry.id] };
-        if (key) next[from] = key;
-        else delete next[from];
-        state.colors[entry.id] = next;
-        changed();
-      }, key === null ? t('color.original') : null);
-    })));
+    const set = (key: string | null) => {
+      const next = { ...state.colors[entry.id] };
+      if (key) next[from] = key as PaletteKey;
+      else delete next[from];
+      state.colors[entry.id] = next;
+      changed();
+    };
+    // The plant's own colour first (a cell with the reset icon), then the choices, all in one bar.
+    return row(title, choice(title, [{ id: '', icon: 'reset' }, ...keys.map((key) => ({ id: key, color: PALETTE[key].base }))], () => current ?? '', (key) => set(key || null), 'colors', 62));
   });
 }
 
@@ -342,35 +343,36 @@ function renderEditor(): void {
       cardPictures.get(entry.id)?.replaceChildren(thumb(rasterOf(entry, 0, 0, 0, state.dryness, 1), 60));
     }, 250);
   });
-  const copy = button({ class: 'toggle' }, async () => {
+  const copy = pixelButton(t('recipe.copy'), { icon: 'copy' }, async () => {
     try {
       await navigator.clipboard.writeText(area.value);
-      copy.textContent = t('recipe.copied');
-      setTimeout(() => (copy.textContent = t('recipe.copy')), 1500);
+      toast(t('recipe.copied'));
     } catch {
       area.select();
     }
-  }, t('recipe.copy'));
+  });
   editor.replaceChildren(
     h('p', { class: 'note' }, t('recipe.note')),
     area,
     status,
-    h('div', { class: 'toggles' }, button({ class: 'toggle' }, () => {
+    h('div', { class: 'urow' }, pixelButton(t('recipe.reset'), { icon: 'reset' }, () => {
       delete state.custom[entry.id];
       edits.delete(entry.id);
       editorFor = '';
       changed();
-    }, t('recipe.reset')), copy),
+    }), copy),
   );
 }
 
 function variants(): HTMLElement {
   const entry = selectedEntry();
-  return h('div', { class: 'variants', role: 'radiogroup', 'aria-label': t('variant') }, ...Array.from({ length: VARIANTS }, (_, seed) =>
-    button({ class: 'variant', role: 'radio', 'aria-checked': String(seed === state.seed), 'aria-label': t('variant.n', { n: seed + 1 }) }, () => {
-      state.seed = seed;
-      changed();
-    }, thumb(rasterOf(entry, seed, 0, 0), 40))));
+  const grid = tileGrid(Array.from({ length: VARIANTS }, (_, seed) => ({ id: String(seed), picture: thumb(rasterOf(entry, seed, 0, 0), 40), words: t('variant.n', { n: seed + 1 }) })), String(state.seed), (seed) => {
+    state.seed = Number(seed);
+    changed();
+  });
+  grid.setAttribute('role', 'group');
+  grid.setAttribute('aria-label', t('variant'));
+  return grid;
 }
 
 /** A random plant from the open group, in a random variant. */
@@ -386,6 +388,7 @@ function renderBar(): void {
   const total = FLORA.length + FLORA_REJECTED.length;
   const repaired = FLORA.filter((e) => e.repairs.length).length;
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'flora',
     title: word('flora'),
     about: [t('lede'), t('foot.items', {
@@ -393,12 +396,12 @@ function renderBar(): void {
       repaired: repaired ? t('foot.repaired', { n: repaired }) : '',
     }), t('foot.rules')],
     more: [
-      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([FLORA_STORE]).then((ok) => {
+      { label: currentLang() === 'de' ? 'Im Projekt speichern' : 'Save to project', icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([FLORA_STORE]), run: () => void saveStores([FLORA_STORE]).then((ok) => {
         status.textContent = ok ? (currentLang() === 'de' ? 'Im Projekt gespeichert (src/content/store).' : 'Saved to the project (src/content/store).') : (currentLang() === 'de' ? 'Nichts gespeichert: ändere erst etwas.' : 'Nothing saved: change something first.');
       }) },
       { label: currentLang() === 'de' ? 'Neu beginnen' : 'Start over', icon: 'reset', run: () => {
         state = defaultState();
-        panelTab = state.tab;
+        panelTab = 'plant';
         editorFor = '';
         changed();
       } },
@@ -432,7 +435,8 @@ function render(): void {
   const ground = GROUNDS.find((g) => g.id === state.ground)!;
   stage.style.setProperty('--ground', ground.color);
   renderBar();
-  const list: Panel[] = [...TABS, 'island'];
+  shelf?.redraw();
+  const list: Panel[] = ['plant', 'island'];
   // The die picks another plant from this group; the island tab rolls a new island.
   const die = tabTools(() => {
     if (panelTab === 'island') {
@@ -440,16 +444,8 @@ function render(): void {
       changed();
     } else shuffle();
   });
-  tabSlot.replaceChildren(tabs(t('sections'), list.map((id) => ({ id, label: id === 'island' ? t('scene') : t(`cat.${id}` as Key), icon: TAB_ICONS[id] })), panelTab, (id) => {
+  tabSlot.replaceChildren(tabs(t('sections'), list.map((id) => ({ id, label: id === 'island' ? t('scene') : t('tab.plant'), icon: id === 'island' ? TAB_ICONS.island : 'leaf' })), panelTab, (id) => {
     panelTab = id;
-    if (id !== 'island') {
-      state.tab = id;
-      // The preview follows the group: its first plant, unless the current one belongs to it.
-      if (id !== 'all' && selectedEntry().category !== id) {
-        state.selected = FLORA.find((e) => e.category === id)?.id ?? state.selected;
-        state.seed = 0;
-      }
-    }
     panel.scrollTop = 0;
     changed();
   }, new Set(), die));
@@ -466,7 +462,7 @@ function render(): void {
     ));
     requestAnimationFrame(fitScene);
   } else {
-    const parts: Node[] = [section(t(`cat.${state.tab}` as Key), cards()), section(currentLang() === 'de' ? 'Farben' : 'Colours', ...colours())];
+    const parts: Node[] = [section(currentLang() === 'de' ? 'Farben' : 'Colours', ...colours())];
     if (expert) {
       renderEditor();
       parts.push(section(t('recipe'), editor));
@@ -478,30 +474,18 @@ function render(): void {
   drySlider.value = String(state.dryness);
   drySlider.setAttribute('aria-valuetext', dryName(state.dryness));
   dryValue.textContent = dryName(state.dryness);
-  turnSlider.value = String(state.turn);
-  turnSlider.setAttribute('aria-valuetext', turnName(state.turn));
-  turnValue.textContent = turnName(state.turn);
   sizeSlider.value = String(state.size);
   sizeSlider.setAttribute('aria-valuetext', sizeName(state.size));
   sizeValue.textContent = sizeName(state.size);
   previewRows.replaceChildren(
     row(t('variant'), variants()),
-    row(t('turn'), turnSlider, turnValue),
     row(t('size'), sizeSlider, sizeValue),
     row(t('dryness'), drySlider, dryValue),
-    row(t('wind'), segmented(t('wind'), (Object.keys(WINDS) as Wind[]).map((w) => ({ id: w, label: t(`wind.${w}` as Key) })), state.wind, (w) => {
-      state.wind = w;
-      changed();
-    })),
-    row(t('ground'), segmented(t('ground'), GROUNDS.map((g) => ({ id: g.id, label: t(`ground.${g.id}` as Key) })), state.ground, (g) => {
-      state.ground = g;
-      changed();
-    })),
-    row('', h('div', { class: 'toggles' }, toggle(t('person'), state.person, () => {
-      state.person = !state.person;
-      changed();
-    }))),
   );
+  views.replaceChildren(snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)),
+    choice(t('wind'), (Object.keys(WINDS) as Wind[]).map((w) => ({ id: w, icon: WIND_ICON[w], words: t(`wind.${w}` as Key) })), () => state.wind, (w) => { state.wind = w as Wind; changed(); }, 'list'),
+    choice(t('ground'), GROUNDS.map((g) => ({ id: g.id, color: g.color, words: t(`ground.${g.id}` as Key) })), () => state.ground, (g) => { state.ground = g as Ground; changed(); }, 'list'),
+    pixelToggle(t('person'), { icon: 'person' }, state.person, (on) => { state.person = on; changed(); }));
 }
 
 function mount(): void {
@@ -510,19 +494,13 @@ function mount(): void {
   editorFor = '';
   drySlider.setAttribute('aria-label', t('dryness'));
   sizeSlider.setAttribute('aria-label', t('size'));
-  turnSlider.setAttribute('aria-label', t('turn'));
-  stage.replaceChildren(preview, snapButton(() => savePicture(preview, plantName(selectedEntry().id, selectedEntry().label), 4)));
-  const previewSec = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  previewSec.open = true;
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': t('preview') }, stage, previewSec),
-        h('section', { class: 'library', 'aria-label': t('plants') }, tabSlot, panel),
-      ),
-    ),
-  );
+  stage.replaceChildren(preview, ...arrows, views);
+  const previewSec = pixelSection({ icon: 'eye', tip: word('preview') }, [previewRows]);
+  shelf = library({
+    key: 'pixel-flora', label: word('search'), empty: word('nothing'), items: cards, selected: () => state.selected, pick: (id) => { state.selected = id; state.seed = 0; changed(); },
+    filters: () => [filterToggles(CATEGORIES.map((id) => ({ id, icon: TAB_ICONS[id], words: t(`cat.${id}` as Key) })), () => state.tab, (id) => pickGroup(id as Tab))],
+  });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-flora', left: [shelf], centre: [stage, box(previewSec)], right: [tabSlot, panel], leftWidth: 260, rightWidth: 460 })));
 }
 
 drySlider.addEventListener('input', () => {
@@ -541,13 +519,10 @@ sizeSlider.addEventListener('input', () => {
 sizeSlider.addEventListener('change', changed);
 function setTurn(next: number): void {
   state.turn = ((next % TURNS) + TURNS) % TURNS;
-  turnSlider.setAttribute('aria-valuetext', turnName(state.turn));
-  turnValue.textContent = turnName(state.turn);
   version++;
 }
-turnSlider.addEventListener('input', () => setTurn(Number(turnSlider.value)));
-turnSlider.addEventListener('change', changed);
-dragToTurn(stage, (step) => {
+// Arrows at its sides and a drag on it turn the plant round.
+const arrows = turnView(stage, (step) => {
   setTurn(state.turn + step);
   changed();
 });
@@ -641,8 +616,8 @@ function drawPreview(ms: number, frame: number): void {
   // The survivor stands a little in front and to the left, and is never hidden by the plant.
   const person = { x: view.origin.x - 30 - FEET.x, y: view.origin.y + 4 - FEET.y };
   const mask = new Uint8Array(view.w * view.h);
-  castShadow(mask, view.w, view.h, raster, raster.w, raster.h, dx, dy);
-  if (state.person) castShadow(mask, view.w, view.h, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y);
+  castShadow(mask, view.w, view.h, raster, raster.w, raster.h, dx, dy, origin);
+  if (state.person) castShadow(mask, view.w, view.h, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y, FEET);
   layShadow(image, mask);
   stamp(image, raster, raster.w, raster.h, dx, dy);
   if (state.person) stamp(image, survivorAt(ms), SPRITE_W, SPRITE_H, person.x, person.y);

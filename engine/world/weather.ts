@@ -42,8 +42,21 @@ export function weatherSea(w: Weather): void {
   ocean.glints = CALM.glints * (1 - w.cloud) * (1 - w.fog);
 }
 
-/** How hard plants sway: hardly at all on a calm day, up to a storm's; not at all in fog. */
-export const plantWind = (w: Weather) => Math.round((0.3 + 2.2 * airOf(w)) * (1 - w.fog) * 4) / 4;
+/** The strengths plants sway at. Each needs its own pictures of every plant, so a few, not every value between. */
+export const WIND_LEVELS = [0, 0.3, 0.8, 2.5];
+/** Past the halfway point, how much nearer another level must be before plants change to it. */
+const HOLD = 0.1;
+
+/**
+ * How hard plants sway, as one of `WIND_LEVELS`: hardly at all on a calm day, up to a storm's; not at all in fog.
+ * Given the level shown so far (`last`), it stays there until another is clearly nearer, so a weather slowly
+ * turning does not flick between two.
+ */
+export function plantWind(w: Weather, last = -1): number {
+  const raw = (0.3 + 2.2 * airOf(w)) * (1 - w.fog);
+  const near = WIND_LEVELS.reduce((a, b) => (Math.abs(b - raw) < Math.abs(a - raw) ? b : a));
+  return WIND_LEVELS.includes(last) && Math.abs(last - raw) < Math.abs(near - raw) + HOLD ? last : near;
+}
 
 const GREY = rgb('#7d8796');
 /** The light under cloud and rain: greyer and dimmer. Lay it with `light` as well as the time of day's tint. */

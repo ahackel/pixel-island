@@ -8,12 +8,14 @@
 // Freezing a catalogue kind LOCKS it: everything that draws that kind (scenes, games) shows the
 // painted views from then on, until it is unlocked. Painted kinds can still sway: the wind shears
 // their columns by height.
-import { FRAMES, grow, drawPlant, isStill, tryPlant, TURNS, type Plant } from '../flora/flora.ts';
+import { FRAMES, grow, drawPlantCropped, isStill, tryPlant, TURNS, type Plant } from '../flora/flora.ts';
+import { crop } from '../core/cropped.ts';
 import { FLORA, plantById, plantOf } from '../flora/flora-catalog.ts';
 import { cleanBuild, drawObject, framesOf, OBJECT_H, OBJECT_ORIGIN, OBJECT_W, savedProps, type Build } from '../objects/object.ts';
 import { OBJECT_PRESETS } from '../objects/object-presets.ts';
 import { cellForHex, cleanArt, freeze, paintedView, swayed, toArt, type Art, type Drawn, type Grid, type Painted } from '../core/stamp.ts';
 import { DECOR } from './decor.ts';
+import { cached, forget, idOf } from '../core/cache.ts';
 import { newId, readStore, writeStore } from '../../shared/files.ts';
 
 export type Source = 'painted' | 'grown' | 'built' | 'rigged';
@@ -325,15 +327,13 @@ export function importPropKind(text: string): string {
 
 // ------------------------------------------------------------------ drawing
 
-const grownCache = new Map<string, Painted>();
 /** Recipes being edited in a tool, drawn instead of the stored ones until the page is left. */
 const editing = new Map<string, Plant>();
 export function setEditedPlant(id: string, plant: Plant | null): void {
   if (plant) editing.set(id, plant);
   else editing.delete(id);
-  for (const key of [...grownCache.keys()]) if (key.startsWith(`${id}|`)) grownCache.delete(key);
+  forget('prop plant', `${id}|`);
 }
-const builtCache = new WeakMap<Build, Map<string, Painted>>();
 
 /** A kind drawn by its rule (not from locked art) from a direction, eighths of a turn. */
 function drawGenerated(k: PropKind, dir: number, frame: number, wind: number, seed: number, size: number): Painted | null {
@@ -343,28 +343,14 @@ function drawGenerated(k: PropKind, dir: number, frame: number, wind: number, se
     const moving = k.features.includes('wind') ? wind : 0;
     const f = moving ? frame % FRAMES : 0;
     const key = `${k.id}|${k.builtin ? '' : JSON.stringify(k.recipe)}|${dir}|${f}|${moving}|${seed}|${Math.round(size * 10)}`;
-    let p = grownCache.get(key);
-    if (!p) {
-      if (grownCache.size > 600) grownCache.clear();
-      const raster = drawPlant(grow(plant, { seed, size: Math.round(size * 10) / 10, turn: (dir * 360) / TURNS }), { frame: f, wind: moving });
-      p = { get: (x, y) => raster.get(x, y), w: raster.w, h: raster.h, foot: raster.origin };
-      grownCache.set(key, p);
-    }
-    return p;
+    return cached('prop plant', key, () => drawPlantCropped(grow(plant, { seed, size: Math.round(size * 10) / 10, turn: (dir * 360) / TURNS }), { frame: f, wind: moving }));
   }
   if (k.source === 'built' && k.build) {
-    let byKey = builtCache.get(k.build);
-    if (!byKey) builtCache.set(k.build, (byKey = new Map()));
     const f = k.features.includes('loop') ? frame % framesOf(k.build) : 0;
     // Eight views show the diagonals, turned an eighth; fewer keep to the four quarter turns.
     const turn = k.views === 8 ? dir / 2 : Math.floor(dir / 2) % 4;
-    const key = `${turn}|${f}`;
-    let p = byKey.get(key);
-    if (!p) {
-      const sprite = drawObject(k.build, turn, f).sprite;
-      p = { get: (x, y) => sprite.get(x, y), w: OBJECT_W, h: OBJECT_H, foot: OBJECT_ORIGIN };
-      byKey.set(key, p);
-    }
+    // Kept by the build itself, so an edited build (a new object) is drawn anew.
+    const p = cached('prop object', `${idOf(k.build)}|${turn}|${f}`, () => crop(drawObject(k.build!, turn, f).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN));
     return p;
   }
   return null;

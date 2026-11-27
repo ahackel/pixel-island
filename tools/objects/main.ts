@@ -1,20 +1,21 @@
 // The object editor: pick a thing, then change its size, parts and colours, see it in all four
 // camera turns, and keep a named list on the device. Points for the game sit behind Expert tools.
 // Built on the shared editor shell, like the wardrobe.
-import { canSaveToProject, saveStores } from '../../shared/project.ts';
+import { choice, tileGrid, confirmDialog, library, toggle as pixelToggle, turnView, viewTools, workspace, type Library } from '../../ui/components.ts';
+import { canSaveToProject, saveStores, storeTracker } from '../../shared/project.ts';
 import {
-  COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, isShadow, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
+  COLOR_KEYS, cleanBuild, DEFAULT_BUILD, drawObject, framesOf, heightOf, LOOP_RATE, ObjectSprite, OBJECT_H, OBJECT_ORIGIN, OBJECT_STORE, OBJECT_W, propFile, readPropFile, savedProps, type ObjectFrame, type Build, type Turn,
 } from '../../engine/objects/object.ts';
 import { OBJECT_PRESETS } from '../../engine/objects/object-presets.ts';
 import { buildPanel, type BuildContext } from './build-panel.ts';
 import { download, newId, pickFile, readStore, writeStore } from '../../shared/files.ts';
 import { type PaletteKey } from '../../engine/core/palette.ts';
 import {
-  checkbox, cheer, dragToTurn, h, history, NAMES, nameTag, pick, pickStart, row, savePicture, section, segmented, shuffled, snapButton, tabs, tabTools, topBar, undoKeys, word,
-  type IconName,
-} from '../../shared/shell.ts';
+  cheer, h, history, NAMES, nameTag, pick, pickStart, savePicture, section, shuffled, snapButton, tabs, tabTools, topBar, undoKeys, word,
+  type IconName } from '../../shared/shell.ts';
 import { currentLang } from '../../shared/lang.ts';
 import { fitWhole, paintSprite, pictureCache, trimmed, type Rect } from '../../shared/pixels.ts';
+import { withSunShadow } from '../../engine/world/island.ts';
 
 const L = (en: string, german: string) => (currentLang() === 'de' ? german : en);
 
@@ -52,12 +53,10 @@ let message = '';
 function cropFor(p: Build): Rect {
   let x0 = OBJECT_W, y0 = OBJECT_H, x1 = 0, y1 = 0;
   for (const at of [0, 1, 2, 3] as const) {
-    const { sprite } = drawObject(p, at);
-    for (let y = 0; y < OBJECT_H; y++) for (let x = 0; x < OBJECT_W; x++) {
-      if (!sprite.get(x, y)) continue;
-      x0 = Math.min(x0, x, OBJECT_W - 1 - x); x1 = Math.max(x1, x, OBJECT_W - 1 - x);
-      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
-    }
+    // The object and its shadow, cast from the sun; the crop stays centred, so as wide on each side.
+    const b = withSunShadow(drawObject(p, at).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN).bounds;
+    x0 = Math.min(x0, b.x0, OBJECT_W - 1 - b.x1); x1 = Math.max(x1, b.x1, OBJECT_W - 1 - b.x0);
+    y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1);
   }
   const side = Math.max(24, x1 - x0 + 5, y1 - y0 + 5);
   return { x: Math.round(OBJECT_W / 2 - side / 2), y: Math.round((y0 + y1) / 2 - side / 2), w: side, h: side };
@@ -65,7 +64,7 @@ function cropFor(p: Build): Rect {
 
 /** A small picture of an object, trimmed to what it paints. */
 function thumbnail(p: Build, box = 60): HTMLCanvasElement {
-  return thumbs.of(`${box}|${JSON.stringify(p)}`, () => trimmed(drawObject(p, 0).sprite, OBJECT_W, OBJECT_H, box, isShadow));
+  return thumbs.of(`${box}|${JSON.stringify(p)}`, () => trimmed(withSunShadow(drawObject(p, 0).sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN), OBJECT_W, OBJECT_H, box));
 }
 /** The panel is rebuilt on every change and shows the same presets and saved objects again: their pictures are drawn once. */
 const thumbs = pictureCache('thumb');
@@ -131,9 +130,9 @@ function renameThing(name: string): void {
   } else addThing(name, prop);
   render();
 }
-function remove(): void {
+async function remove(): Promise<void> {
   const saved = current();
-  if (!saved || !confirm(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`))) return;
+  if (!saved || !(await confirmDialog(L(`Delete "${saved.name}" from this device?`, `„${saved.name}“ von diesem Gerät löschen?`)))) return;
   roster = roster.filter((s) => s !== saved);
   setCurrent(null);
   storeRoster(L(`Deleted "${saved.name}".`, `„${saved.name}“ gelöscht.`));
@@ -184,19 +183,8 @@ const buildContext = (): BuildContext => ({
 function panelFor(id: TabId): HTMLElement[] {
   switch (id) {
     case 'things': {
-      const grid = h('div', { class: 'grid' });
-      for (const preset of OBJECT_PRESETS) {
-        const card = h('button', { type: 'button', class: 'card', 'aria-pressed': String(JSON.stringify(preset.prop) === JSON.stringify(prop)) },
-          h('span', { class: 'card__picture' }, thumbnail(preset.prop)),
-          h('span', { class: 'card__label' }, preset.name),
-        );
-        card.addEventListener('click', () => {
-          prop = structuredClone(preset.prop);
-          selected = 0;
-          changed();
-        });
-        grid.append(card);
-      }
+      const grid = tileGrid(OBJECT_PRESETS.map((p, i) => ({ id: String(i), picture: thumbnail(p.prop), words: p.name })), String(OBJECT_PRESETS.findIndex((p) => JSON.stringify(p.prop) === JSON.stringify(prop))),
+        (id) => { prop = structuredClone(OBJECT_PRESETS[Number(id)].prop); selected = 0; changed(); });
       return [section(L('Things', 'Dinge'), grid, h('p', { class: 'note' }, L(
         'The furniture, devices, fountain and cars of Animal Hospital, built from parts. Pick one, then change its size, parts and colours.',
         'Die Möbel, Geräte, der Brunnen und die Autos aus Animal Hospital, aus Teilen gebaut. Wähle eines und ändere Größe, Teile und Farben.')))];
@@ -212,23 +200,20 @@ const root = document.getElementById('objects')!;
 const stage = h('div', { class: 'stage' });
 const hero = h('canvas', { class: 'stage__sprite', style: 'cursor: crosshair' });
 const stageTag = h('span', { class: 'stage__tag' });
-const sideSlider = h('input', { type: 'range', class: 'slider', min: '0', max: '3', step: '1' });
-const sideValue = h('b');
-const previewRows = h('div', { class: 'sec__body' });
+const views = viewTools();
 const tabSlot = h('div');
-const panel = h('div', { class: 'library__body', role: 'tabpanel' });
-panel.addEventListener('click', (e) => (e.target as Element).closest('.card, .swatch') && cheer(stage));
+const panel = h('div', { class: 'uside__list', role: 'tabpanel' });
+panel.addEventListener('click', (e) => (e.target as Element).closest('.utile, .ubar, .uslider') && cheer(stage));
 const barSlot = h('div', { style: 'display: contents' });
 const name = nameTag();
 name.onRename(renameThing);
 const TURN_NAMES = ['0°', '90°', '180°', '270°'];
 let sizeText = '';
+// Arrows at its sides and a drag on it turn the object a quarter at a time.
+const arrows = turnView(stage, (step) => setTurn(((turn + step + 4) % 4) as Turn));
 
 function setTurn(next: Turn): void {
   turn = next;
-  sideSlider.value = String(turn);
-  sideSlider.setAttribute('aria-valuetext', TURN_NAMES[turn]);
-  sideValue.textContent = TURN_NAMES[turn];
   stageTag.textContent = `${TURN_NAMES[turn]} · ${sizeText}`;
 }
 
@@ -248,24 +233,32 @@ function newThing(): void {
   }));
 }
 
+// ------------------------------------------------------------------ the library: My things
+
+let shelf: Library | undefined;
+/** My things as tiles; while the one shown is not kept yet, it leads as a tile of its own. */
+const shelfItems = () => [
+  ...(current() ? [] : [{ id: '', picture: thumbnail(prop), words: L('Not saved yet', 'Noch nicht gespeichert'), mark: 'pencil' }]),
+  ...roster.map((s) => ({ id: s.id, picture: thumbnail(s.prop), words: s.name })),
+];
+function pickThing(id: string): void {
+  const chosen = roster.find((s) => s.id === id);
+  message = '';
+  if (chosen) load(chosen.prop, chosen.id);
+  else {
+    setCurrent(null);
+    render();
+  }
+}
+
 function renderBar(): void {
   const saved = current();
-  const picker = h('select', { class: 'select bar__things', 'aria-label': L('My things', 'Meine Sachen') },
-    h('option', { value: '' }, L('Not saved yet', 'Noch nicht gespeichert')), ...roster.map((s) => h('option', { value: s.id }, s.name)));
-  picker.value = currentId ?? '';
-  picker.addEventListener('change', () => {
-    const chosen = roster.find((s) => s.id === picker.value);
-    message = '';
-    if (chosen) load(chosen.prop, chosen.id);
-    else {
-      setCurrent(null);
-      render();
-    }
-  });
   const fileName = saved?.name ?? L('Object', 'Objekt');
   const { bar, undo: undoButton, redo: redoButton, pops } = topBar({
+    sidebar: true,
     tool: 'objects',
     title: word('objects'),
+    name: name.el,
     about: [
       L('Build furniture, devices and cars from boxes, cylinders and balls on a tile footprint. Rules draw them in the island look, in all four camera turns. Made for Animal Hospital.',
         'Baue Möbel, Geräte und Autos aus Quadern, Zylindern und Kugeln auf einer Grundfläche aus Feldern. Regeln zeichnen sie im Insel-Stil, in allen vier Kameradrehungen. Gemacht für Animal Hospital.'),
@@ -274,7 +267,6 @@ function renderBar(): void {
       L('Files are JSON of type "pixel-object". The game draws them with drawObject() from engine/objects/object.ts, which also gives the points for every frame.',
         'Dateien sind JSON vom Typ „pixel-object“. Das Spiel zeichnet sie mit drawObject() aus engine/objects/object.ts, das für jedes Bild auch die Punkte liefert.'),
     ],
-    things: picker,
     more: [
       { label: L('New object', 'Neues Objekt'), icon: 'plus', run: newThing },
       { label: saved ? L('Make a copy', 'Kopie machen') : L('Keep in My things', 'In Meine Sachen behalten'), icon: 'copy', run: () => {
@@ -287,7 +279,7 @@ function renderBar(): void {
         changed();
       } },
       { label: L('Export', 'Exportieren'), icon: 'download', run: () => download(`${fileName}.json`, propFile(fileName, prop)) },
-      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', disabled: !canSaveToProject(), run: () => void saveStores([OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
+      { label: L('Save to project', 'Im Projekt speichern'), icon: 'download', main: true, disabled: !canSaveToProject(), track: storeTracker([OBJECT_STORE.roster]), run: () => void saveStores([OBJECT_STORE.roster]).then((ok) => { message = ok ? L('Saved to the project (src/content/store); commit it to keep it.', 'Im Projekt gespeichert (src/content/store); committe es, um es zu behalten.') : L('Nothing saved: change something first, and run the local dev server.', 'Nichts gespeichert: ändere erst etwas und starte den lokalen Dev-Server.'); render(); }) },
       { label: L('Import', 'Importieren'), icon: 'upload', run: () => void importFile() },
       { label: expert ? L('Expert tools: on', 'Expertenwerkzeuge: an') : L('Expert tools: off', 'Expertenwerkzeuge: aus'), icon: 'sliders', run: () => {
         expert = !expert;
@@ -315,6 +307,7 @@ function renderBar(): void {
 function render(): void {
   stage.style.setProperty('--ground', ground);
   renderBar();
+  shelf?.redraw();
   setTurn(turn);
   name.set(current()?.name ?? '', L('Not saved yet', 'Noch nicht gespeichert'));
   const shownTabs = TABS.filter(([id]) => id !== 'points' || expert);
@@ -328,16 +321,9 @@ function render(): void {
   const scroll = panel.scrollTop;
   panel.replaceChildren(...panelFor(tab));
   panel.scrollTop = scroll;
-  previewRows.replaceChildren(
-    row(L('Turn', 'Drehung'), sideSlider, sideValue),
-    row('', checkbox(word('animate'), !paused, (on) => {
-      paused = !on;
-    })),
-    row(L('Ground', 'Boden'), segmented(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, label: L(en, german) })), ground, (color) => {
-      ground = color;
-      render();
-    })),
-  );
+  views.replaceChildren(snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))),
+    pixelToggle(word('animate'), { icon: 'play' }, !paused, (on) => { paused = !on; }),
+    choice(L('Ground', 'Boden'), GROUNDS.map(([en, german, color]) => ({ id: color as string, words: L(en, german), color })), () => ground, (color) => { ground = color; render(); }, 'list'));
   shown = '';
 }
 
@@ -345,19 +331,9 @@ function render(): void {
 function mount(): void {
   document.documentElement.lang = currentLang();
   document.title = L('Object Editor', 'Objekt-Editor');
-  sideSlider.setAttribute('aria-label', L('Turn', 'Drehung'));
-  stage.replaceChildren(hero, stageTag, name.el, snapButton(() => savePicture(hero, current()?.name ?? L('Object', 'Objekt'))));
-  const preview = h('details', { class: 'sec' }, h('summary', {}, word('preview')), previewRows);
-  preview.open = true;
-  root.replaceChildren(
-    h('div', { class: 'shell' },
-      barSlot,
-      h('main', { class: 'shell__main' },
-        h('section', { class: 'preview', 'aria-label': L('Preview', 'Vorschau') }, stage, preview),
-        h('section', { class: 'library', 'aria-label': L('Object', 'Objekt') }, tabSlot, panel),
-      ),
-    ),
-  );
+  stage.replaceChildren(hero, stageTag, ...arrows, views);
+  shelf = library({ key: 'pixel-objects', label: word('search'), empty: word('nothing'), items: shelfItems, selected: () => currentId ?? '', pick: pickThing });
+  root.replaceChildren(h('div', { class: 'shell' }, barSlot, workspace({ key: 'pixel-objects', left: [shelf], centre: [stage], right: [tabSlot, panel], leftWidth: 240, rightWidth: 460 })));
 }
 
 // What the preview shows now; render() clears `shown` so marks follow the panel.
@@ -378,12 +354,6 @@ hero.addEventListener('click', (event) => {
   render();
 });
 
-sideSlider.addEventListener('input', () => setTurn(Number(sideSlider.value) as Turn));
-dragToTurn(stage, (step) => setTurn(((turn + step + 4) % 4) as Turn));
-window.addEventListener('keydown', (event) => {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.metaKey || event.ctrlKey) return;
-  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') setTurn(((turn + (event.key === 'ArrowRight' ? 1 : 3)) % 4) as Turn);
-});
 undoKeys(undo.undo, undo.redo);
 
 mount();
@@ -421,7 +391,8 @@ const tick = (ms: number) => {
       }
     }
     if (tab === 'points') for (const p of Object.values(points)) marked.set(p.x, p.y, p.visible ? '#ff00ff' : '#ff00ff66');
-    paintSprite(hero, marked, crop);
+    // Its shadow cast from the sun, from the frame itself, not the marks on the copy.
+    paintSprite(hero, withSunShadow(sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN, false, marked), crop);
     fitWhole(hero, Math.min(stage.clientWidth, stage.clientHeight) - 40);
   }
   requestAnimationFrame(tick);

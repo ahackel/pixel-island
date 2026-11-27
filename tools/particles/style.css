@@ -1,0 +1,3 @@
+/* The particle editor, on the props tool's three panes. */
+.particles__stage { display: grid; place-items: center; padding: 0; overflow: hidden; }
+.particles__preview { width: auto; height: auto; image-rendering: pixelated; }

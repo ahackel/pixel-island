@@ -11,18 +11,20 @@
 //               object frame name -> { bed: [x, y, visible], ... }  (the pivot is the middle of the footprint)
 // Each frame is trimmed to what it paints. Identical frames are stored once (hard plants have no
 // wind frames to speak of, mirrored character facings are not mirrored here: flip the quad).
-// Ground shadows are separate frames ending in "/shadow": draw them all into one shadow layer
-// first, so overlapping shadows do not darken the ground twice.
+// Ground shadows are separate frames ending in "/shadow", cast from the sun on flat ground as the
+// engine casts them: draw them all into one shadow layer first, so overlapping shadows do not darken
+// the ground twice.
 import fs from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
-import { tryPlant, grow, drawPlant, FRAMES, SHADOW } from '../engine/flora/flora.ts';
+import { tryPlant, grow, drawPlant, FRAMES } from '../engine/flora/flora.ts';
+import { sunShadow } from '../engine/world/island.ts';
 import { drawCharacter, BUILDS, CHARACTER_ORIGIN, SPRITE_H, SPRITE_W } from '../engine/core/puppet.ts';
 import { AUTHORED } from '../engine/core/poses.ts';
 import { baseLook } from '../engine/character/base.ts';
-import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, CLIP_IDS, drawAnimal, isShadow } from '../engine/animals/animal.ts';
+import { ANIMAL_H, ANIMAL_ORIGIN, ANIMAL_W, CLIPS, CLIP_IDS, drawAnimal } from '../engine/animals/animal.ts';
 import { PRESETS } from '../engine/animals/animal-presets.ts';
-import { drawObject, framesOf, LOOP_RATE, OBJECT_H, OBJECT_ORIGIN, OBJECT_W, isShadow as isObjectShadow } from '../engine/objects/object.ts';
+import { drawObject, framesOf, LOOP_RATE, OBJECT_H, OBJECT_ORIGIN, OBJECT_W } from '../engine/objects/object.ts';
 import { OBJECT_PRESETS } from '../engine/objects/object-presets.ts';
 
 const [outDir = 'dist-bake', pageArg = '1024'] = process.argv.slice(2);
@@ -48,6 +50,18 @@ function trim(w, h, pixel, pivot) {
     for (let k = 0; k < 3; k++) rgba[o + k] = parseInt(hex.slice(1 + k * 2, 3 + k * 2), 16);
     rgba[o + 3] = hex.length === 9 ? parseInt(hex.slice(7, 9), 16) : 255;
   }
+  return { w: tw, h: th, rgba, pivot: [pivot.x - x0, pivot.y - y0] };
+}
+
+/** A picture's ground shadow, cast from the sun on flat ground, as a trimmed black mask with the same pivot. */
+function shadowOf(picture, w, h, pivot) {
+  const xy = sunShadow(picture, w, h, pivot);
+  if (!xy.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let k = 0; k < xy.length; k += 2) x0 = Math.min(x0, xy[k]), x1 = Math.max(x1, xy[k]), y0 = Math.min(y0, xy[k + 1]), y1 = Math.max(y1, xy[k + 1]);
+  const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+  const rgba = new Uint8Array(tw * th * 4);
+  for (let k = 0; k < xy.length; k += 2) rgba[((xy[k + 1] - y0) * tw + xy[k] - x0) * 4 + 3] = 255;
   return { w: tw, h: th, rgba, pivot: [pivot.x - x0, pivot.y - y0] };
 }
 
@@ -81,7 +95,7 @@ for (const file of fs.readdirSync(dir).filter((f) => /^plant-[\w-]+\.json$/.test
       for (let f = 0; f < FRAMES; f++) {
         const r = drawPlant(grown, { frame: f, wind: BREEZE });
         list.push(add(`${id}/${seed}/${f}`, trim(r.w, r.h, (x, y) => r.get(x, y), r.origin)));
-        if (f === 0) add(`${id}/${seed}/shadow`, trim(r.w, r.h, (x, y) => (r.shaded(x, y) ? '#000000' : null), r.origin));
+        if (f === 0) add(`${id}/${seed}/shadow`, shadowOf(r, r.w, r.h, r.origin));
       }
       animations[`${id}/${seed}/wind`] = { fps: 6, frames: list };
     }
@@ -95,14 +109,14 @@ for (const [clipId, clip] of Object.entries(AUTHORED)) {
     const list = clip.frames.map((pose, i) => {
       const sprite = drawCharacter(look, pose, facing, { face: clip.faces?.[i], swing: clip.swing });
       const name = `character/${clipId}/${facing}/${i}`;
-      return add(name, trim(SPRITE_W, SPRITE_H, (x, y) => { const c = sprite.get(x, y); return c === SHADOW ? null : c; }, CHARACTER_ORIGIN));
+      return add(name, trim(SPRITE_W, SPRITE_H, (x, y) => sprite.get(x, y), CHARACTER_ORIGIN));
     });
     animations[`character/${clipId}/${facing}`] = { fps: clip.rate, frames: list };
   }
 }
 {
   const sprite = drawCharacter(look, AUTHORED.idle.frames[0], 0);
-  add('character/shadow', trim(SPRITE_W, SPRITE_H, (x, y) => (sprite.get(x, y) === SHADOW ? '#000000' : null), CHARACTER_ORIGIN));
+  add('character/shadow', shadowOf(sprite, SPRITE_W, SPRITE_H, CHARACTER_ORIGIN));
 }
 
 // ---- animals: every preset in every clip and facing, with the anchor points of each frame
@@ -114,14 +128,14 @@ for (const { id, animal } of PRESETS) {
       for (let i = 0; i < CLIPS[clipId].frames; i++) {
         const drawn = drawAnimal(animal, clipId, i, facing);
         const name = `animal/${id}/${clipId}/${facing}/${i}`;
-        list.push(add(name, trim(ANIMAL_W, ANIMAL_H, (x, y) => { const c = drawn.sprite.get(x, y); return isShadow(c) ? null : c; }, ANIMAL_ORIGIN)));
+        list.push(add(name, trim(ANIMAL_W, ANIMAL_H, (x, y) => drawn.sprite.get(x, y), ANIMAL_ORIGIN)));
         anchors[name] = Object.fromEntries(Object.entries(drawn.anchors).map(([k, a]) => [k, [a.x - ANIMAL_ORIGIN.x, a.y - ANIMAL_ORIGIN.y, a.visible]]));
       }
       animations[`animal/${id}/${clipId}/${facing}`] = { fps: CLIPS[clipId].rate, frames: list };
     }
   }
   const { sprite } = drawAnimal(animal, 'idle', 0, 0);
-  add(`animal/${id}/shadow`, trim(ANIMAL_W, ANIMAL_H, (x, y) => (isShadow(sprite.get(x, y)) ? '#000000' : null), ANIMAL_ORIGIN));
+  add(`animal/${id}/shadow`, shadowOf(sprite, ANIMAL_W, ANIMAL_H, ANIMAL_ORIGIN));
 }
 
 // ---- objects: every preset in every camera turn and frame, with its points per frame
@@ -131,12 +145,12 @@ for (const { id, prop } of OBJECT_PRESETS) {
     for (let i = 0; i < framesOf(prop); i++) {
       const drawn = drawObject(prop, turn, i);
       const name = `object/${id}/${turn}/${i}`;
-      list.push(add(name, trim(OBJECT_W, OBJECT_H, (x, y) => { const c = drawn.sprite.get(x, y); return isObjectShadow(c) ? null : c; }, OBJECT_ORIGIN)));
+      list.push(add(name, trim(OBJECT_W, OBJECT_H, (x, y) => drawn.sprite.get(x, y), OBJECT_ORIGIN)));
       if (prop.points.length) anchors[name] = Object.fromEntries(Object.entries(drawn.points).map(([k, a]) => [k, [a.x - OBJECT_ORIGIN.x, a.y - OBJECT_ORIGIN.y, a.visible]]));
     }
     animations[`object/${id}/${turn}`] = { fps: LOOP_RATE, frames: list };
     const { sprite } = drawObject(prop, turn, 0);
-    add(`object/${id}/${turn}/shadow`, trim(OBJECT_W, OBJECT_H, (x, y) => (isObjectShadow(sprite.get(x, y)) ? '#000000' : null), OBJECT_ORIGIN));
+    add(`object/${id}/${turn}/shadow`, shadowOf(sprite, OBJECT_W, OBJECT_H, OBJECT_ORIGIN));
   }
 }
 

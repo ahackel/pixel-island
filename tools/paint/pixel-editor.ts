@@ -6,19 +6,22 @@
 import './pixel-editor.css';
 import { hexOf, PAINT_KEYS, PALETTE, type Cell, type PaletteKey } from '../../engine/core/palette.ts';
 import { blankGrid, type Grid } from '../../engine/core/stamp.ts';
-import { button, h, icon, type IconName } from '../../shared/shell.ts';
+import { h } from '../../shared/shell.ts';
+import { box, choice, pixelButton, section, toggle } from '../../ui/components.ts';
+import { label } from '../../shared/pixel-ui.ts';
+import { C } from '../../ui/theme.ts';
 import { currentLang } from '../../shared/lang.ts';
 
 const L = (en: string, de: string) => (currentLang() === 'de' ? de : en);
 
 export type PaintTool = 'pencil' | 'eraser' | 'fill' | 'picker' | 'line' | 'rect';
-const TOOLS: [PaintTool, IconName, string, string, string][] = [
+const TOOLS: [PaintTool, string, string, string, string][] = [
   ['pencil', 'pencil', 'Pencil', 'Stift', 'B'],
   ['eraser', 'eraser', 'Eraser', 'Radierer', 'E'],
   ['fill', 'bucket', 'Fill', 'Füllen', 'G'],
   ['picker', 'pipette', 'Pick a colour', 'Farbe aufnehmen', 'I'],
   ['line', 'line', 'Line', 'Linie', 'L'],
-  ['rect', 'box', 'Rectangle', 'Rechteck', 'R'],
+  ['rect', 'rect', 'Rectangle', 'Rechteck', 'R'],
 ];
 
 export interface PixelEditorOptions {
@@ -294,60 +297,55 @@ export function pixelEditor(o: PixelEditorOptions): { el: HTMLElement; redraw():
   });
 
   const el = h('div', { class: 'px' });
-  function swatchFor(key: PaletteKey): HTMLElement {
-    return h('span', { class: 'px__ramp', title: key },
-      ...(['light', 'base', 'shade'] as const).map((tone) => {
-        const c: Cell = { key, shade: tone === 'shade', ...(tone === 'light' ? { light: true } : {}) };
-        const b = button({
-          class: 'px__swatch', 'aria-label': `${key} ${tone}`, 'aria-pressed': String(sameCell(c, ink)),
-          style: `background: ${PALETTE[key][tone]}`,
-        }, () => {
-          ink = c;
-          if (tool === 'eraser' || tool === 'picker') tool = 'pencil';
-          rebuild();
-        });
-        return b;
-      }));
+  // The ink is a palette colour in one of its three tones: a colour bar picks the colour, a second bar of its tones the tone.
+  const TONES = ['light', 'base', 'shade'] as const;
+  const toneOf = (c: Cell) => (c.light ? 'light' : c.shade ? 'shade' : 'base');
+  const cellOf = (key: PaletteKey, tone: string): Cell => ({ key, shade: tone === 'shade', ...(tone === 'light' ? { light: true } : {}) });
+  const toneSlot = h('span');
+  const toneBar = () => choice(L('Tone', 'Ton'), TONES.map((tone) => ({ id: tone, color: PALETTE[ink.key][tone] })), () => toneOf(ink), (tone) => pickInk(cellOf(ink.key, tone)), 'colors', 40);
+  /** Takes an ink; the bars redraw themselves, so only a change of tool rebuilds the editor (it would end a drag along a bar). */
+  function pickInk(c: Cell): void {
+    ink = c;
+    if (tool === 'eraser' || tool === 'picker') { tool = 'pencil'; return rebuild(); }
+    toneSlot.replaceChildren(toneBar());
   }
+  const colorBar = (keys: PaletteKey[]) => choice(L('Colour', 'Farbe'), keys.map((key) => ({ id: key, color: PALETTE[key].base })), () => ink.key, (key) => pickInk(cellOf(key as PaletteKey, toneOf(ink))), 'colors', Math.max(40, keys.length * 8 + 4));
+  const bar = (...items: Node[]) => { const row = h('div', { class: 'urow' }); row.append(...items); return row; };
+  const act = (icon: string, tip: string, on: () => void) => pixelButton(tip, { icon, flat: true }, on);
   function rebuild(): void {
     const used = new Set<PaletteKey>();
     for (const g of o.grids) for (const row of g) for (const c of row) if (c) used.add(c.key);
     const first = [...new Set([...(o.keys ?? []), ...used])];
     const rest = PAINT_KEYS.filter((k) => !first.includes(k));
-    const tools = h('div', { class: 'px__tools', role: 'toolbar', 'aria-label': L('Paint tools', 'Malwerkzeuge') },
-      ...TOOLS.map(([id, ic, en, de, key]) => button({ class: 'ib', 'aria-pressed': String(tool === id), 'aria-label': `${L(en, de)} (${key})`, title: `${L(en, de)} (${key})` }, () => { tool = id; rebuild(); }, icon(ic))),
-      h('span', { class: 'px__sep' }),
-      button({ class: 'ib', 'aria-pressed': String(mirrorX), title: L('Paint both halves (M)', 'Beide Hälften malen (M)'), 'aria-label': L('Mirror painting', 'Gespiegelt malen') }, () => { mirrorX = !mirrorX; rebuild(); }, icon('mirror')),
-      button({ class: 'ib', title: L('Flip this view', 'Diese Ansicht spiegeln'), 'aria-label': L('Flip', 'Spiegeln') }, flip, icon('flip')),
-      button({ class: 'ib', 'aria-pressed': String(showGrid), title: L('Grid', 'Raster'), 'aria-label': L('Grid', 'Raster') }, () => { showGrid = !showGrid; rebuild(); }, icon('grid')),
-      o.onion ? button({ class: 'ib', 'aria-pressed': String(showOnion), title: L('Show the generated version underneath', 'Die erzeugte Fassung darunter zeigen'), 'aria-label': L('Onion skin', 'Zwiebelhaut') }, () => { showOnion = !showOnion; rebuild(); }, icon('layers')) : null,
-      button({ class: 'ib', title: L('Zoom out', 'Verkleinern'), 'aria-label': L('Zoom out', 'Verkleinern') }, () => { zoom = Math.max(2, scale() - 2); redraw(); }, icon('zoomOut')),
-      button({ class: 'ib', title: L('Zoom in', 'Vergrößern'), 'aria-label': L('Zoom in', 'Vergrößern') }, () => { zoom = Math.min(32, scale() + 2); redraw(); }, icon('zoomIn')),
-    );
+    const tools = box(bar(
+      ...TOOLS.map(([id, ic, en, de, key]) => pixelButton(`${L(en, de)} (${key})`, { icon: ic, flat: true, pressed: tool === id }, () => { tool = id; rebuild(); })),
+      h('span', { class: 'udivider' }),
+      toggle(L('Paint both halves (M)', 'Beide Hälften malen (M)'), { icon: 'mirror', flat: true }, mirrorX, (on) => { mirrorX = on; }),
+      act('flip', L('Flip this view', 'Diese Ansicht spiegeln'), flip),
+      toggle(L('Grid', 'Raster'), { icon: 'grid', flat: true }, showGrid, (on) => { showGrid = on; rebuild(); }),
+      ...(o.onion ? [toggle(L('Show the generated version underneath', 'Die erzeugte Fassung darunter zeigen'), { icon: 'layers', flat: true }, showOnion, (on) => { showOnion = on; rebuild(); })] : []),
+      act('zoomout', L('Zoom out', 'Verkleinern'), () => { zoom = Math.max(2, scale() - 2); redraw(); }),
+      act('zoomin', L('Zoom in', 'Vergrößern'), () => { zoom = Math.min(32, scale() + 2); redraw(); }),
+    ));
     const views = o.viewNames && o.viewNames.length > 1
-      ? h('div', { class: 'seg seg--wrap', role: 'radiogroup', 'aria-label': L('View', 'Ansicht') },
-        ...o.viewNames.map((name, k) => button({ role: 'radio', 'aria-checked': String(k === o.view) }, () => o.pickView?.(k), name)))
+      ? choice(L('View', 'Ansicht'), o.viewNames.map((name, k) => ({ id: String(k), words: name })), () => String(o.view), (id) => o.pickView?.(Number(id)), 'buttons')
       : null;
-    const sizeRow = o.resize ? h('div', { class: 'toggles' },
-      h('span', { class: 'note', style: 'margin: 0' }, `${W()} × ${H()} px`),
-      button({ class: 'toggle' }, () => resize(4), L('Grow canvas', 'Fläche vergrößern')),
-      button({ class: 'toggle' }, () => resize(0), L('Trim canvas', 'Fläche zuschneiden')),
+    const sizeRow = o.resize ? bar(
+      label(`${W()}X${H()}`, C.ink, 4),
+      pixelButton(L('Grow canvas', 'Fläche vergrößern'), { icon: 'plus' }, () => resize(4)),
+      pixelButton(L('Trim canvas', 'Fläche zuschneiden'), { icon: 'trim' }, () => resize(0)),
     ) : null;
-    const nudges = h('div', { class: 'toggles' },
-      h('span', { class: 'note', style: 'margin: 0' }, L('Move the view', 'Ansicht verschieben')),
-      ...([['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]] as const).map(([t, dx, dy]) => button({ class: 'toggle', 'aria-label': t }, () => nudge(dx, dy), t)));
+    const nudges = bar(...([['left', -1, 0], ['right', 1, 0], ['up', 0, -1], ['down', 0, 1]] as const).map(([ic, dx, dy]) => pixelButton(L('Move the view', 'Ansicht verschieben'), { icon: ic }, () => nudge(dx, dy))));
     el.replaceChildren(
       views ?? '', tools, wrap, info,
       h('div', { class: 'px__inks' },
-        h('div', { class: 'px__ink' }, h('span', { class: 'px__now', style: `background: ${hexOf(ink)}` }), h('b', {}, `${ink.key} · ${ink.shade ? L('shade', 'Schatten') : ink.light ? L('light', 'Licht') : L('base', 'Grund')}`)),
-        h('div', { class: 'px__ramps' }, ...first.map(swatchFor)),
-        h('details', { class: 'px__more' }, h('summary', {}, L('All colours', 'Alle Farben')), h('div', { class: 'px__ramps' }, ...rest.map(swatchFor))),
+        colorBar(first),
+        toneSlot,
+        rest.length ? section({ icon: 'palette', tip: L('All colours', 'Alle Farben') }, [colorBar(rest)], false) : '',
       ),
       nudges, sizeRow ?? '',
-      h('p', { class: 'note' }, L(
-        'B pencil, E eraser, G fill, I pick, L line, R rectangle, M mirror; Alt-click picks a colour; arrow keys move the view; Ctrl+scroll zooms.',
-        'B Stift, E Radierer, G Füllen, I Aufnehmen, L Linie, R Rechteck, M Spiegeln; Alt-Klick nimmt eine Farbe auf; Pfeiltasten verschieben; Strg+Scrollen zoomt.')),
     );
+    toneSlot.replaceChildren(toneBar());
     redraw();
   }
   rebuild();

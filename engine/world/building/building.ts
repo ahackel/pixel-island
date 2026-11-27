@@ -9,7 +9,7 @@
 //  - neighbouring cell pieces of one kind make a patch, drawn as one piece over its bounding rectangle;
 //  - a covering patch (a roof) rests on the wall tops: the walls under it stop below its eaves and
 //    lie in its shade, and standing in it hides it and cuts its front walls to half height.
-import { cornersOf, LEVEL_M, LEVEL_PX, SEA_LEVEL, SHADOW_RUN, TILE_H, TILE_W, type HeightMap, type TerrainImage } from '../terrain.ts';
+import { cornersOf, inside, isRock, LEVEL_M, levelAt, LEVEL_PX, SHADOW_RUN, TILE_H, TILE_W, waterOf, type HeightMap, type TerrainImage } from '../terrain.ts';
 
 export const HALF_W = TILE_W / 2; // screen columns along one cell edge
 export const HALF_H = TILE_H / 2; // rows down along one cell edge
@@ -20,7 +20,9 @@ export interface Edge { axis: Axis; i: number; j: number }
 export const edgeKey = (e: Edge) => `${e.axis}${e.i},${e.j}`;
 export const cellKey = (i: number, j: number) => `${i},${j}`;
 
-export interface EdgePiece { kind: string; edge: Edge }
+/** `fade`: how far it has dissolved down to a stub a level high (see `dissolved`), 0 to 1 in sixteenths; none unless set. */
+/** `open` and `locked` only for a door: how far its leaf has swung open, 0 to 1, and whether it shows its lock. */
+export interface EdgePiece { kind: string; edge: Edge; fade?: number; open?: number; locked?: boolean }
 export interface CellPiece { kind: string; i: number; j: number }
 
 /** A building as built so far. */
@@ -59,8 +61,11 @@ export interface Part {
   hidden?: boolean;
 }
 
-/** How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it. */
-export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number }): Part }
+/**
+ * How an edge piece is drawn: `cut` sawn off at half height, `cap` the eaves level of a roof over it, `fade` dissolved
+ * down to a stub; for a door, `open` and `locked` as on its piece.
+ */
+export interface EdgeKind { on: 'edge'; draw(site: Site, e: Edge, height: number, o: { cut: boolean; cap?: number; fade?: number; open?: number; locked?: boolean }): Part }
 /** How a patch of cell pieces is drawn; `floor` is the highest ground under it. A covering kind is a roof. */
 export interface CellKind { on: 'cell'; covers: boolean; draw(site: Site, p: Patch, floor: number, height: number): Part }
 export type PieceKind = EdgeKind | CellKind;
@@ -69,26 +74,66 @@ export type PieceKind = EdgeKind | CellKind;
 
 /**
  * The ground height, in levels, at the two ends of an edge: the higher of what the two cells that
- * share the edge say, so a wall never sinks into the ground and, across a cliff, stands on top.
+ * share the edge say, so a wall never sinks into the ground and, across a cliff, stands on top. Rock on one side
+ * is no ground: the wall stands on the other side's (a cave's wall on its floor).
  */
 export function endHeights(map: HeightMap, e: Edge): [number, number] {
+  const [bi, bj] = e.axis === 'H' ? [e.i, e.j - 1] : [e.i - 1, e.j];
   const front = cornersOf(map, e.i, e.j);
-  let a: number, b: number;
-  if (e.axis === 'H') {
-    const behind = cornersOf(map, e.i, e.j - 1);
-    a = Math.max(front[0], behind[3]);
-    b = Math.max(front[1], behind[2]);
-  } else {
-    const behind = cornersOf(map, e.i - 1, e.j);
-    a = Math.max(front[0], behind[1]);
-    b = Math.max(front[3], behind[2]);
-  }
-  return [Math.max(SEA_LEVEL, a), Math.max(SEA_LEVEL, b)];
+  const behind = cornersOf(map, bi, bj);
+  // The two ends on each side: the edge's first and second end, by which corners of each cell they are.
+  const f = e.axis === 'H' ? [front[0], front[1]] : [front[0], front[3]];
+  const k = e.axis === 'H' ? [behind[3], behind[2]] : [behind[1], behind[2]];
+  const rockFront = isRock(levelAt(map, e.i, e.j)), rockBehind = isRock(levelAt(map, bi, bj));
+  const end = (n: 0 | 1) => (rockBehind && !rockFront ? f[n] : rockFront && !rockBehind ? k[n] : Math.max(f[n], k[n]));
+  // Over water, it stands on the water line.
+  const water = waterOf(map);
+  return [Math.max(water, end(0)), Math.max(water, end(1))];
 }
 
-/** The highest ground under a patch. */
+/**
+ * Both sides of an edge, in levels at its two ends: `low` the lower ground and `high` the higher (a wall's top counts
+ * from it; a fence stands on it), and `foot` where a wall's face reaches down to: the ground on the camera's side of
+ * the edge, so down a step to the lower side where that lies in front, and the higher side where it is the step's
+ * own face that stands in front of the wall. Rock is no ground, as for `endHeights`; over water, the water line.
+ */
+export function wallEnds(map: HeightMap, e: Edge): { low: [number, number]; high: [number, number]; foot: [number, number] } {
+  const [bi, bj] = e.axis === 'H' ? [e.i, e.j - 1] : [e.i - 1, e.j];
+  const ahead = cornersOf(map, e.i, e.j), behind = cornersOf(map, bi, bj);
+  const f = e.axis === 'H' ? [ahead[0], ahead[1]] : [ahead[0], ahead[3]];
+  const k = e.axis === 'H' ? [behind[3], behind[2]] : [behind[1], behind[2]];
+  const rockFront = !inside(map, e.i, e.j) || isRock(levelAt(map, e.i, e.j)), rockBehind = !inside(map, bi, bj) || isRock(levelAt(map, bi, bj));
+  const water = waterOf(map);
+  const side = (n: 0 | 1, pick: (a: number, b: number) => number) =>
+    Math.max(water, rockBehind && !rockFront ? f[n] : rockFront && !rockBehind ? k[n] : pick(f[n], k[n]));
+  const front = (n: 0 | 1) => Math.max(water, rockFront ? k[n] : f[n]);
+  return { low: [side(0, Math.min), side(1, Math.min)], high: [side(0, Math.max), side(1, Math.max)], foot: [front(0), front(1)] };
+}
+
+/** The two ends of an edge, as map points. */
+export const edgeEnds = (e: Edge): [[number, number], [number, number]] => [[e.i, e.j], e.axis === 'H' ? [e.i + 1, e.j] : [e.i, e.j + 1]];
+/** The edge between two neighbouring map points (a cell's corners), or null if they are not neighbours. */
+export function edgeBetween(a: [number, number], b: [number, number]): Edge | null {
+  if (a[1] === b[1] && Math.abs(a[0] - b[0]) === 1) return { axis: 'H', i: Math.min(a[0], b[0]), j: a[1] };
+  if (a[0] === b[0] && Math.abs(a[1] - b[1]) === 1) return { axis: 'V', i: a[0], j: Math.min(a[1], b[1]) };
+  return null;
+}
+/** The four edges meeting at a map point (a cell corner). */
+export const edgesAt = (x: number, y: number): Edge[] => [{ axis: 'H', i: x - 1, j: y }, { axis: 'H', i: x, j: y }, { axis: 'V', i: x, j: y - 1 }, { axis: 'V', i: x, j: y }];
+
+/**
+ * Whether a step from one cell to a diagonal neighbour goes past a wall: past the end of any wall at the corner the two
+ * cells share, which the step would squeeze by.
+ */
+export function cornerBlocked(b: Building, from: [number, number], to: [number, number]): boolean {
+  if (Math.abs(to[0] - from[0]) !== 1 || Math.abs(to[1] - from[1]) !== 1) return false;
+  const x = Math.max(from[0], to[0]), y = Math.max(from[1], to[1]);
+  return edgesAt(x, y).some((e) => b.edges.has(edgeKey(e)));
+}
+
+/** The highest ground under a patch, at least the water line. */
 export function floorOf(map: HeightMap, p: Patch): number {
-  let floor = SEA_LEVEL;
+  let floor = waterOf(map);
   for (let j = p.j0; j <= p.j1; j++) for (let i = p.i0; i <= p.i1; i++) floor = Math.max(floor, ...cornersOf(map, i, j));
   return floor;
 }
@@ -110,6 +155,16 @@ export function shadowAt(site: Site, out: number[], x: number, y: number, g: num
   const sx = Math.round(o.x + (x - y) * HALF_W), sy = Math.round(o.y + (x + y) * HALF_H - g * LEVEL_PX);
   if (sx >= 0 && sy >= 0 && sx < w && sy < h) out.push(sy * w + sx);
 }
+
+/** The 4×4 ordered pattern things dissolve in, as Diablo's walls did: the threshold of each pixel, 0 to 1. */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+/** A stub that something dissolving goes down to stands this many pixels over its foot. */
+export const STUB_PX = LEVEL_PX;
+/**
+ * Whether the pixel at `x`, `y` of the ground image is gone from something dissolved by `fade` (0 to 1, in sixteenths
+ * so its pictures can be kept by it). Ground-image positions, so pictures dissolving side by side share one pattern.
+ */
+export const dissolved = (x: number, y: number, fade: number) => fade > 0 && BAYER[(y & 3) * 4 + (x & 3)] < fade;
 
 export function hex(s: string): [number, number, number] {
   const n = parseInt(s.slice(1), 16);
@@ -152,7 +207,13 @@ const frontOf = (e: Edge, p: Patch) => (e.axis === 'H' ? e.j === p.j1 + 1 && e.i
 /** Draws buildings with a set of piece kinds, keeping what it drew until `forget`. */
 export class BuildingView {
   private kept = new Map<string, Part>();
-  constructor(private kinds: Record<string, PieceKind>, private site: Site) {}
+  private kinds: Record<string, PieceKind>;
+  private site: Site;
+  // Plain fields, not parameter properties, so node can load this file with its types stripped (the game's tests).
+  constructor(kinds: Record<string, PieceKind>, site: Site) {
+    this.kinds = kinds;
+    this.site = site;
+  }
 
   /** Drops everything drawn, after the kinds' options, the site or the building's height change. */
   forget(): void {
@@ -183,7 +244,8 @@ export class BuildingView {
       const cut = !!home && frontOf(e, home);
       const over = roofs.find((p) => p !== home && under(e, p));
       const cap = over && floorOf(map, over) + b.height;
-      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}`, () => kind.draw(this.site, e, b.height, { cut, cap })));
+      const fade = piece.fade ?? 0, open = piece.open ?? 0, locked = !!piece.locked;
+      out.push(this.kept1(`${piece.kind}|${edgeKey(e)}|${cut}|${cap}|${b.height}|${fade}|${open}|${locked}`, () => kind.draw(this.site, e, b.height, { cut, cap, fade, open, locked })));
     }
     for (const p of patches) {
       const kind = this.kinds[p.kind];

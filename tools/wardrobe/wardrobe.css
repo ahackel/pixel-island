@@ -1,10 +1,12 @@
 /* The wardrobe under the tools' bar: the game's character editor over the game's sea, as before a new game. */
-.wardrobe__main { display: block; position: relative; min-height: 0; }
-.wardrobe { position: absolute; inset: 0; background: #1d5f86; --gap: 12px; overflow: hidden; }
+.wardrobe__main { display: flex; position: relative; min-height: 0; }
+.wardrobe__room { position: relative; flex: 1; min-width: 0; }
+@media (max-width: 699px) { .wardrobe__main { flex-direction: column; } .wardrobe__main > .uside { max-height: 30vh; } }
+.wardrobe { position: absolute; inset: 0; background: #8cc3c9; --gap: 12px; overflow: hidden; }
 .wardrobe .editor { overflow-y: auto; }
-.wardrobe__name { position: absolute; top: var(--gap); left: var(--gap); z-index: 1; }
 /* While the shapes are drawn the choices step aside for them, beside the preview. */
-.wardrobe__shapes { display: none; }
-.wardrobe--shapes .editor { right: 50%; }
+.wardrobe .wardrobe__shapes { display: none; }
+.wardrobe--shapes .editor { right: var(--shapes-w, 50%); }
 .wardrobe--shapes .editor .editor__side, .wardrobe--shapes .editor .editor__end { display: none; }
-.wardrobe--shapes .wardrobe__shapes { display: block; position: absolute; top: 0; right: 0; bottom: 0; width: 50%; overflow-y: auto; padding: 16px; background: var(--bg); }
+.wardrobe--shapes .wardrobe__shapes { display: flex; position: absolute; top: 0; right: 0; bottom: 0; max-width: 80%; }
+.wardrobe .editor { background: none; }

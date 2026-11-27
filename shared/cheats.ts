@@ -3,7 +3,8 @@
 // Tapping a cheat keeps the drawer open; tapping beside it closes it. A cheat can hold a list of
 // more, which takes the list's place when tapped until one of them is picked. Brings its own styles.
 import { ABOVE, LINE_H, text, textWidth } from './pixel-font.ts';
-import { drawRows, panel, pixelCanvas } from './pixel-ui.ts';
+import { drawRows, label, panel, pixelCanvas } from './pixel-ui.ts';
+import { cachesNow, totals } from './stats.ts';
 
 export interface Cheat {
   words: string;
@@ -27,7 +28,16 @@ const CSS = `
   padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   background: #000a; transform: translateX(-100%); transition: transform 0.25s ease-out; }
 .cheat-drawer.open .cheat-panel { transform: none; }
+.cheat-stats { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 3px;
+  padding: 6px; background: #000a; pointer-events: none; }
 `;
+function addStyles(): void {
+  if (document.getElementById('cheat-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'cheat-styles';
+  style.textContent = CSS;
+  document.head.append(style);
+}
 
 /** An orange pixel button with white words or the bolt, `scale` times larger. */
 function button(className: string, label: string, words: string | null, scale: number, on: () => void): HTMLButtonElement {
@@ -54,12 +64,7 @@ function button(className: string, label: string, words: string | null, scale: n
  * `before` if given, so an overlay such as a menu can stay on top.
  */
 export function cheatDrawer(parent: HTMLElement, cheats: Cheat[], scale: number, before?: Element | null): void {
-  if (!document.getElementById('cheat-styles')) {
-    const style = document.createElement('style');
-    style.id = 'cheat-styles';
-    style.textContent = CSS;
-    document.head.append(style);
-  }
+  addStyles();
   const drawer = document.createElement('div');
   drawer.className = 'cheat-drawer';
   const list = document.createElement('div');
@@ -85,4 +90,45 @@ export function cheatDrawer(parent: HTMLElement, cheats: Cheat[], scale: number,
   const opener = button('cheat-open', 'Cheats', null, scale, () => open(true));
   if (before) before.before(opener, drawer);
   else parent.append(opener, drawer);
+}
+
+const size = (b: number) => (b >= 2 ** 20 ? `${(b / 2 ** 20).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
+
+/**
+ * A stats overlay at the top middle, for a cheat to switch on and off: frames per second, milliseconds a frame takes
+ * to draw, what the drawing caches hold (`shared/stats.ts`) and the JS heap where the browser tells it, twice a second.
+ */
+export function statsOverlay(parent: HTMLElement, scale: number): () => void {
+  addStyles();
+  const box = document.createElement('div');
+  box.className = 'cheat-stats';
+  box.hidden = true;
+  parent.append(box);
+  let last = totals();
+  let lastAt = performance.now();
+  let timer = 0;
+  const draw = () => {
+    const now = totals();
+    const at = performance.now();
+    const n = now.frames - last.frames;
+    const fps = (n * 1000) / Math.max(1, at - lastAt);
+    const ms = n ? (now.frameMs - last.frameMs) / n : 0;
+    [last, lastAt] = [now, at];
+    const held = cachesNow().filter((c) => c.entries);
+    const lines = [
+      `FPS ${Math.round(fps)}  FRAME ${ms.toFixed(1)} MS`,
+      `CACHES ${size(held.reduce((b, c) => b + c.bytes, 0))}`,
+      ...held.map((c) => `  ${c.name.toUpperCase()} ${c.entries}: ${size(c.bytes)}`),
+      ...(now.heapMB ? [`HEAP ${now.heapMB} MB`] : []),
+    ];
+    box.replaceChildren(...lines.map((l) => label(l, WHITE, scale)));
+  };
+  return () => {
+    box.hidden = !box.hidden;
+    clearInterval(timer);
+    if (box.hidden) return;
+    [last, lastAt] = [totals(), performance.now()];
+    timer = window.setInterval(draw, 500);
+    draw();
+  };
 }

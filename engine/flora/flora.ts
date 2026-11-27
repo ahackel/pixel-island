@@ -1,3 +1,4 @@
+import { crop, type Cropped } from '../core/cropped.ts';
 import { hexOf, LIT_KEYS, PAINT_KEYS, PALETTE, SHADOW, type Cell, type PaletteKey } from '../core/palette.ts';
 import { hashOf, pixelHash, rng } from '../../shared/random.ts';
 
@@ -280,8 +281,6 @@ export interface Grown {
   /** The size it was grown at; see `canvasFor`. */
   size: number;
   elements: El[];
-  /** Footprint for the ground shadow: stems cast their own, leaves and masses one canopy shadow. */
-  shadow: { u: number; v: number; r: number; canopy: boolean }[];
 }
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -368,7 +367,6 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
   const random = rng(hashOf(plant.name) ^ Math.imul(seed + 1, 2654435761));
   const mirror = seed % 2 === 1;
   const elements: El[] = [];
-  const shadow: Grown['shadow'] = [];
   const turn = options.turn ?? 0;
   const azimuth = (a: number) => (mirror ? 180 - a : a) + turn;
   const dried = (k: PaletteKey): PaletteKey => {
@@ -432,8 +430,6 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
       spiky: spiky(part), lying,
       depth: lying ? (points[0][2] + points[length][2]) / 2 : points[length][2], bend: m.bend, flex: m.flex, phase,
     });
-    if (lying) for (let i = 0; i <= length; i += 2) shadow.push({ u: points[i][0], v: points[i][2], r: Math.max(2, widths[i] * 0.75), canopy: false });
-    else if (onGround) shadow.push({ u: origin[0], v: origin[2], r: Math.max(2, widths[0] * 0.8), canopy: false });
     const at = (t: number): V3 => points[Math.round(t * length)];
     for (const child of part.children) place(child, { at }, { bend: m.bend, rigid: m.rigid });
   };
@@ -463,7 +459,6 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
       texture: part.texture, back: Math.sin(rad(az)) < -0.3, hang: 30 + dry * 30, tears,
       depth: mid[2] + (Math.sin(rad(az)) < -0.3 ? -0.5 : 0.5), bend: m.bend, flex: m.flex, phase,
     });
-    shadow.push({ u: mid[0], v: mid[2], r: length * 0.3, canopy: true });
   };
 
   const growBlob = (part: Blob, origin: V3, phase: number, m: { rigid: boolean; bend: number; flex: number }) => {
@@ -488,7 +483,6 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
       kind: 'blob', center, size, color: dried(part.color), accent: part.accent, texture: part.texture, clumps, seed: Math.floor(random() * 1e9),
       spiky: spiky(part), depth: center[2] + 0.2, bend: m.bend, flex: m.flex, phase,
     });
-    shadow.push({ u: center[0], v: center[2], r: size[0] * 0.55, canopy: true });
     const at = (t: number): V3 => [center[0], center[1] + (t - 0.5) * size[1], center[2]];
     for (const child of part.children) place(child, { at }, { bend: m.bend, rigid: m.rigid });
   };
@@ -542,7 +536,6 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
       kind: 'rock', facets, cracks, color, speckle: part.texture === 'speckles' ? part.accent ?? color : null, seed: Math.floor(random() * 1e9),
       depth: origin[2] + d / 4, bend: m.bend, flex: m.flex, phase,
     });
-    shadow.push({ u: origin[0], v: origin[2], r: w * 0.58, canopy: false });
     const at = (t: number): V3 => [apex[0] * t + origin[0] * (1 - t), origin[1] + hgt * t, apex[2] * t + origin[2] * (1 - t)];
     for (const child of part.children) place(child, { at }, { bend: m.bend, rigid: m.rigid });
   };
@@ -558,7 +551,7 @@ function growAt(plant: Plant, options: GrowOptions, k: number): Grown {
   const ground: Anchor = { at: () => [0, 0, 0] };
   const root: Chain = { bend: null, rigid: plant.category === 'cactus' || LYING.includes(plant.category) };
   for (const part of plant.parts) place(part, ground, root);
-  return { size: k, elements, shadow };
+  return { size: k, elements };
 }
 
 // ------------------------------------------------------------------ drawing
@@ -580,13 +573,9 @@ export function canvasFor(size = 1): { w: number; h: number; origin: { x: number
   return { w, h, origin: { x: w / 2, y: h - Math.ceil((FLORA_H - FLORA_ORIGIN.y) * k) } };
 }
 
-/**
- * A plant picture. Ground shadows are kept apart from the pixels, as a mask: where shadows of
- * several things overlap they darken the ground once, not once per thing.
- */
+/** A plant picture. Its ground shadow is not in it: shadows are cast from the sun where it stands. */
 export class Raster {
   readonly pixels: (string | null)[];
-  readonly shadow: Uint8Array;
   /** Where the plant's root sits. */
   origin = { x: FLORA_ORIGIN.x, y: FLORA_ORIGIN.y };
   /** Pixels that fell outside the canvas. */
@@ -597,7 +586,6 @@ export class Raster {
     this.w = w;
     this.h = h;
     this.pixels = new Array(w * h).fill(null);
-    this.shadow = new Uint8Array(w * h);
   }
   set(x: number, y: number, color: string): void {
     x = Math.round(x);
@@ -608,12 +596,10 @@ export class Raster {
     }
     this.pixels[y * this.w + x] = color;
   }
-  /** Marks ground shadow. */
-  shade(x: number, y: number): void {
-    if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.shadow[y * this.w + x] = 1;
-  }
-  shaded(x: number, y: number): boolean {
-    return this.shadow[y * this.w + x] === 1;
+  /** Empties the canvas to draw on again. */
+  clear(): void {
+    this.pixels.fill(null);
+    this.lost = 0;
   }
   get(x: number, y: number): string | null {
     return this.pixels[y * this.w + x] ?? null;
@@ -631,6 +617,17 @@ const tone = (key: PaletteKey, t: 'base' | 'shade' | 'light') => PALETTE[key][t]
 
 /** Whether the wind leaves a grown plant alone, as it does cacti, rocks and driftwood: every frame of it is the same picture. */
 export const isStill = (grown: Grown): boolean => grown.elements.every((el) => !el.bend && !el.flex);
+
+const scratch = new Map<string, Raster>();
+/** A plant drawn on a canvas shared by all plants of its size and cropped to what it paints: the form caches keep. */
+export function drawPlantCropped(grown: Grown, options: DrawPlantOptions = {}): Cropped {
+  const { w, h } = canvasFor(grown.size);
+  let r = scratch.get(`${w}x${h}`);
+  if (r) r.clear();
+  else scratch.set(`${w}x${h}`, (r = new Raster(w, h)));
+  drawPlant(grown, options, r);
+  return crop(r, w, h, r.origin);
+}
 
 /** Paints a grown plant for one frame of the wind loop. */
 export function drawPlant(grown: Grown, options: DrawPlantOptions = {}, raster = new Raster(canvasFor(grown.size).w, canvasFor(grown.size).h)): Raster {
@@ -653,28 +650,7 @@ export function drawPlant(grown: Grown, options: DrawPlantOptions = {}, raster =
   };
   const project = (p: V3, du = 0) => ({ x: ox + p[0] + du, y: oy - p[1] + p[2] * 0.5 });
 
-  // Ground shadow under the stems and one under the canopy, flattened 2:1 like the ground.
-  // Leaves round a crown would each leave a ring of shadows with a hole in the middle, so they
-  // are merged into one ellipse that covers them.
-  const canopy = grown.shadow.filter((s) => s.canopy);
-  const shadows = grown.shadow.filter((s) => !s.canopy);
-  if (canopy.length) {
-    const u = canopy.reduce((a, s) => a + s.u, 0) / canopy.length;
-    const v = canopy.reduce((a, s) => a + s.v, 0) / canopy.length;
-    const r = Math.max(...canopy.map((s) => Math.hypot(s.u - u, s.v - v) * 0.85 + s.r));
-    shadows.push({ u, v, r, canopy: true });
-  }
-  for (const s of shadows) {
-    const cx = ox + s.u;
-    const cy = oy + s.v * 0.5;
-    const r = Math.min(40, Math.max(2, s.r));
-    for (let y = Math.floor(cy - r / 2); y <= Math.ceil(cy + r / 2); y++) {
-      for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-        if (((x - cx) / r) ** 2 + ((y - cy) / (r / 2)) ** 2 <= 1) raster.shade(x, y);
-      }
-    }
-  }
-
+  // No ground shadow in the picture: it is cast from the sun where the plant stands.
   const sorted = [...grown.elements].sort((a, b) => a.depth - b.depth);
   for (const el of sorted) {
     if (el.kind === 'stem') drawStem(raster, el, (p, t) => project(p, sway(p, t, el)));

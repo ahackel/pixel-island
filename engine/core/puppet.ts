@@ -66,6 +66,8 @@ export interface Pose {
    * quarter onto the floor, its feet left or right on the screen as the character faces (see `lying`).
    */
   lie?: boolean;
+  /** Lying face down (only with `lie`), unless `options.lying` says otherwise. */
+  down?: boolean;
   /** The head turned this many eighths of a turn to the character's left (negative: right), at most one. */
   look?: number;
   /**
@@ -179,6 +181,11 @@ export interface Item {
   hold?: 'pole' | 'carry';
   /** Columns from the tool stamp's anchor to its shaft, front and back, so the fist closes on the shaft itself. */
   gripDx?: { front: number; back: number };
+  /**
+   * A particle system attached to a tool (world/particles.ts: a torch's sparks and halo, a lantern's light): its id,
+   * and the point it sits at in the stamps, front and back. The drawn sprite says where that point lands (`Sprite.fx`).
+   */
+  fx?: { system: string; front: { x: number; y: number }; back: { x: number; y: number } };
 }
 
 export const SLOTS = ['bottom', 'shoes', 'top', 'beard', 'hair', 'hat', 'tool'] as const;
@@ -266,6 +273,8 @@ export class Sprite {
   drawingNearArm = false;
   /** 1 where such an arm (with its hand) shows in the finished picture, for drawing it over something carried. */
   readonly nearArm = new Uint8Array(SPRITE_W * SPRITE_H);
+  /** Where the held tool's particle system landed (its `fx`), if it has one. */
+  fx: { x: number; y: number; system: string } | null = null;
   set(x: number, y: number, color: string): void {
     if (x < 0 || y < 0 || x >= SPRITE_W || y >= SPRITE_H) return;
     this.pixels[y * SPRITE_W + x] = this.part && color !== SHADOW ? this.part : color;
@@ -284,6 +293,7 @@ export class Sprite {
         out.nearArm[y * SPRITE_W + (SPRITE_W - x)] = this.nearArm[y * SPRITE_W + x];
       }
     }
+    if (this.fx) out.fx = { ...this.fx, x: SPRITE_W - this.fx.x };
     return out;
   }
 }
@@ -306,6 +316,8 @@ function bodyRows(standing: Sprite): { top: number; bottom: number; middle: numb
 
 /** Facings whose feet point left on the screen, lying; the rest point right. */
 const FEET_LEFT = new Set<Facing>([1, 2, 5, 6]);
+/** Facings that turn away from the camera. */
+const BACK_FACINGS = new Set<Facing>([2, 3, 6]);
 
 /**
  * A figure lying, whatever its facing: drawn in a three-quarter view (front unless `options.lying`
@@ -315,14 +327,16 @@ const FEET_LEFT = new Set<Facing>([1, 2, 5, 6]);
 function lying(look: Look, pose: Pose, facing: Facing, options: DrawOptions): Sprite {
   // The hat comes off: lying, its brim would stand up off the floor like a board.
   const bare = { ...look, items: look.items.filter((it) => it.slot !== 'hat') };
-  const out = laidDown(drawFigure(bare, { ...pose, lie: false }, options.lying?.back ? 3 : 0, options), !!options.lying?.down);
+  // Facing away from the camera it is seen from behind, so turning a lying figure shows its back on that side.
+  const back = options.lying?.back ?? BACK_FACINGS.has(facing);
+  const out = laidDown(drawFigure(bare, { ...pose, lie: false }, back ? 3 : 0, options), options.lying?.down ?? !!pose.down);
   return FEET_LEFT.has(facing) ? out.mirrored() : out;
 }
 
 /**
  * A standing figure laid on the floor: turned a quarter so the head points left and the front
  * faces up (or, `down`, the other way round, the front to the floor), centred on the character's
- * spot, with a long shadow under it.
+ * spot. Its shadow is cast from the sun where it lies, as for everything else.
  */
 function laidDown(standing: Sprite, down: boolean): Sprite {
   const out = new Sprite();
@@ -337,14 +351,9 @@ function laidDown(standing: Sprite, down: boolean): Sprite {
       if (c && c !== SHADOW) placed.push([cx + (y - middle), ORIGIN_Y - 3 - (down ? cx - x : x - cx), c]);
     }
   }
-  const xs = placed.map((p) => p[0]);
-  const low = Math.max(...placed.map((p) => p[1]));
-  const left = Math.min(...xs) + 2;
-  const right = Math.max(...xs) - 2;
-  for (const [row, inset] of [[low - 1, 1], [low, 0], [low + 1, 0], [low + 2, 2]] as const) {
-    for (let x = left + inset; x <= right - inset; x++) out.set(x, row, SHADOW);
-  }
   for (const [x, y, c] of placed) out.set(x, y, c);
+  const g = standing.fx;
+  if (g) out.fx = { system: g.system, x: cx + (g.y - middle), y: ORIGIN_Y - 3 - (down ? cx - g.x : g.x - cx) };
   return out;
 }
 
@@ -873,16 +882,7 @@ function drawFigure(look: Look, pose: Pose, facing: Facing, options: DrawOptions
   const chest = P(pose.chest);
   const hips = P(pose.hips);
 
-  // ---- ground shadow: anchors an outline-free sprite to the floor
-  layers.push({
-    depth: -1000,
-    draw: () => {
-      const cx = P([0, 0, 0]).x;
-      for (const [row, half] of [[ORIGIN_Y - 1, 5], [ORIGIN_Y, 7], [ORIGIN_Y + 1, 7], [ORIGIN_Y + 2, 5]] as const) {
-        for (let x = Math.round(cx - half); x < Math.round(cx + half); x++) sprite.set(x, row, SHADOW);
-      }
-    },
-  });
+  // No ground shadow in the picture: it is cast from the sun where the character stands.
 
   // How far the knees have swung out to either side of where the legs hang, for skirts.
   const legPoints = (['L', 'R'] as const).map((s) => ({
@@ -1143,6 +1143,13 @@ function drawFigure(look: Look, pose: Pose, facing: Facing, options: DrawOptions
           const pivotX = TOOL_FRAME.ax + (tool.gripDx?.[back ? 'back' : 'front'] ?? 0);
           for (const { dx, dy, cell } of turned(side(tool.tool!), pivotX, TOOL_FRAME.ay, steps)) {
             sprite.set(Math.round(hand.x) + dx, Math.round(hand.y) + dy, hexOf(cell));
+          }
+          if (tool.fx) {
+            // The particle system's point, turned about the grip the same way as the stamp (see `turned`).
+            const g = back ? tool.fx.back : tool.fx.front;
+            const u = g.x - pivotX, v = g.y - TOOL_FRAME.ay;
+            const cos = Math.cos((steps * Math.PI) / 4), sin = Math.sin((steps * Math.PI) / 4);
+            sprite.fx = { system: tool.fx.system, x: Math.round(hand.x) + u * cos - v * sin, y: Math.round(hand.y) + u * sin + v * cos };
           }
         }
       },

@@ -1,4 +1,4 @@
-/* The scene editor fills the window: a bar, the scene, and a dock of tools under it. */
+/* The scene editor fills the window: a bar, the scene, and a dock of tools under it. Buttons, panels and dialogs are the pixel kit's; this only places them. */
 html,
 body {
   height: 100%;
@@ -10,10 +10,12 @@ body {
 }
 .editor {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
 }
 .viewport {
+  flex: 1;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   background: #2470cc;
@@ -32,14 +34,8 @@ body {
   right: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-.zoom .stage__button {
-  position: static;
-}
-.zoom .stage__button[aria-pressed='true'] {
-  background: var(--sand);
-  color: var(--sand-ink);
+  align-items: flex-end;
+  gap: 8px;
 }
 .actions {
   position: absolute;
@@ -48,290 +44,126 @@ body {
   display: flex;
   gap: 8px;
 }
-.actions[hidden],
-.opts[hidden],
-.toolbar[hidden] {
-  display: none;
-}
-.viewport .actions .stage__button {
-  position: static;
-  width: 52px;
-  height: 52px;
-}
-.actions .icon {
-  width: 26px;
-  height: 26px;
-}
-.viewport .actions .actions__main {
-  background: var(--sand);
-  color: var(--sand-ink);
-}
-.status {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  max-width: calc(100% - 32px);
-  margin: 0;
-  padding: 6px 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  font-size: 0.88rem;
-}
-
-/* One line of tool icons under the scene; in Play, the emotes. */
-.toolbar {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 8px 12px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
-  border-top: 1px solid var(--line);
-  background: var(--bar);
-}
-.toolbar__btn {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--muted);
-}
-.toolbar__btn .icon {
-  width: 24px;
-  height: 24px;
-}
-.toolbar__btn[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.toolbar__btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-.toolbar__btn--text {
-  width: auto;
-  padding: 0 18px;
-  color: var(--fg);
-  font-weight: 600;
-}
-
-/* The chosen tool's options float over the scene, top left. */
-.opts {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  width: 300px;
-  max-width: calc(100% - 88px);
-  max-height: calc(100% - 88px);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.3);
-}
-.opts__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--accent);
-}
-.opts__head b {
-  font: 700 18px var(--font-display);
-  color: var(--fg);
-}
-.opts__tip {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-.opts__brush {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-}
-.opts__label {
-  font-size: 12px;
-  color: var(--muted);
-}
-.opts__label b {
-  display: block;
-  color: var(--fg);
-}
-.opts__link {
-  font-size: 13px;
-  color: var(--accent);
-}
-.opts--cast {
-  top: auto;
-  bottom: 12px;
-  width: 220px;
-}
-.opts .plants {
-  flex-wrap: wrap;
-  max-height: 200px;
-  overflow: auto;
-}
-.brush {
-  display: grid;
-  grid-template-columns: repeat(7, 5px);
-  gap: 1px;
-}
-.brush__cell {
-  width: 5px;
-  height: 5px;
-  background: var(--well);
-}
-.brush__cell--on {
-  background: var(--accent);
-}
-@media (max-width: 699px) {
-  .toolbar {
-    justify-content: flex-start;
-  }
-  .opts {
-    width: auto;
-    max-height: 40%;
-  }
-}
-
-.chip {
-  min-height: 32px;
-  color: inherit;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-.chip:disabled {
-  opacity: 0.5;
-}
-.plants {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-.plant {
-  flex: none;
-  width: 56px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  background: var(--panel);
-}
-.plant[aria-pressed='true'] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.plant__picture {
-  image-rendering: pixelated;
-}
-.hint {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.dialog {
-  border: 2px solid var(--fg);
-  background: var(--panel);
-  color: var(--fg);
-  padding: 0;
-  max-width: calc(100vw - 32px);
-}
-.dialog__form {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-}
-.dialog__form h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.dialog__form label {
-  display: grid;
-  gap: 4px;
-  font-size: 0.88rem;
-}
-.dialog__form input[type='text'],
-.dialog__form input[type='number'] {
-  font: inherit;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--fg);
-}
-.dialog__sizes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.dialog .dialog__check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-/* Edit and Play share one button: the accent marks the way into Play. */
-.ib.mode {
-  background: var(--accent);
-  color: var(--accent-ink);
-  margin-right: 2px;
-}
 /* Frames per second, under the gauge button that switches it on. */
 .fps {
   margin: 0;
   padding: 2px 4px;
   background: #0008;
+  border-radius: 4px;
   color: #fff;
   font: 600 0.75rem/1.4 ui-monospace, monospace;
   text-align: center;
   pointer-events: none;
 }
-.fps[hidden] {
-  display: none;
+
+/* The tools float over the scene, at the bottom and centred; they scroll sideways when they do not fit. */
+.toolwrap {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 8px;
+}
+.toolbar > * {
+  flex: none;
 }
 
-/* A selected object's options: the turn buttons side by side, a chest's contents as chips. */
-.opts__row {
+/* The tool's options and the selection's properties fill the inspector. */
+.opts__body {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  font: 500 14px/1.4 'Pixelify Sans', ui-monospace, monospace;
 }
-.opts__row .btn {
-  flex: 1;
-  gap: 6px;
-}
-.opts__chips {
+.opts__head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+}
+.opts__head b {
+  font-weight: 600;
+  font-size: 16px;
+}
+.opts__tip {
+  margin: 0;
+  font-size: 12px;
+  color: #7a6648;
+}
+.opts__label {
+  font-size: 12px;
+  color: #7a6648;
 }
 
-.opts__search {
+/* The scene list stays beside the scene, also on a phone, where a workspace would stack it. */
+.editor .uworkspace { flex-direction: row; overflow: hidden; background: none; }
+.editor .uside--left { box-shadow: 4px 0 0 #00000040; }
+.editor .uside--right { box-shadow: -4px 0 0 #00000040; }
+@media (max-width: 699px) { .editor .uside { width: 40vw !important; } }
+.editor .uside__grip { display: block; }
+.editor .uside__body, .editor .uside__list { overflow-y: auto; }
+
+/* What is pinned over the desk at the screen's own size (overlay.ts): lines on a canvas, then the pins. */
+.desk-overlay, .desk-overlay__lines, .desk-overlay__pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.desk-overlay__lines {
   width: 100%;
-  min-height: 32px;
-  padding: 4px 10px;
-  border: 2px solid var(--fg);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 13px;
-  background: var(--panel, #fff);
+  height: 100%;
+}
+.desk-pin {
+  position: absolute;
+  pointer-events: auto;
+}
+/* The tabs over the scenes on the desk: each scene's name (to pick or drag it) and a button to close it. */
+.desk-tab {
+  display: flex;
+  gap: 2px;
+  touch-action: none;
+  cursor: grab;
+}
+.desk-tab:active {
+  cursor: grabbing;
+}
+.desk-tab--crowded {
+  outline: 3px solid #d9412b;
+}
+
+/* The scene list's tiles can be dragged sideways onto the desk with a finger; up and down still scrolls the list. */
+.editor .uside--left .utile { touch-action: pan-y; }
+body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
+/* A way's link handle (drag it onto another way): half the size of a button, as each way of the scene has one. */
+.desk-handle canvas { width: 26px !important; height: 28px !important; }
+.desk-handle { cursor: grab; touch-action: none; }
+/* What the tile under the pointer is, beside the brush: shown only, so the pointer goes through it to the desk. */
+
+/* The brush gizmo floats at the top left of the view while a brushed tool is chosen; a press or drag on it sizes the brush. */
+.brushgizmo {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  line-height: 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* The cutaway floats at the left of the view, halfway down. */
+.cutaway {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  line-height: 0;
 }

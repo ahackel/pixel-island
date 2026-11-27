@@ -11,7 +11,7 @@ engine's look and in all four camera turns. An object is a small JSON descriptio
 | Building | An object is a list of **parts**: box, cylinder (standing, or lying along x or z) and ball. Each part fills a box given by its lowest corner and its size. Across the floor the unit is 1/16 of a tile edge (a 2-tile desk is 32 long); up, one unit is one pixel |
 | Footprint | 1 to 4 tiles each way. Parts stay within it, except a little overhang |
 | Drawing | Ray-cast per pixel in the 2:1 view (32×16 tiles), lit with the flora light like the animals. Flat faces take one tone each: top light, front (towards lower left) base, side (towards lower right) shade. Round parts are banded into the three tones. Master palette only, no outlines |
-| Painting | As on the animals: a lit rim along the top edge of round parts; sel-out on the edges away from the light; a shade line where a part covers another of the same colour further back. A soft ground shadow under every part near the floor |
+| Painting | As on the animals: a lit rim along the top edge of round parts; sel-out on the edges away from the light; a shade line where a part covers another of the same colour further back. No ground shadow in the picture: it is cast from the sun where the object stands |
 | Paint | `solid`, `glow` (a screen or lamp: the light tone all over, no shading), `water` (base with light ripples; they run when the part flows) |
 | Camera turns | 4 quarter turns, all drawn (an object need not be symmetric). The footprint swaps width and depth on turns 1 and 3 |
 | Animation | A few "on" loops, 8 frames at 6 fps: `blink` (a part goes dark every other half second), `flow` (water ripples run), `bob` (a part rises a pixel and falls). Objects with no loop have one frame |
