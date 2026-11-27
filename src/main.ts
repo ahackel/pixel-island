@@ -52,35 +52,23 @@ import { bring, buildSpot, dropCoconuts, lay, morningGifts, spotNear, spotsNear,
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
+import { optionsOf, withoutQuest } from './options.ts';
 import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt, TORCH_IN_BAG, WOOD_COLORS, WOOD_ROWS, woodThing } from './fire.ts';
 
-const params = new URLSearchParams(location.search);
-/** Debug: `?speed=20` runs the game clock 20 times faster. */
-const SPEED = Math.max(0.1, Number(params.get('speed')) || 1);
-/** Debug: `?quest=5` plays a new game from the fifth quest, with what the ones before brought, and never saves, so the real save is kept. */
-let TRYOUT = params.has('quest');
-let START_QUEST = Math.min(QUESTS.length, Math.max(1, Math.floor(Number(params.get('quest'))) || 1)) - 1;
+/** The debug options in the address (options.ts); a tryout ends when a new game is started from the menu. */
+const opts = optionsOf(location.search, QUESTS.length);
 /** A new game from the menu is a real one: the first quest, saved, and the tryout's `?quest` gone from the address. */
 function endTryout(): void {
-  if (!TRYOUT) return;
-  TRYOUT = false;
-  START_QUEST = 0;
-  params.delete('quest');
-  // Flags like `cheats` keep their bare form, not `cheats=`.
-  const rest = `${params}`.replace(/=(?=&|$)/g, '');
-  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
+  if (!opts.tryout) return;
+  opts.tryout = false;
+  opts.startQuest = 0;
+  history.replaceState(null, '', location.pathname + withoutQuest(location.search));
 }
-/**
- * Debug: `?island=2` plays the first try at the rocky island and its cave, with a lantern in the bag; never saved.
- * `?cave` starts it straight in the cave, lantern in hand, with no menu, editor or intro.
- */
-const CAVE_START = params.has('cave');
-const ISLAND2 = params.get('island') === '2' || CAVE_START;
-/** Debug: `?scene=<name>` plays a scene saved from the editor (`src/content/scenes/<name>.json`) as the island; never saved. */
-const SCENE_TRY = params.get('scene') ? savedScene(params.get('scene')!) : null;
+/** The saved scene `?scene=` plays as the island, if there is one by that name. */
+const SCENE_TRY = opts.scene ? savedScene(opts.scene) : null;
 /** Whether this game is the real, saved one: not a tryout, the rocky island or a saved scene. */
-const saves = () => !TRYOUT && !ISLAND2 && !SCENE_TRY;
+const saves = () => !opts.tryout && !opts.island2 && !SCENE_TRY;
 /** How near the survivor must come to pick something up, in metres. */
 const REACH = 0.7;
 const FADE = { out: 1200, hold: 1000, in: 1200 };
@@ -98,7 +86,7 @@ const GRAB_LUCK = 0.25;
 
 // ------------------------------------------------------------------ the world
 
-const rocky = ISLAND2 ? rockyIsland() : null;
+const rocky = opts.island2 ? rockyIsland() : null;
 const islandScene = rocky?.scene ?? SCENE_TRY ?? firstIsland();
 /** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
 const island = new World(islandScene);
@@ -183,20 +171,20 @@ function newGame(who = firstWho()): Game {
   // The hat came off in the sea and lies on the sand beyond their head.
   const hatAt = side ? sideways(at, -side, 2 * HALF_BODY) : spotNear(isle, at, 0.6, 0.3);
   const hat = who.worn.hat && hatAt && dry(hatAt) ? hatAt : null;
-  const quest: Progress = { ...startProgress(), quest: START_QUEST };
+  const quest: Progress = { ...startProgress(), quest: opts.startQuest };
   const g: Game = {
     day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
-    builds: [], at, hat, who, quest, weather: kindFor(START_QUEST, 1),
+    builds: [], at, hat, who, quest, weather: kindFor(opts.startQuest, 1),
   };
-  if (ISLAND2) g.bag.push('lantern');
+  if (opts.island2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
   for (let n = 0; n < 2; n++) dropCoconuts(isle, g);
   washWood(isle, g);
   washWood(isle, g);
   // What the quests so far brought (in a tryout, all those before the one it starts at); a strike before then has burnt its palm.
-  for (let k = 0; k <= START_QUEST; k++) {
+  for (let k = 0; k <= opts.startQuest; k++) {
     bring(isle, g, k);
-    if (QUESTS[k].strike && k < START_QUEST) burnPalm(isle, g, at);
+    if (QUESTS[k].strike && k < opts.startQuest) burnPalm(isle, g, at);
   }
   return g;
 }
@@ -215,7 +203,7 @@ const isle: Shore = {
   surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
   random: Math.random,
 };
-const saved = params.has('new') || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
+const saved = opts.fresh || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
 // Saves from before doors kept them have none opened.
 game.doors ??= {};
@@ -631,7 +619,7 @@ function startNew(who: State): void {
   questShown = '';
   showQuest();
   // The new game replaces the old save at once, but with `?new` only from its first sleep.
-  if (!params.has('new')) store();
+  if (!opts.fresh) store();
   hold(null);
 }
 
@@ -730,7 +718,7 @@ if (import.meta.env.DEV) addEventListener('keydown', (e) => e.key === 'F2' && (l
 let fast = 1;
 /** A weather the cheat forces, instead of the day's own. */
 let weatherCheat: Kind | undefined;
-if (params.has('cheats')) {
+if (opts.cheats) {
   const cheat = (words: string, on: () => void) => ({ words, on });
   // Under the menu, so it does not show over it.
   const stats = statsOverlay(app, S);
@@ -926,7 +914,7 @@ function leaveCave(): void {
 /** The scenes the survivor can be led to (by file name), made into worlds when first visited; the island is one of them. */
 const visited = new Map<string, World>([
   // By the island's own file name (see island.ts), so a way back to it comes back to this world.
-  [rocky ? 'rocky-island' : (params.get('scene') ?? 'island'), island],
+  [rocky ? 'rocky-island' : (opts.scene ?? 'island'), island],
   // The rocky island's cave is the same world whether walked into at its mouth or climbed down into.
   ...(cave ? [['smuggler-cave', cave.world] as [string, World]] : []),
 ]);
@@ -1521,8 +1509,8 @@ function step(ms: number): void {
   const fade = ended ? Math.min(1, (ms - ended) / END_FADE) : fadeAt(ms);
 
   if (!paused && !sleeping && !ended && !telling()) {
-    time += dt * SPEED * fast;
-    Object.assign(game, drain(game, dt * SPEED * fast));
+    time += dt * opts.speed * fast;
+    Object.assign(game, drain(game, dt * opts.speed * fast));
     warnOnce('think.hungry', game.hunger < LOW);
     warnOnce('think.tired', game.energy < LOW);
     warnOnce('think.shark', !dry(actor) && !!sharkNear(sharks, actor, SHARK_SEEN));
@@ -1716,7 +1704,7 @@ function step(ms: number): void {
 requestAnimationFrame(frame);
 
 // `?cave`: a default survivor, straight into the cave with the lantern in hand, playing at once.
-if (CAVE_START && cave) {
+if (opts.cave && cave) {
   startNew(firstWho());
   hold('lantern');
   goInto(cave.world, cave.entry);
