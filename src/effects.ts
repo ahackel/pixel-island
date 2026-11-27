@@ -23,8 +23,9 @@ export type Handler = (typeof HANDLERS)[number];
  * - `call`: a named handler (`HANDLERS`).
  * - `room`: stop here, saying so, if the bag is full.
  * - `weather`: the weather that lasts from now.
- * - `washUp`: things the sea leaves on the beach.
- * - `stones`: stones laid on the beach; from then on there is always one to find.
+ * - `washUp`: things the sea leaves on the beach: a list, or `{ items, near }` for those within `near` metres of the survivor
+ *   (on an island too big to leave them anywhere).
+ * - `stones`: stones laid on the beach, a number or `{ n, near }` likewise; from then on there is always one to find.
  * - `strike`: lightning waits to strike a palm.
  */
 export type Effect =
@@ -35,8 +36,8 @@ export type Effect =
   | { call: Handler }
   | { room: true }
   | { weather: Kind }
-  | { washUp: string[] }
-  | { stones: number }
+  | { washUp: string[] | { items: string[]; near?: number } }
+  | { stones: number | { n: number; near?: number } }
   | { strike: true };
 
 /** What an effect does to the game. */
@@ -49,8 +50,9 @@ export interface Doer {
   full(): boolean;
   call(handler: Handler): void;
   weather(kind: Kind): void;
-  washUp(items: readonly string[]): void;
-  stones(n: number): void;
+  /** `near`: within so many metres of the survivor. */
+  washUp(items: readonly string[], near?: number): void;
+  stones(n: number, near?: number): void;
   strike(): void;
 }
 
@@ -68,8 +70,8 @@ export function run(effects: readonly Effect[], d: Doer): void {
     else if ('take' in e) d.take(e.take);
     else if ('call' in e) d.call(e.call);
     else if ('weather' in e) d.weather(e.weather);
-    else if ('washUp' in e) d.washUp(e.washUp);
-    else if ('stones' in e) d.stones(e.stones);
+    else if ('washUp' in e) (Array.isArray(e.washUp) ? d.washUp(e.washUp) : d.washUp(e.washUp.items, e.washUp.near));
+    else if ('stones' in e) (typeof e.stones === 'number' ? d.stones(e.stones) : d.stones(e.stones.n, e.stones.near));
     else if ('strike' in e) d.strike();
     else if (d.full()) return d.think('think.full');
   }
@@ -86,6 +88,12 @@ const ALLOWED: Record<Where, readonly string[]> = {
 };
 const ALL = ['think', 'reach', 'give', 'take', 'call', 'room', 'weather', 'washUp', 'stones', 'strike'];
 const NAMES: Record<Where, string> = { rule: 'an interaction', start: "a quest's start" };
+
+/** The farthest `near` may say, in metres. */
+const MAX_NEAR = 40;
+/** Whether an effect's object form has no key but its own and a sensible `near` (or none). */
+const nearOk = (v: any): boolean =>
+  !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every((k) => ['items', 'n', 'near'].includes(k)) && (v.near === undefined || (typeof v.near === 'number' && v.near >= 1 && v.near <= MAX_NEAR));
 
 /** What a list's effects may name: the texts, the goals that exist, and the items the sea may wash up. */
 export interface Known { loca: object; goals: readonly string[]; items: readonly string[] }
@@ -109,8 +117,15 @@ export function checkEffects(effects: unknown, where: Where, label: string, know
     else if (key === 'call' && !HANDLERS.includes(v)) out.push(`${x}: unknown handler "${v}"`);
     else if (key === 'room' && v !== true) out.push(`${x}: room is written as true`);
     else if (key === 'weather' && !KINDS.includes(v)) out.push(`${x}: unknown weather "${v}"`);
-    else if (key === 'washUp' && (!Array.isArray(v) || !v.length || v.some((it: unknown) => typeof it !== 'string' || !known.items.includes(it)))) out.push(`${x}: unknown wash-up in ${JSON.stringify(v)}`);
-    else if (key === 'stones' && !(Number.isInteger(v) && v >= 1 && v <= 10)) out.push(`${x}: stones must be 1–10`);
+    else if (key === 'washUp') {
+      const items = Array.isArray(v) ? v : v?.items;
+      if (!Array.isArray(items) || !items.length || items.some((it: unknown) => typeof it !== 'string' || !known.items.includes(it))) out.push(`${x}: unknown wash-up in ${JSON.stringify(items)}`);
+      if (!Array.isArray(v) && !nearOk(v)) out.push(`${x}: wash-up is a list, or items and near (1–${MAX_NEAR} metres)`);
+    } else if (key === 'stones') {
+      const n = typeof v === 'object' && v ? v.n : v;
+      if (!(Number.isInteger(n) && n >= 1 && n <= 10)) out.push(`${x}: stones must be 1–10`);
+      if (typeof v === 'object' && !nearOk(v)) out.push(`${x}: stones is a number, or n and near (1–${MAX_NEAR} metres)`);
+    }
     else if (key === 'strike' && v !== true) out.push(`${x}: strike is written as true`);
   });
   return out;

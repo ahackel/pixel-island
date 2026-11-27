@@ -1,4 +1,4 @@
 [
- { "id": "wreck", "goal": "got:pot", "icon": "pot", "thought": "i2.wreck", "start": [{ "weather": "sunny" }, { "washUp": ["pot", "flint", "flint"] }] },
- { "id": "meal", "goal": "made:fishSoup", "now": true, "icon": "pot", "thought": "i2.meal", "start": [{ "stones": 2 }] }
+ { "id": "wreck", "goal": "got:pot", "icon": "pot", "thought": "i2.wreck", "start": [{ "weather": "sunny" }, { "washUp": { "items": ["pot", "flint", "flint"], "near": 6 } }] },
+ { "id": "meal", "goal": "made:fishSoup", "now": true, "icon": "pot", "thought": "i2.meal", "start": [{ "stones": { "n": 2, "near": 8 } }] }
 ]

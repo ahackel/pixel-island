@@ -164,7 +164,7 @@ function newGame(who = firstWho()): Game {
   // What the quests so far brought (in a tryout, all those before the one it starts at): their start effects, as far as
   // they lie on the island; a strike before then has burnt its palm.
   for (let k = 0; k <= opts.startQuest; k++) {
-    run(bundle.quests[k].start ?? [], { ...idle, washUp: (items) => washUp(isle, g, items), stones: (n) => layStones(isle, g, n), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
+    run(bundle.quests[k].start ?? [], { ...idle, washUp: (items, near) => washUp(isle, g, items, near ? { at, within: near } : undefined), stones: (n, near) => layStones(isle, g, n, near ? { at, within: near } : undefined), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
   }
   return g;
 }
@@ -964,8 +964,8 @@ const doer = (subject: Subject = null): Doer => ({
   full: bagFull,
   call: (h) => DO[h](subject),
   weather: (kind) => void (game.weather = kind),
-  washUp: (items) => washUp(isle, game, items),
-  stones: (n) => layStones(isle, game, n),
+  washUp: (items, near) => washUp(isle, game, items, near ? { at: actor, within: near } : undefined),
+  stones: (n, near) => layStones(isle, game, n, near ? { at: actor, within: near } : undefined),
   strike: () => void (strikeNow = true),
 });
 

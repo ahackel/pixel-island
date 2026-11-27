@@ -51,7 +51,7 @@ test('only the current quest counts, and a done one waits for its morning unless
 });
 
 test('what a task needs only comes with its own quest', () => {
-  const brings = (item: string) => QUESTS.findIndex((q) => q.start?.some((e) => 'washUp' in e && e.washUp.includes(item)));
+  const brings = (item: string) => QUESTS.findIndex((q) => q.start?.some((e) => 'washUp' in e && (Array.isArray(e.washUp) ? e.washUp : e.washUp.items).includes(item)));
   const of = (id: string) => QUESTS.findIndex((q) => q.id === id);
   assert.equal(brings('hammer'), of('hut'));
   assert.equal(brings('vine'), of('axe'));

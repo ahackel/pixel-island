@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSpot, headSide, HALF_BODY, layStones, lyingCount, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
+import { buildSpot, headSide, HALF_BODY, layStones, lyingCount, washUp, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
 import { HUT_AT } from './crafts.ts';
 import { FIRST } from './islands.ts';
 import { startProgress } from './quests.ts';
@@ -96,4 +96,24 @@ test('lying down, the head goes on the dry side, the feet toward the sea', () =>
   assert.equal(headSide(shore.dry, { i: 8, j: 4.8 }), -1);
   // Screen left (-i +j) leads off its left edge, i < 4.
   assert.equal(headSide(shore.dry, { i: 4.8, j: 8 }), 1);
+});
+
+test('what is left near the survivor lies on the beach near them, and anywhere on the beach where none is near', () => {
+  const far = { i: 15.5, j: 15.5 };
+  const g = game();
+  washUp(shore, g, ['pot', 'flint', 'flint', 'vine'], { at: far, within: 3 });
+  assert.equal(g.lying.length, 4);
+  assert.ok(g.lying.every((l) => Math.hypot(l.i - far.i, l.j - far.j) <= 3.5), 'within reach, with the tile\'s jitter');
+  const s = game();
+  layStones(shore, s, 5, { at: { i: 4.5, j: 4.5 }, within: 2 });
+  assert.equal(lyingCount(s, 'stone'), 5);
+  assert.ok(s.lying.every((l) => Math.hypot(l.i - 4.5, l.j - 4.5) <= 2.5));
+  // No beach within reach of the survivor: the sea leaves them anywhere on the beach rather than nowhere.
+  const none = game();
+  layStones(shore, none, 4, { at: { i: 10, j: 10 }, within: 1 });
+  assert.equal(lyingCount(none, 'stone'), 4);
+  // Without a place, as before: all over the beach.
+  const all = game();
+  layStones(shore, all, 40);
+  assert.ok(all.lying.some((l) => l.i < 8) && all.lying.some((l) => l.i > 12));
 });

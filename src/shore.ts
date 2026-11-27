@@ -53,12 +53,17 @@ export function spotsNear(s: Shore, p: Spot, n: number, r: number, span: number,
   return out;
 }
 
-/** Somewhere on the beach, anywhere in its tile; there must be beach. */
-function onBeach(s: Shore): Spot {
+/** Where the sea leaves things: on the beach within `within` metres of `at` (the survivor), where the island is too big to leave them anywhere. */
+export interface Around { at: Spot; within: number }
+
+/** Somewhere on the beach, anywhere in its tile, near `around` if there is beach there, else anywhere; there must be beach. */
+function onBeach(s: Shore, around?: Around): Spot {
+  const near = around ? s.beach.filter((b) => Math.hypot(b.i - around.at.i, b.j - around.at.j) <= around.within) : [];
+  const pool = near.length ? near : s.beach;
   // The shore runs through the beach tiles: only a spot whose ground is above the water, so what lies there is seen.
   let at = { i: 0, j: 0 };
   for (let n = 0; n < 50; n++) {
-    const b = s.beach[Math.floor(s.random() * s.beach.length)];
+    const b = pool[Math.floor(s.random() * pool.length)];
     at = { i: b.i - 0.3 + s.random() * 0.6, j: b.j - 0.3 + s.random() * 0.6 };
     if (s.aboveWater(at)) break;
   }
@@ -73,11 +78,11 @@ export function dropCoconuts(s: Shore, g: Game): void {
 }
 
 /** What the sea brings: the items given. A crate stands on the beach; the small things lie there to be picked up. */
-export function washUp(s: Shore, g: Game, items: readonly string[]): void {
+export function washUp(s: Shore, g: Game, items: readonly string[], around?: Around): void {
   if (!s.beach.length) return;
   for (const item of items) {
-    if (isLoose(item)) lay(g, item, onBeach(s));
-    else g.items.push({ item, ...onBeach(s) });
+    if (isLoose(item)) lay(g, item, onBeach(s, around));
+    else g.items.push({ item, ...onBeach(s, around) });
   }
 }
 
@@ -89,8 +94,8 @@ export function washWood(s: Shore, g: Game): void {
 }
 
 /** A quest's `stones` effect: stones laid on the beach (from then on `topUpStones` keeps some to find). */
-export function layStones(s: Shore, g: Game, n: number): void {
-  for (let k = 0; k < n && s.beach.length; k++) lay(g, 'stone', onBeach(s));
+export function layStones(s: Shore, g: Game, n: number, around?: Around): void {
+  for (let k = 0; k < n && s.beach.length; k++) lay(g, 'stone', onBeach(s, around));
 }
 
 /** The morning's gifts: a coconut once the last is eaten, and the sea's wood. */
