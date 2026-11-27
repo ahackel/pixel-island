@@ -345,6 +345,10 @@ Based on what pixel-engine and this repo have today. Engine work is anything ano
 6. Digging and treasure.
 7. Content and polish.
 
+### Can the story be finished?
+
+`src/story.ts` answers it from the data alone, for every island, in `npm test`: it walks the quests in order and, at each, works out what can be had by then and whether the quest's goal can be reached with it. Moving a quest, dropping a wash-up or changing a weather in the content shows up as "quest 6 "hut": the goal "hut" cannot be reached: nothing gives hammer". What it does not know: how many (four logs, four leaves), what is used up, and anything `main.ts` does that its small model leaves out (`HANDLER_YIELDS`, what each goal the code reports takes). A playthrough of the real game in a browser is the check for those; there is none yet.
+
 ### Island 2 as data (a spike)
 
 The first three quests of the draft chain, written as the content they should be in `src/content/drafts/island2/` (quests, interaction rules, one dialogue, texts in English and German), and checked with the game's own checks by `src/island2-draft.test.ts`. The test lists exactly what the game cannot do yet; when the vocabulary grows to cover a line, the test fails until the line is removed, and when the list is empty the draft moves out of `drafts/` into the game.
