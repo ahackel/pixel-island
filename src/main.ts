@@ -668,24 +668,35 @@ function press(p: { x: number; y: number }, start: boolean): void {
       if (Math.hypot(fish.i - actor.i, fish.j - actor.j) <= SPEAR_REACH) return spear(fish);
       think('think.missed');
     }
-    // The burning stump comes first, over coconuts lying under it; it blocks the way like the palm did, so the goal is the near side of it.
-    const stump = game.struck === null ? null : palms[game.struck];
-    if (stump && near(p, stump, 10, 11)) return goTo(nearSide(stump), false, { stump: true });
     // A lit campfire, if what is in hand can be done to it (cooking): walked up to.
     const fire = hasRule('campfire', hand, bundle.rules) ? game.fires.find((f) => near(p, f, 8, 5)) : undefined;
     if (fire) return goTo(nearSide(fire), false, { campfire: fire });
-    const lo = game.lying.find((l) => near(p, l, ...(PICK_NEAR[l.item] ?? [6, 2])));
-    if (lo) return goTo(lo, false, { loose: lo });
-    if (game.hat && near(p, game.hat, 6, 2)) return goTo(game.hat, false, { hat: true });
-    // A crate comes before the blanket: it stands on the ground, and one that washed up beside the blanket would lie wholly
-    // inside the blanket's reach, so that a tap on it only ever walked to the blanket (the playthrough found it so).
-    const it = game.items.find((it) => near(p, it, 9, 7));
+    // The stump, a loose thing, the hat, a crate or a palm: the one whose picture is closest to the tap, so a stick lying behind a crate does
+    // not take a tap on the crate (the first in reach did, and the playthrough found it so). A crate comes before the
+    // blanket: one that washed up beside the blanket lies wholly inside the blanket's reach.
+    type Pick = { gap: number; go: () => void };
+    const picks: Pick[] = [];
+    // The burning stump, so a tap on its flames wins over coconuts lying under it but one on a rope beside it does not;
+    // it blocks the way like the palm did, so the goal is the near side of it.
+    const stump = game.struck === null ? null : palms[game.struck];
+    if (stump && near(p, stump, 10, 11)) picks.push({ gap: gap(p, stump, 11) / 10, go: () => goTo(nearSide(stump), false, { stump: true }) });
+    for (const l of game.lying) {
+      const [r, up] = PICK_NEAR[l.item] ?? [6, 2];
+      if (near(p, l, r, up)) picks.push({ gap: gap(p, l, up) / r, go: () => goTo(l, false, { loose: l }) });
+    }
+    if (game.hat && near(p, game.hat, 6, 2)) { const hat = game.hat; picks.push({ gap: gap(p, hat, 2) / 6, go: () => goTo(hat, false, { hat: true }) }); }
     // A crate blocks the way, so the goal is the near side of it.
-    if (it) return goTo(nearSide(it), false, { item: it });
+    for (const it of game.items) if (near(p, it, 9, 7)) picks.push({ gap: gap(p, it, 7) / 9, go: () => goTo(nearSide(it), false, { item: it }) });
+    // A palm's trunk or crown: walked up to, for its leaves or, with the axe, to cut it down. So a tap on the crown is
+    // for the palm, not for a stick lying at its foot.
+    palms.forEach((q, k) => {
+      if (k === game.struck || game.felled.includes(k)) return;
+      const d = Math.min(near(p, q, 6, 8) ? gap(p, q, 8) / 6 : Infinity, near(p, q, 12, 26) ? gap(p, q, 26) / 12 : Infinity);
+      if (d < Infinity) picks.push({ gap: d, go: () => goTo(nearSide(q), false, { palm: k }) });
+    });
+    const pick = picks.sort((a, b) => a.gap - b.gap)[0];
+    if (pick) return pick.go();
     if (near(p, BLANKET, 15, 0)) return goTo(BLANKET, false, { blanket: true });
-    // A palm's trunk or crown: walked up to, for its leaves or, with the axe, to cut it down.
-    const k = palms.findIndex((q, k) => k !== game.struck && !game.felled.includes(k) && (near(p, q, 6, 8) || near(p, q, 12, 26)));
-    if (k >= 0) return goTo(nearSide(palms[k]), false, { palm: k });
   }
   if (target?.pick || onSelf) return;
   walkTo(p);
@@ -908,8 +919,12 @@ function openDoor(door: SceneDoor): boolean {
 
 /** Whether a ground pixel is within `r` pixels of a map point's picture, centred `up` pixels above its foot. */
 function near(p: { x: number; y: number }, at: { i: number; j: number }, r: number, up: number): boolean {
+  return gap(p, at, up) <= r;
+}
+/** How many pixels a ground pixel is from a map point's picture, centred `up` pixels above its foot. */
+function gap(p: { x: number; y: number }, at: { i: number; j: number }, up: number): number {
   const s = world.screenOf(at.i, at.j);
-  return Math.hypot(p.x - s.x, p.y - (s.y - up)) <= r;
+  return Math.hypot(p.x - s.x, p.y - (s.y - up));
 }
 
 const bagFull = () => game.bag.length >= BAG_SLOTS;
@@ -1637,8 +1652,10 @@ if (import.meta.env.DEV) {
     sail: () => setSail(),
     /** Stands the survivor somewhere (to reach a fish or a crab that will not wait), and stops their walk. */
     place: (i: number, j: number) => { target = null; Object.assign(actor, { i, j }); },
-    /** Where a tap on a thing at `i`, `j` sends the survivor (the near side), whether that spot can be walked on, and how long the way to it is. */
-    probe: (i: number, j: number) => { const n = nearSide({ i, j }); return { goal: at(n), walkable: world.canWalk(n, n), way: findPath(world, actor, n, passable).length }; },
+    /** Whether the survivor could stand at `i`, `j` and walk from there to `to` (so the playthrough can step aside to a real spot). */
+    /** Whether a tap on `i`, `j`, `up` pixels over the ground, would land on the survivor's body (and sit them down). */
+    covers: (i: number, j: number, up = 0) => { const s = world.screenOf(i, j), foot = world.screenOf(actor.i, actor.j); return Math.abs(s.x - foot.x) <= 8 && s.y - up <= foot.y + 2 && s.y - up >= foot.y - 32; },
+    free: (i: number, j: number, to: { i: number; j: number }) => dry({ i, j }) && world.canWalk({ i, j }, { i, j }) && findPath(world, { i, j }, nearSide(to), passable).length > 0,
     /** Draws frames, or not: the rules run the same, and far faster, with no drawing. */
     draw: (on: boolean) => { drawing = on; },
     /** Puts away the thoughts in the story box. */

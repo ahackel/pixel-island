@@ -103,6 +103,7 @@ Decided per tool: the generic editors live in pixel-engine and load and save JSO
 
 - Tap the ground and the survivor walks there.
 - Tap an object to use it with the empty hand or the current item.
+- Where things overlap on the screen (a stick beside a crate, a rope by the burning stump, a palm's crown over what lies at its foot), a tap is for the one whose picture is closest to the finger, not for the first in reach.
 - To use a tool: **select an item in the inventory, then tap the target** (axe + palm = chop).
 - Carrying: one item in the hand (drawn on the character, as with the wardrobe's held item) and a bag of a few slots. A crate gives more storage later.
 - The survivor's thoughts appear as short speech bubbles and emotes and serve as hints ("I could split this with a sharp stone…").

@@ -74,7 +74,25 @@ const idle = async (what) => { await until(`${what}: the walk to end`, (s) => !s
 const lying = (s, item) => s.lying.filter((l) => l.item === item);
 const dist = (a, b) => Math.hypot(a.i - b.i, a.j - b.j);
 const count = (s, item) => s.bag.filter((i) => i === item).length;
-
+/**
+ * Taps `spot`, `up` pixels over the ground, as the player would: first, if the survivor's body covers that point on the
+ * screen (a tap there would sit them down), they step to an open spot nearby from where it can be walked to, as a player
+ * would tap a part of it that shows. `within`: how far from it they may stand (for a fish or a crab, in reach).
+ */
+async function tapAt(spot, up = 0, within = 2.8) {
+  if (await T('covers', spot.i, spot.j, up)) {
+    const s = await S();
+    const offsets = [];
+    for (const r of [within * 0.6, within]) for (let a = 0; a < 8; a++) offsets.push([r * Math.cos((a * Math.PI) / 4 + 0.4), r * Math.sin((a * Math.PI) / 4 + 0.4)]);
+    for (const [di, dj] of offsets) {
+      if (!(await T('free', spot.i + di, spot.j + dj, spot))) continue;
+      await T('place', spot.i + di, spot.j + dj);
+      if (!(await T('covers', spot.i, spot.j, up))) break;
+      await T('place', s.at.i, s.at.j);
+    }
+  }
+  await T('tap', spot.i, spot.j, up);
+}
 /** Taps the nearest `item` lying on the ground (not any that `skip` says no to) until it is in the bag. */
 async function pickUp(item, skip = () => false) {
   const seen = [];
@@ -88,18 +106,17 @@ async function pickUp(item, skip = () => false) {
     const had = [...s.bag];
     if (tries > 0 && !lone(spots[Math.min(tries, spots.length - 1)])) await clearAround(spots[Math.min(tries, spots.length - 1)], 1.2, spots[Math.min(tries, spots.length - 1)]);
     await T('hold', null);
-    await T('tap', spots[Math.min(tries, spots.length - 1)].i, spots[Math.min(tries, spots.length - 1)].j);
+    await tapAt(spots[Math.min(tries, spots.length - 1)]);
     await idle(`picking up ${item}`);
     if (count(await S(), item) > before) return;
     const now = await S();
+    const by = s.lying.filter((l) => dist(l, spots[Math.min(tries, spots.length - 1)]) < 1.2).map((l) => `${l.item}@${l.i},${l.j}`).join(' ');
     // Whatever a tap took in its place (a neighbour in reach) goes out onto the sand again, out of the way.
     const taken = [...now.bag];
     for (const it of had) { const k = taken.indexOf(it); if (k >= 0) taken.splice(k, 1); }
     await dump(taken);
-    // A tap on a thing behind the survivor on the screen lands on their body (they sit down): stand above it on the screen.
-    if (dist(now.at, s.at) < 0.05) await T('place', spots[Math.min(tries, spots.length - 1)].i - 1.3, spots[Math.min(tries, spots.length - 1)].j - 1.3);
     const target = spots[Math.min(tries, spots.length - 1)];
-    seen.push(`tapped ${item} at ${target.i},${target.j}; survivor at ${now.at.i},${now.at.j}; bag ${now.bag.join(',')}; lying within 1 m: ${now.lying.filter((l) => dist(l, target) < 1).map((l) => `${l.item}@${l.i},${l.j}`).join(' ')}; crates ${now.crates.map((c) => `${c.item}@${c.i},${c.j}`).join(' ')}; thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
+    seen.push(`tapped ${item} at ${target.i},${target.j}; survivor at ${now.at.i},${now.at.j}; bag ${now.bag.join(',')}; lying within 1.2 m before: ${by}; crates ${now.crates.map((c) => `${c.item}@${c.i},${c.j}`).join(' ')}; thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
   await fail(`could not pick up ${item}; after each try the bag and thought were:\n  ${seen.join('\n  ')}`);
 }
@@ -109,12 +126,15 @@ async function dump(items) {
   if (!items.length) return;
   const s = await S();
   // Each dump to another spot of the far beach, so the things do not lie in one pile (a tap takes the first in reach).
-  const far = [...s.beach].sort((a, b) => dist(b, s.hut) - dist(a, s.hut)).slice(0, 24);
-  const corner = far[(dumps++ * 3) % far.length];
+  const far = [...s.beach].sort((a, b) => dist(b, s.hut) - dist(a, s.hut)).slice(0, 40);
+  // Never where something lies already, or a later tap there takes either.
+  const clear = far.filter((b) => !s.lying.some((l) => dist(l, { i: b.i + 0.8, j: b.j + 0.4 }) < 1.6));
+  const corner = (clear.length ? clear : far)[(dumps++ * 3) % (clear.length || far.length)];
   await T('place', corner.i, corner.j);
+  let spread = 0;
   for (const item of items) {
     const k = (await S()).bag.indexOf(item);
-    if (k >= 0) { await T('hold', null); await T('drop', k, corner.i + 0.8, corner.j + 0.4); await wait(1500); }
+    if (k >= 0) { await T('hold', null); await T('drop', k, corner.i + 0.8 + spread, corner.j + 0.4 - spread); spread += 0.9; await wait(1500); }
   }
   await T('place', s.at.i, s.at.j);
 }
@@ -127,7 +147,7 @@ async function clearAround(spot, r = 1.4, keep = null) {
     if (!near.length) return;
     const had = [...s.bag];
     await T('hold', null);
-    await T('tap', near[0].i, near[0].j);
+    await tapAt(near[0]);
     await idle('clearing the way');
     const now = await S();
     const taken = [...now.bag];
@@ -154,14 +174,27 @@ async function tie(a, b, makes) {
   if (!ok) await fail(`${a} and ${b} would not tie`);
   await until(`the ${makes} in the bag`, (s) => s.bag.includes(makes));
 }
+/** Walks to the blanket (the hut's middle): a thing lying near it may take the tap, so such things are cleared away and it is tapped again. */
+async function toBlanket(what) {
+  for (let tries = 0; tries < 4; tries++) {
+    const s = await S();
+    await T('hold', null);
+    await tapAt(s.blanket); await idle(what);
+    const now = await S();
+    // (The walk ends on the blanket, a metre or so from its middle.)
+    if (dist(now.at, now.blanket) < 1.6) return;
+    log(`   ${what}: ended at ${now.at.i},${now.at.j}, not at the blanket; bag ${now.bag.join(',')}`);
+    await clearAround(now.blanket, 1.6);
+  }
+  await fail(`${what}: could not get to the blanket`);
+}
 /** Walks to the blanket (the hut's middle) and sleeps; through any wake-up in the night, until the morning. */
 async function sleepThrough(what) {
   await T('fill');
   const s = await S();
   // The fish and the crab are reached from the water's edge: back onto the sand first.
   await T('place', s.blanket.i + 1.2, s.blanket.j);
-  await T('tap', s.blanket.i, s.blanket.j);
-  await idle(`${what}: walking to the blanket`);
+  await toBlanket(`${what}: walking to the blanket`);
   await T('sleep');
   await until(`${what}: falling asleep`, (x) => x.sleeping, 6000);
   await until(`${what}: waking`, (x) => !x.sleeping, 40000);
@@ -185,7 +218,10 @@ process.on('uncaughtException', (e) => fail(String(e?.message ?? e)));
 await page.clock.install();
 await page.goto(url, { waitUntil: 'load' });
 // From here the game's time is ours: it passes only as the script lets it, and nothing is drawn.
-await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+// (A moment ahead of the page's clock, which still runs in real time until then: on a busy machine 100 ms may already be gone.)
+for (let tries = 0; ; tries++) {
+  try { await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000); break; } catch (e) { if (tries >= 3) throw e; }
+}
 await T('draw', false);
 await wait(1500);
 await page.click('button[aria-label="Create character"]', { force: true });
@@ -216,7 +252,7 @@ await step('quest 3, fish: a spear from a stick and a stone, a fish speared', as
     if (s.quest.done) break;
     const f = [...s.fish].sort((a, b) => dist(a, s.at) - dist(b, s.at))[0];
     if (!f) { await wait(500); continue; }
-    await T('place', f.i + 0.6, f.j); await T('tap', f.i, f.j); await wait(700); await settle();
+    await T('place', f.i + 0.6, f.j); await tapAt(f, 0, 0.8); await wait(700); await settle();
   }
   await until('a fish in the bag and the quest done', (s) => s.quest.done && s.quest.id === 'fish');
 });
@@ -225,13 +261,21 @@ await step('quest 4, crab: a windy day, a crab caught with the spear', async () 
   await sleepThrough('the second night');
   await questIs('crab')('after the night');
   await T('hold', 'spear');
+  const tries = [];
+  const missed = {};
   for (let n = 0; n < 60; n++) {
     const s = await S();
     if (s.quest.done) break;
-    const c = s.crabs[0];
+    // A crab that will not be caught after a few tries (hiding, say) is left for another.
+    const key = (x) => `${x.i},${x.j}`;
+    const c = s.crabs.find((x) => (missed[key(x)] ?? 0) < 3);
     if (!c) { await wait(1000); continue; }
-    await T('place', c.i + 0.6, c.j); await T('tap', c.i, c.j); await wait(600); await settle();
+    missed[key(c)] = (missed[key(c)] ?? 0) + 1;
+    await T('place', c.i + 0.6, c.j); await tapAt(c, 0, 0.8); await wait(600); await settle();
+    const after = await S();
+    tries.push(`crab at ${c.i},${c.j}: survivor ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, crabs ${after.crabs.map((x) => `${x.i},${x.j}`).join(' ')}`);
   }
+  if (!(await S()).quest.done) log(`   crab tries:\n     ${tries.slice(-8).join('\n     ')}`);
   await until('the crab quest done', (s) => s.quest.done && s.quest.id === 'crab');
 });
 
@@ -249,11 +293,10 @@ await step('quest 5, crate: smashed with a stone', async () => {
     const crate = s.crates.find((c) => c.item === 'crate');
     if (!crate) break;
     await T('hold', 'stone');
-    await T('tap', crate.i, crate.j, up);
+    await tapAt(crate, up);
     await idle('smashing the crate');
     const after = await S();
-    const probe = await T('probe', crate.i, crate.j);
-    log(`   crate tap up ${up}: probe ${JSON.stringify(probe)}; survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, hand ${after.hand}, crates ${after.crates.length}, thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
+    log(`   crate tap up ${up}: survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, hand ${after.hand}, crates ${after.crates.length}, thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
   await until('the crate smashed and the quest done', (s) => s.quest.done && s.quest.id === 'crate', 8000);
 });
@@ -264,28 +307,27 @@ await step('quest 6, hut: four driftwood, the hammer, four palm leaves, built ro
   await tidy();
   await pickUp('hammer');
   for (let n = 0; n < 4; n++) await pickUp('drift');
-  const s1 = await S();
-  await T('hold', null);
-  await T('tap', s1.blanket.i, s1.blanket.j); await idle('walking to the hut');
+  await toBlanket('walking to the hut');
   for (let n = 0; n < 4; n++) { await T('build', 'hut'); await wait(300); }
   if ((await S()).builds.find((b) => b.kind === 'hut')?.stage !== 4) await fail('the four walls were not built');
   for (let tries = 0; tries < 12 && count(await S(), 'leaf') < 4; tries++) {
     const s = await S();
     const palms = s.palms.filter((p) => !p.felled && !p.struck).sort((a, b) => dist(a, s.at) - dist(b, s.at));
     const palm = palms[tries % palms.length];
-    await T('hold', null); await T('tap', palm.i, palm.j, 26); await idle('picking a palm leaf');
+    await T('hold', null); await tapAt(palm, 26); await idle('picking a palm leaf');
     const now = await S();
     log(`   leaf try ${tries + 1}: palm ${palm.k} at ${palm.i},${palm.j}, survivor at ${now.at.i},${now.at.j}, bag ${now.bag.join(',')}`);
   }
   if (count(await S(), 'leaf') < 4) await fail('did not get four palm leaves');
-  const s2 = await S();
-  await T('tap', s2.blanket.i, s2.blanket.j); await idle('walking back to the hut');
+  await toBlanket('walking back to the hut');
   for (let n = 0; n < 4; n++) { await T('build', 'hut'); await wait(300); }
   await until('the hut finished and the quest done', (s) => s.quest.done && s.quest.id === 'hut');
 });
 
 await step('quest 7, storm: woken by it in the night, a storm night slept in the hut', async () => {
   await T('fill');
+  // To the blanket first, as each night: sleep is only to be had on it.
+  await toBlanket('walking to the blanket in the hut');
   await T('sleep');
   await until('the first sleep', (s) => s.sleeping, 6000);
   await until('the storm waking the survivor', (s) => !s.sleeping, 40000);
@@ -314,12 +356,12 @@ await step('quest 8, fire: lightning on a palm, a torch from the stump, a campfi
   s = await S();
   const stump = s.palms.find((p) => p.struck);
   await T('hold', 'wood');
-  await T('tap', stump.i, stump.j, 11); await idle('lighting a torch at the stump');
+  await tapAt(stump, 11); await idle('lighting a torch at the stump');
   await until('a torch in hand', (x) => x.hand === 'fire' || x.bag.includes('fire'), 8000);
   await T('hold', 'fire');
   s = await S();
   const wood = byTheHut(s)[0];
-  await T('tap', wood.i, wood.j, 2); await idle('lighting the campfire');
+  await tapAt(wood, 2); await idle('lighting the campfire');
   await until('the campfire lit and the quest done', (x) => x.fires.length > 0 && x.quest.done, 8000);
 });
 
@@ -335,7 +377,7 @@ await step('quest 9, axe: a stick, a stone and a vine tied together, four logs c
     if (s.quest.done) break;
     const palm = s.palms.filter((p) => p.tall && !p.felled && !p.struck).sort((a, b) => dist(a, s.at) - dist(b, s.at))[0];
     if (!palm) await fail('no tall palm left to cut for the logs');
-    await T('tap', palm.i, palm.j, 26); await idle('cutting a palm');
+    await tapAt(palm, 26); await idle('cutting a palm');
     const after = await S();
     log(`   cut try ${n + 1}: palm ${palm.k} at ${palm.i},${palm.j}; survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}; bag ${after.bag.join(',')}; logs lying ${lying(after, 'log').length}; felled ${after.felled.join(',')}; thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
@@ -371,5 +413,6 @@ await step('quest 10, raft: four logs, rope, a stick and the sailcloth lashed on
 
 if (errors.length) await fail(`the game logged errors:\n${errors.join('\n')}`);
 log(steps >= 10 ? 'The whole tutorial was played: from the first coconut to setting sail, no errors.' : `Stopped after ${steps} steps (STOP_AFTER), no errors.`);
-await browser.close();
-await server.close();
+// Closing the dev server can hang for a minute on its open sockets: a few seconds, then out.
+await Promise.race([Promise.allSettled([browser.close(), server.close()]), realWait(3000)]);
+process.exit(0);
