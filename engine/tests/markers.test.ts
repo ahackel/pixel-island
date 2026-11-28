@@ -13,6 +13,11 @@ test('markers are read back with good names only, each name once, and inside the
   assert.equal(markerOf({}, 'crate'), undefined);
 });
 
+test('a marker keeps its colour only if it is #rrggbb', () => {
+  const back = cleanMarkers([{ name: 'a', i: 1, j: 1, color: '#3a7fd5' }, { name: 'b', i: 1, j: 1, color: 'red' }, { name: 'c', i: 1, j: 1, color: 7 }], 4, 4);
+  assert.deepEqual(back.map((m) => m.color), ['#3a7fd5', undefined, undefined]);
+});
+
 test('a marker name starts with a letter and is short', () => {
   for (const ok of ['a', 'crate', 'raft-beach', 'stone_2']) assert.ok(MARKER_NAME.test(ok), ok);
   for (const bad of ['', '2nd', 'a b', '-x', 'x'.repeat(33), 'ä']) assert.ok(!MARKER_NAME.test(bad), bad);

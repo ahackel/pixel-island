@@ -50,10 +50,10 @@ export function drawRows(ctx: CanvasRenderingContext2D, rows: readonly string[],
   }));
 }
 
-/** Words alone, on nothing: the whole text cell, so umlaut dots and tails fit. */
-export function label(s: string, color: string, scale: number): HTMLCanvasElement {
-  const { canvas, ctx } = pixelCanvas(textWidth(s), LINE_H, scale);
-  text(ctx, s, 0, ABOVE, color);
+/** Words alone, on nothing: the whole text cell, so umlaut dots and tails fit. `cased`: small letters stay small (a name as typed). */
+export function label(s: string, color: string, scale: number, cased = false): HTMLCanvasElement {
+  const { canvas, ctx } = pixelCanvas(textWidth(s, cased), LINE_H, scale);
+  text(ctx, s, 0, ABOVE, color, 'left', cased);
   return canvas;
 }
 
@@ -63,7 +63,7 @@ export function label(s: string, color: string, scale: number): HTMLCanvasElemen
  */
 export function speechBubble(s: string, c: Colors, scale: number, maxW = 90, room = 0): HTMLCanvasElement {
   const lines = wrap(s, maxW);
-  const tw = Math.max(...lines.map(textWidth));
+  const tw = Math.max(...lines.map((l) => textWidth(l)));
   const w = tw + 8 + room;
   // Letters 4 rows down (dots in the 2 rows over them), 3 rows under the last line's foot.
   const boxH = (lines.length - 1) * LINE_STEP + 4 + 5 + 3;

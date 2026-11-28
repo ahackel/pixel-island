@@ -1,8 +1,9 @@
 import './style.css';
 import { frameDone, part } from '../../shared/stats.ts';
-import { choice, rangeSlider, library as tileLibrary, sidePanel, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
-import { pixelCanvas } from '../../shared/pixel-ui.ts';
-import { C, S } from '../../ui/theme.ts';
+import { caps, choice, rangeSlider, library as tileLibrary, sidePanel, colorField, colorPicker, confirmDialog, field, fields, formDialog, iconPicture, nameList, numberField, pixelButton, searchField, slider as pixelSlider, textField, tileGrid, toast, toggle, type Option } from '../../ui/components.ts';
+import { label as pixelLabel, pixelCanvas } from '../../shared/pixel-ui.ts';
+import { C, PAINT, S } from '../../ui/theme.ts';
+import { iconRows } from '../../ui/icons.ts';
 import { canSaveToProject, removeFromProject, saveToProject } from '../../shared/project.ts';
 import { defaultState, download, loadRoster, lookOf, pickFile, type Saved } from '../../engine/character/character.ts';
 import { FRAMES } from '../../engine/flora/flora.ts';
@@ -31,7 +32,7 @@ import { lightByTile } from '../../engine/world/daylight.ts';
 import { isHidden, propKind, propKinds, propPicture, variantsOf } from '../../engine/world/prop.ts';
 import { pictureCache, trimmed } from '../../shared/pixels.ts';
 import { CLIPS, drawAnimal, savedAnimals, type Animal } from '../../engine/animals/animal.ts';
-import { drawCharacter, FACING_RING, SPRITE_H, SPRITE_W, turnFacing, type Facing } from '../../engine/core/puppet.ts';
+import { drawCharacter, FACING_RING, mixed, SPRITE_H, SPRITE_W, turnFacing, type Facing } from '../../engine/core/puppet.ts';
 import { AUTHORED, STAND } from '../../engine/core/poses.ts';
 import { PRESETS } from '../../engine/animals/animal-presets.ts';
 import { ocean } from '../../engine/world/ocean.ts';
@@ -51,7 +52,7 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'ground', 'paint', 'walls', 'ways', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'marker', 'exit', 'settings'] as const;
+const TOOLS = ['move', 'ground', 'paint', 'walls', 'ways', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'marker', 'exit', 'settings'] as const;
 type Tool = (typeof TOOLS)[number];
 /**
  * What a stroke works as: a tool, or what the Ground tool does with a modifier key held (smooth, level) and what the
@@ -107,7 +108,7 @@ const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Work, string> = {
-  move: 'pointer', ground: 'mountain', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag', marker: 'pin', settings: 'cog',
+  move: 'pointer', ground: 'mountain', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', marker: 'pin', settings: 'cog',
 };
 
 interface Prefs {
@@ -156,15 +157,15 @@ interface Prefs {
   fps: boolean;
   /** A cave evenly lit while editing, rather than as dark as in Play. */
   bright: boolean;
-  /** The name the Marker tool sets down (or moves) a marker by. */
-  marker: string;
+  /** The scene's markers drawn while editing (the Marker tool always shows them). */
+  markers: boolean;
   /** The scene being edited and those open on the desk, by project file name; the scenes themselves are only in the project. */
   scene: string;
   open: string[];
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false, marker: 'spot', scene: '', open: [] };
+  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false, markers: true, scene: '', open: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
@@ -192,7 +193,7 @@ function loadPrefs(): Prefs {
     prefs.colliders = saved?.colliders === true;
     prefs.fps = saved?.fps === true;
     prefs.bright = saved?.bright === true;
-    if (typeof saved?.marker === 'string' && MARKER_NAME.test(saved.marker)) prefs.marker = saved.marker;
+    prefs.markers = saved?.markers !== false;
     if (typeof saved?.scene === 'string') prefs.scene = saved.scene;
     if (Array.isArray(saved?.open)) prefs.open = saved.open.filter((f: unknown) => typeof f === 'string');
   } catch {
@@ -504,11 +505,17 @@ function moveOnDesk(scene: Scene, at: { i: number; j: number }): void {
 /** Whether a scene is dark but where its lights reach (`SceneSettings.light`). */
 const isDark = (s: Scene) => settingsOf(s).light === 'dark';
 
-/** The start point, shown while editing: a small flag. */
+/** An icon from the icon editor standing on the ground: it stands on the drawn pixel of its bottom row. */
+function iconMark(name: string, colors: Record<string, string> = PAINT): Pick<Thing, 'picture' | 'w' | 'h' | 'foot'> {
+  const rows = iconRows(name);
+  return { picture: { get: (x, y) => colors[rows[y]?.[x] ?? '.'] ?? null }, w: rows[0].length, h: rows.length, foot: { x: Math.max(0, rows[rows.length - 1].search(/[^.]/)), y: rows.length - 1 } };
+}
+
+/** The start point, shown while editing: the flag icon. */
 function flagOf(w: World): Thing {
   const s = w.toView(w.scene.spawn);
   const level = levelAt(w.map, Math.floor(s.i), Math.floor(s.j));
-  return { spot: { i: s.i, j: s.j, level: isRock(level) ? w.flatLevel : Math.max(w.water, level) }, picture: FLAG, w: 6, h: 13, foot: { x: 0, y: 12 } };
+  return { spot: { i: s.i, j: s.j, level: isRock(level) ? w.flatLevel : Math.max(w.water, level) }, ...iconMark('flag') };
 }
 
 /** Draws a lying scene's picture again if the view turned (or the cave's light was switched) since it was last drawn. */
@@ -577,7 +584,7 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     ...stubs(ways).map(stubPin),
     ...ways.filter((w) => w.scene.id === world.scene.id).map(handlePin),
     ...openScenes().map(tabPin),
-    ...(world.scene.markers ?? []).map(markerPin),
+    ...(markersShown() ? world.scene.markers ?? [] : []).map(markerPin),
   ] : [];
   const lines = editing ? [...linkLines(ways), ...linkDragLine()] : [];
   overlay.show(pins, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }), lines);
@@ -693,17 +700,20 @@ function openStub(st: Stub): void {
   openAt(target, nearestFree(target, want, others));
 }
 
+/** Screen pixels per pixel of a scene's label over the desk. */
+const TAB_S = 3;
+
 /** A stub as a pin over the desk: a line from the way out to a label naming the scene, which opens it. */
 function stubPin(st: Stub): Pin {
   return {
     key: `stub:${st.key}:${st.name}`, at: st.way, out: st.out, line: STUB_LINE,
     make: () => {
       // The stub as it is when clicked (the view may have turned since the label was made).
-      const b = pixelButton(t('desk.stub', { name: st.name }), { icon: 'right', words: st.name }, () => {
+      const b = h('button', { class: 'desk-label', title: t('desk.stub', { name: st.name }) }, iconPicture('right', TAB_S), pixelLabel(st.name, C.ink, TAB_S, true));
+      b.addEventListener('click', () => {
         const now = stubs().find((x) => x.key === st.key);
         if (now) openStub(now);
       });
-      b.classList.add('desk-stub');
       return b;
     },
   };
@@ -876,11 +886,12 @@ function tabPin(scene: Scene): Pin {
   };
 }
 function tabOf(shown: Scene, here: boolean, closes: boolean): HTMLElement {
-  const name = pixelButton(shown.name, { icon: shown.cave ? 'rock' : 'palm', words: shown.name, lit: here }, () => {});
-  const close = pixelButton(t('desk.close'), { icon: 'close' }, () => closeScene(shown.id));
+  // The scene's icon and name, lit when it is the one edited, and its close cross.
+  const close = h('button', { class: 'desk-tab__close', title: t('desk.close'), 'aria-label': t('desk.close') }, iconPicture('close', TAB_S));
+  close.addEventListener('click', () => closeScene(shown.id));
   close.hidden = !closes;
   close.addEventListener('pointerdown', (e) => e.stopPropagation());
-  const tab = h('div', { class: 'desk-tab' }, name, close);
+  const tab = h('div', { class: `desk-tab desk-label${here ? ' desk-label--lit' : ''}` }, iconPicture(shown.cave ? 'rock' : 'palm', TAB_S), pixelLabel(shown.name, C.ink, TAB_S, true), close);
   tab.addEventListener('pointerdown', (e) => {
     // The scene as it is now: the tab is kept while it looks the same, and an undo may have put back the scene since.
     const scene = library.scenes.find((s) => s.id === shown.id);
@@ -1019,6 +1030,18 @@ function easeZoom(dt: number): void {
   const next = zoom + (zoomTarget - zoom) * (1 - Math.exp(-14 * dt));
   zoomAt(Math.abs(zoomTarget - next) < 0.005 ? zoomTarget : next, zoomAnchor);
 }
+/** Where the camera is gliding to (F frames the selection), until it is there or the view is panned by hand. */
+let camTarget: { x: number; y: number } | null = null;
+function easeCam(dt: number): void {
+  if (!camTarget) return;
+  const k = 1 - Math.exp(-10 * dt);
+  cam.x += (camTarget.x - cam.x) * k;
+  cam.y += (camTarget.y - cam.y) * k;
+  if (Math.hypot(camTarget.x - cam.x, camTarget.y - cam.y) < 0.5) {
+    Object.assign(cam, camTarget);
+    camTarget = null;
+  }
+}
 function stepZoom(by: number): void {
   zoomTarget = clampZoom(Math.round(zoomTarget) + by);
   zoomAnchor = null;
@@ -1146,11 +1169,6 @@ function showCut(): void {
   }));
 }
 
-/** The start point, shown while editing: a small flag. */
-const FLAG: Picture = {
-  get: (x, y) => (x === 0 && y < 12 ? '#3a2a2a' : x >= 1 && x <= 5 && y < 4 ? '#e0533d' : null),
-};
-
 // ------------------------------------------------------------------ editing
 
 let hover: { i: number; j: number } | null = null;
@@ -1168,8 +1186,6 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
   switch (tool) {
     case 'plant':
       return !grows(w.map, prefs.plant, at.i + 0.5, at.j + 0.5);
-    case 'spawn':
-    case 'marker':
     case 'animal':
     case 'person':
       return !isLand(w.map, at.i, at.j);
@@ -1574,18 +1590,8 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       world.scene.items = kept(world.scene.items, world.viewItems());
       if (world.scene.cave) world.scene.cave.exits = kept(world.scene.cave.exits, world.scene.cave.exits.map((e) => { const v = world.toView(e); return { vi: v.i, vj: v.j }; }));
       world.scene.props = kept(world.scene.props ?? [], world.viewProps());
-      if (world.scene.markers) {
-        world.scene.markers = kept(world.scene.markers, world.scene.markers.map((m) => { const v = world.toView(m); return { vi: v.i, vj: v.j }; }));
-        if (!world.scene.markers.length) delete world.scene.markers;
-      }
       break;
     }
-    case 'spawn':
-      world.scene.spawn = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
-      break;
-    case 'marker':
-      placeMarker(at);
-      break;
   }
   // Nor is anything lowered under the cutaway's floor, out of reach.
   if (was) cells.forEach((c, k) => {
@@ -1659,31 +1665,68 @@ function toggleExit(at: { i: number; j: number }): void {
   else cave.exits.push(world.toData({ i: at.i + 0.5, j: at.j + 0.5 }));
 }
 
-/** The marker named in the tool's field, set down in the middle of a tile of land, or moved there if the scene has it already. */
-function placeMarker(at: { i: number; j: number }): void {
-  if (!isLand(world.map, at.i, at.j)) return;
-  const name = prefs.marker;
-  if (!MARKER_NAME.test(name)) return say(t('marker.badName'));
-  const spot = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
-  const markers = (world.scene.markers ??= []);
-  const old = markers.find((m) => m.name === name);
-  if (old) Object.assign(old, spot);
-  else {
-    markers.push({ name, ...spot });
-    // The new one joins the panel's list (after this stroke's change is in).
-    queueMicrotask(showOptions);
-  }
+/** Whether the scene's markers show: always with the Marker tool, otherwise as the view's toggle says. */
+const markersShown = () => prefs.mode === 'edit' && (prefs.markers || toolNow() === 'marker');
+/** The pin icon's colours with its head (r) in `color`, its outline (n) darker and its shine (o) lighter; the icon's own without one. */
+const pinColors = (color?: string): Record<string, string> => (color ? { ...PAINT, r: color, n: mixed(color, '#000000', 0.45), o: mixed(color, '#ffffff', 0.45) } : PAINT);
+/** The colours a marker's pin can have; the first is the pin's own. */
+const PIN_COLORS = ['#d9412b', '#e8862a', '#f6c94a', '#a9d98a', '#3f7a3a', '#2fa58f', '#7fd0e8', '#4f9ad6', '#2f3b6e', '#8a4fd6', '#d65fb4', '#f2a7a0', '#8a5a2b', '#c9c9c9', '#6b6b6b', '#ffffff'];
+/** A marker's pin standing on the ground, in its colour. */
+function markerThing(m: Marker): Thing {
+  const v = world.toView(m);
+  return { spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, ...iconMark('pin', pinColors(m.color)), shadow: [] };
 }
-/** A marker, shown while editing: a small blue pin, its name over it (`markerPin`). */
-const MARKER_MARK: Picture = {
-  get: (x, y) => (y >= 5 ? (x === 2 ? '#1d3f6e' : null) : Math.abs(x - 2) + Math.abs(y - 2) <= 2 ? (Math.abs(x - 2) + Math.abs(y - 2) === 2 ? '#1d3f6e' : '#4f9be8') : null),
-};
+/** The front-most marker whose pin is under a ground-image pixel. */
+function markerAt(x: number, y: number): Selected | null {
+  const hits: Selected[] = (world.scene.markers ?? []).filter((m) => covers(markerThing(m), x, y)).map((m) => ({ kind: 'marker', obj: m }));
+  if (covers(flagOf(world), x, y)) hits.push({ kind: 'spawn', obj: world.scene.spawn });
+  const depth = (s: Selected) => { const v = world.toView(s.obj); return v.i + v.j; };
+  return hits.sort((a, b) => depth(b) - depth(a))[0] ?? null;
+}
+/** The start point's row in the marker list: a name no marker may have. */
+const START = 'start';
+/** A name no marker of the scene has: `base` with its number at the end counted on (crate1 → crate2), or `marker1`. */
+function freeMarkerName(base = 'marker'): string {
+  const stem = base.replace(/\d+$/, '').slice(0, 28) || 'marker';
+  const taken = new Set((world.scene.markers ?? []).map((m) => m.name));
+  let n = 1;
+  while (taken.has(`${stem}${n}`)) n++;
+  return `${stem}${n}`;
+}
+/** Markers picked along with the selected one (Cmd/Ctrl-click), which counts only while the selected thing is a marker. */
+let morePicked: Marker[] = [];
+/** Every marker picked, the selected one last. */
+function pickedMarkers(): Marker[] {
+  if (selected?.kind !== 'marker') return [];
+  const one = selected.obj as Marker;
+  const all = world.scene.markers ?? [];
+  return [...morePicked.filter((m) => m !== one && all.includes(m)), one];
+}
+/** Picks these markers, the last of them the selected one (which is dragged, framed and copied). */
+function pickMarkers(list: Marker[]): void {
+  morePicked = list.slice(0, -1);
+  const last = list[list.length - 1];
+  selected = last ? { kind: 'marker', obj: last } : null;
+  version++;
+}
+/** A new marker, or a copy of the selected one a little to the right, selected. */
+function addMarker(copyOf?: Marker): void {
+  const r = canvas.getBoundingClientRect();
+  const mid = groundPixel({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+  const c = pointAt(mid.x, mid.y);
+  const at = copyOf ? world.toView(copyOf) : c && inside(world.map, Math.floor(c.i), Math.floor(c.j)) ? c : { i: world.map.w / 2, j: world.map.h / 2 };
+  const spot = copyOf ? { i: Math.min(world.map.w - 0.01, at.i + 1), j: Math.max(0, at.j - 1) } : at;
+  const m: Marker = { name: freeMarkerName(copyOf?.name), ...world.toData(spot) };
+  edit(() => (world.scene.markers ??= []).push(m));
+  pickMarkers([m]);
+  showOptions();
+}
 /** A marker's name over the desk, just above its pin (desk pixels, like the ways' handles). */
 function markerPin(m: Marker): Pin {
   const v = world.toView(m);
   const o = offsetOf(world);
   const g = toScreen(v.i, v.j, standingHeight(world.map, v.i, v.j));
-  const lit = m.name === prefs.marker && toolNow() === 'marker';
+  const lit = pickedMarkers().includes(m);
   return {
     key: `marker:${world.scene.id}:${m.name}:${lit}`,
     at: { x: g.x + world.ground.origin.x + o.x, y: g.y + world.ground.origin.y + o.y - 9 }, out: { x: 0, y: -2 }, align: { x: 0.5, y: 1 },
@@ -1697,7 +1740,7 @@ const EXIT_MARK: Picture = {
 };
 
 /** A placed thing the Move tool holds: the object in the scene (data coordinates) and what it is. */
-type Selected = { kind: 'plant' | 'decor' | 'animal' | 'person' | 'item' | 'prop' | 'spawn'; obj: { i: number; j: number } };
+type Selected = { kind: 'plant' | 'decor' | 'animal' | 'person' | 'item' | 'prop' | 'spawn' | 'marker'; obj: { i: number; j: number } };
 let selected: Selected | null = null;
 
 /** Takes a placed thing out of the scene. */
@@ -1709,13 +1752,21 @@ function removeObject(gone: object): void {
   s.people = s.people.filter((p) => p !== gone);
   s.items = s.items.filter((it) => it !== gone);
   s.props = (s.props ?? []).filter((p) => p !== gone);
+  if (s.markers) s.markers = s.markers.filter((m) => m !== gone);
+  if (s.markers && !s.markers.length) delete s.markers;
 }
 
 /** A copy of a placed thing, in the scene at the same place (the flag cannot be copied). */
 function duplicate(sel: Selected): Selected | null {
   const s = world.scene;
   const copy = structuredClone(sel.obj);
-  const list = { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: s.props }[sel.kind as Exclude<Selected['kind'], 'spawn'>] as object[] | undefined;
+  if (sel.kind === 'marker') {
+    const m = copy as Marker;
+    m.name = freeMarkerName(m.name);
+    (s.markers ??= []).push(m);
+    return { kind: 'marker', obj: m };
+  }
+  const list = { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: s.props }[sel.kind as Exclude<Selected['kind'], 'spawn' | 'marker'>] as object[] | undefined;
   if (!list) return null;
   if (sel.kind === 'item') { const it = copy as PlacedItem; delete it.id; delete it.to; nameLink(s.items, it); } // a copy is another way, not the same one
   list.push(copy);
@@ -1723,7 +1774,7 @@ function duplicate(sel: Selected): Selected | null {
 }
 
 /** The list of a scene that holds things of a kind (the flag is no list). */
-function listOf(s: Scene, kind: Exclude<Selected['kind'], 'spawn'>): object[] {
+function listOf(s: Scene, kind: Exclude<Selected['kind'], 'spawn' | 'marker'>): object[] {
   return { plant: s.plants, decor: s.decor, animal: s.animals, person: s.people, item: s.items, prop: (s.props ??= []) }[kind];
 }
 
@@ -1733,7 +1784,7 @@ function listOf(s: Scene, kind: Exclude<Selected['kind'], 'spawn'>): object[] {
  * (a new one if the scene has a way of that name) with every way that led to it now leading to it there.
  */
 function carryInto(g: Extract<Gesture, { kind: 'move' }>, into: Scene): void {
-  if (g.sel.kind === 'spawn') return;
+  if (g.sel.kind === 'spawn' || g.sel.kind === 'marker') return;
   const from = world.scene;
   const obj = g.sel.obj;
   removeObject(obj);
@@ -1767,8 +1818,6 @@ const cutOff = (at: { i: number; j: number }) => inside(world.map, Math.floor(at
 
 /** The placed thing under a ground-image pixel, the front-most; decorations lie flat, so they come last. */
 function objectAt(x: number, y: number): Selected | null {
-  const s = world.toView(world.scene.spawn);
-  const flag = world.screenOf(s.i, s.j);
   const found: [Selected, { i: number; j: number }, boolean][] = [
     ...world.scene.animals.map((a, k): [Selected, { i: number; j: number }, boolean] => {
       const thing = world.animalSprite(a, k, 0);
@@ -1780,7 +1829,6 @@ function objectAt(x: number, y: number): Selected | null {
     }),
     ...world.itemThings().map((thing, k): [Selected, { i: number; j: number }, boolean] => [{ kind: 'item', obj: world.scene.items[k] }, thing.spot, covers(thing, x, y)]),
     ...world.propThings(0).map((thing, k): [Selected, { i: number; j: number }, boolean] => [{ kind: 'prop', obj: world.scene.props![k] }, thing.spot, covers(thing, x, y)]),
-    [{ kind: 'spawn', obj: world.scene.spawn }, s, x >= flag.x - 1 && x <= flag.x + 6 && y >= flag.y - 13 && y <= flag.y + 1],
   ];
   const plant = world.plantAt(x, y);
   if (plant) found.push([{ kind: 'plant', obj: plant }, world.toView(plant), true]);
@@ -1801,6 +1849,7 @@ function canStand(sel: Selected, at: { i: number; j: number }): boolean {
   const i = Math.floor(at.i);
   const j = Math.floor(at.j);
   if (!inside(world.map, i, j)) return false;
+  if (sel.kind === 'marker') return true;
   if (sel.kind === 'plant') return grows(world.map, (sel.obj as PlacedPlant).plant, at.i, at.j);
   if (sel.kind === 'decor') return decorFits({ i, j });
   return isLand(world.map, i, j);
@@ -1971,6 +2020,7 @@ function thingOf(sel: Selected | null, wind: number): Thing | null {
   if (sel.kind === 'plant') return at(world.scene.plants, world.plantThings(wind));
   if (sel.kind === 'animal') return world.animalSprite(o as PlacedAnimal, world.scene.animals.indexOf(o as PlacedAnimal), 0);
   if (sel.kind === 'person') return personThing(o as PlacedPerson, 0);
+  if (sel.kind === 'marker') return markerThing(o as Marker);
   if (sel.kind === 'decor') return world.decorThings().find((t) => t.spot.i === world.toView(o).i && t.spot.j === world.toView(o).j) ?? null;
   return null;
 }
@@ -2090,9 +2140,16 @@ window.addEventListener('keydown', (e) => {
   }
   if (prefs.mode === 'play' && e.code === 'KeyE') emote('wave');
   if (prefs.mode === 'play' && e.code === 'KeyF') emote('use');
+  // F puts the selected thing in the middle of the screen: its picture's middle, or its spot where it has none.
+  if (prefs.mode === 'edit' && e.code === 'KeyF' && selected) {
+    const thing = thingOf(selected, 0);
+    const v = world.toView(selected.obj);
+    const foot = thing ? footOf(world.ground, thing.spot) : world.screenOf(v.i, v.j);
+    camTarget = thing ? { x: foot.x - thing.foot.x + thing.w / 2, y: foot.y - thing.foot.y + thing.h / 2 } : { x: foot.x, y: foot.y - 16 };
+  }
   if (prefs.mode === 'edit' && selected && selected.kind !== 'spawn' && (e.code === 'Delete' || e.code === 'Backspace')) {
     remember();
-    removeObject(selected.obj);
+    for (const gone of selected.kind === 'marker' ? pickedMarkers() : [selected.obj]) removeObject(gone);
     selected = null;
     sceneChanged();
     showOptions();
@@ -2313,6 +2370,7 @@ function repeatStroke(ms: number): void {
 
 canvas.addEventListener('pointerdown', (e) => {
   readMods(e);
+  camTarget = null;
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 2) {
@@ -2330,9 +2388,19 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     if (panning) gesture = { kind: 'pan', x: e.clientX, y: e.clientY, cam: { ...cam } };
     else if (prefs.mode === 'edit' && (gesture = edgeGesture(e))) { /* dragging an edge of the level */ }
-    else if (prefs.mode === 'edit' && toolNow() === 'move') {
+    else if (prefs.mode === 'edit' && toolNow() === 'marker' && (e.metaKey || e.ctrlKey)) {
+      // Cmd/Ctrl-click adds a marker to those picked, or takes it away.
       const p = groundPixel(e);
-      selected = objectAt(p.x, p.y);
+      const under = markerAt(p.x, p.y);
+      const hit = under?.kind === 'marker' ? (under.obj as Marker) : undefined;
+      const now = pickedMarkers();
+      if (hit) pickMarkers(now.includes(hit) ? now.filter((m) => m !== hit) : [...now, hit]);
+      showOptions();
+      gesture = null;
+    } else if (prefs.mode === 'edit' && (toolNow() === 'move' || toolNow() === 'marker')) {
+      const p = groundPixel(e);
+      selected = toolNow() === 'marker' ? markerAt(p.x, p.y) : objectAt(p.x, p.y);
+      morePicked = [];
       // Shift-drag drags a copy and leaves the original where it is.
       const copy = e.shiftKey && selected ? duplicate(selected) : null;
       if (copy) selected = copy;
@@ -2396,7 +2464,7 @@ canvas.addEventListener('pointermove', (e) => {
     const p = groundPixel(e);
     let at = pointAt(p.x - g.grab.x, p.y - g.grab.y);
     // Off this scene and over another, the thing goes along into that one, which is then the one edited.
-    const other = !at && g.sel.kind !== 'spawn' ? awayUnder(e) : null;
+    const other = !at && g.sel.kind !== 'spawn' && g.sel.kind !== 'marker' ? awayUnder(e) : null;
     if (other) {
       carryInto(g, other.scene);
       const q = groundPixel(e);
@@ -2453,6 +2521,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // held, which zooms, smoothly and around the pointer.
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  camTarget = null;
   const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
   if (e.ctrlKey) {
     zoomTarget = clampZoom(zoomTarget * Math.exp(-e.deltaY * scale * 0.01));
@@ -2484,6 +2553,7 @@ function frame(ms: number): void {
   last = ms;
   repeatStroke(ms);
   easeZoom(dt);
+  easeCam(dt);
   const cut = cutNow();
   const floor = belowNow();
   // Water hidden only while editing; Play shows the scene as in the game.
@@ -2536,6 +2606,7 @@ function frame(ms: number): void {
     // A target that cannot be reached is given up rather than walked against forever (not while climbing, which ends straight up or down).
     if (target && before[0] === actor.i && before[1] === actor.j && !climbed && !actor.onLadder && !door) target = null;
   } else if (kx || ky) {
+    camTarget = null;
     cam.x += (kx * 360 * dt) / zoom;
     cam.y += (ky * 360 * dt) / zoom;
   }
@@ -2560,11 +2631,7 @@ function frame(ms: number): void {
     ];
     if (prefs.mode === 'play' && actor) all.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
     else {
-      all.push(flagOf(world));
-      for (const m of world.scene.markers ?? []) {
-        const v = world.toView(m);
-        all.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: MARKER_MARK, w: 5, h: 9, foot: { x: 2, y: 8 }, shadow: [] });
-      }
+      if (markersShown()) all.push(flagOf(world), ...(world.scene.markers ?? []).map(markerThing));
       for (const e of cave?.exits ?? []) {
         const v = world.toView(e);
         all.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: EXIT_MARK, w: 7, h: 7, foot: { x: 3, y: 3 }, shadow: [] });
@@ -2584,7 +2651,7 @@ function frame(ms: number): void {
       // The Material tool tints only what it paints: the tops, or the faces and rock.
       ...(toolNow() === 'paint' && !mods.shift && { part: aimed }),
     } : undefined;
-    if (prefs.mode === 'edit' && toolNow() === 'move') {
+    if (prefs.mode === 'edit' && (toolNow() === 'move' || toolNow() === 'marker')) {
       // Objects are not tied to a tile, so the Move tool marks one only where what it holds may not stay.
       const v = selected && world.toView(selected.obj);
       highlight = v && !canStand(selected!, v) ? { cells: new Set([Math.floor(v.j) * world.map.w + Math.floor(v.i)]), color: '#e0332e99' } : undefined;
@@ -2592,7 +2659,7 @@ function frame(ms: number): void {
     world.hotEdge = prefs.mode === 'edit' ? hotEdge : null;
     // With Ctrl (Cmd) held, the tools that pick something up from a tile show it by the cursor.
     const picking = prefs.mode === 'edit' && !hotEdge && !gesture && mods.pick && PICKING.includes(toolNow());
-    canvas.style.cursor = picking ? 'copy' : gesture?.kind === 'stroke' && gesture.pull ? 'ns-resize' : hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && (away ? toolIn(away.scene) : toolNow()) === 'move' ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
+    canvas.style.cursor = picking ? 'copy' : gesture?.kind === 'stroke' && gesture.pull ? 'ns-resize' : hotEdge && prefs.mode === 'edit' ? (gesture?.kind === 'edge' ? 'grabbing' : 'grab') : prefs.mode === 'edit' && ['move', 'marker'].includes(away ? toolIn(away.scene) : toolNow()) ? (gesture?.kind === 'move' ? 'grabbing' : 'default') : blocked ? 'not-allowed' : prefs.mode === 'edit' ? 'crosshair' : 'pointer';
     let t0 = part('things', begun);
     const image = world.compose(view, things, highlight, prefs.mode === 'edit', waves * 100, prefs.mode === 'edit' && prefs.grid);
     t0 = performance.now();
@@ -2602,8 +2669,8 @@ function frame(ms: number): void {
       lightByTile(image, caveTint(world.scene), 0, world.spots!, world.lightField([...caveLamps(world, ms), ...lantern]));
     }
     // The selected object, outlined over everything (lights included), so it shows even behind rock or in the dark.
-    const chosen = prefs.mode === 'edit' ? thingOf(selected, wind) : null;
-    if (chosen) outline(image, view, chosen, OUTLINE);
+    const chosen = prefs.mode !== 'edit' ? [] : selected?.kind === 'marker' ? pickedMarkers().map(markerThing) : selected?.kind === 'spawn' ? [flagOf(world)] : [thingOf(selected, wind)];
+    for (const c of chosen) if (c) outline(image, view, c, OUTLINE);
     // The ground tools outline the top of the tile under the pointer the same way, so it shows which tile on uneven ground, behind rock and in the dark.
     if (prefs.mode === 'edit' && hover && onGround()) world.outlineTile(image, view, hover.j * world.map.w + hover.i, blocked ? '#e0332e' : '#ffffffcc');
     // A cave's walls stand over the rock the brush lies on: they are tinted with it, but by Material on tops alone.
@@ -2916,7 +2983,7 @@ function itemOptions(it: PlacedItem): Node[] {
   return out;
 }
 
-const KIND_ICON = { plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', prop: 'tool', spawn: 'flag' } as const;
+const KIND_ICON = { plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', prop: 'tool', spawn: 'flag', marker: 'pin' } as const;
 
 /** Edits made in a quick run (dragging a number) are one undo step: a new step is remembered after a pause. */
 let lastEdit = 0;
@@ -2945,6 +3012,7 @@ function selectionOptions(sel: Selected): Node[] {
     item: () => objectChoices().find((c) => c.id === o.item)?.name ?? o.item,
     prop: () => propKind(o.kind)?.name ?? o.kind,
     spawn: () => t('tool.spawn'),
+    marker: () => (o as Marker).name,
   }[sel.kind]();
   const num = (face: { icon?: string; words?: string }, tip: string, value: number, change: (n: number) => void, min: number, max: number, step = 1) =>
     numberField({ ...face, tip }, value, change, { min, max, step, width: 28 });
@@ -2953,7 +3021,7 @@ function selectionOptions(sel: Selected): Node[] {
   const steps = (label: string, value: number, max: number, change: (n: number) => void) =>
     pixelSlider(label, value / max, (v) => { const n = Math.round(v * max); if (n !== value) { value = n; change(n); } }, 56, (v) => String(Math.round(v * max)));
   const out: Node[] = [
-    h('div', { class: 'opts__head' }, iconPicture(KIND_ICON[sel.kind]), h('b', {}, title)),
+    h('div', { class: 'opts__head' }, iconPicture(KIND_ICON[sel.kind]), pixelLabel(title, C.ink, S, true)),
     h('span', { class: 'opts__label' }, t(`tool.${sel.kind}` as Key)),
   ];
   const rows: Node[] = [field({ words: t('sel.position') }, h('div', { class: 'urow' },
@@ -2980,11 +3048,8 @@ function selectionOptions(sel: Selected): Node[] {
 
 function editOptions(): Node[] {
   const tool = toolNow();
-  const out: Node[] = [
-    h('div', { class: 'opts__head' }, iconPicture(TOOL_ICONS[tool]), h('b', {}, t(`tool.${tool}` as Key))),
-    h('p', { class: 'opts__tip' }, t(`tip.${tool}` as Key)),
-    ...(keyTips(tool).length ? [h('p', { class: 'opts__tip' }, keyTips(tool).join(' '))] : []),
-  ];
+  // What the tool does, and its keys, as the tooltip of its name.
+  const out: Node[] = [h('div', { class: 'opts__head', title: [t(`tip.${tool}` as Key), ...keyTips(tool)].join('\n') }, iconPicture(TOOL_ICONS[tool]), pixelLabel(caps(t(`tool.${tool}` as Key)), C.ink, S))];
   // One block of fields, so their labels are as wide as each other's.
   const rows: Node[] = [];
   if (tool === 'paint') {
@@ -3035,27 +3100,53 @@ function editOptions(): Node[] {
   return out;
 }
 
-/** The Marker tool's name field, and the scene's markers: each picks its name for the tool, or is taken away. */
+/** The Marker tool's list, shown in the inspector: updated when a marker is picked in the scene. */
+let markerList: ReturnType<typeof nameList> | null = null;
+/** What the marker list is searched for, kept while the inspector is built again (after a colour or a name changed). */
+let markerQuery = '';
+/** The Marker tool: a new marker, a copy of the one picked, and the scene's markers to pick (in step with the scene) and rename. */
 function markerOptions(): Node[] {
-  const markers = sceneNow().markers ?? [];
-  const list = markers.map((m) => h('div', { class: 'urow' },
-    pixelButton(m.name, { icon: 'pin', words: m.name, pressed: m.name === prefs.marker }, () => { set({ marker: m.name }); }),
-    pixelButton(t('marker.remove'), { icon: 'trash' }, () => {
-      edit(() => {
-        const s = sceneNow();
-        s.markers = (s.markers ?? []).filter((o) => o !== m);
-        if (!s.markers.length) delete s.markers;
-      });
-      showOptions();
-    })));
-  return [
-    fields(field({ words: t('marker.name') }, textField(t('marker.name'), prefs.marker, (name) => {
-      if (!MARKER_NAME.test(name)) return;
-      prefs.marker = name;
-      savePrefs();
-    }, { placeholder: 'crateSpot', width: 90 }))),
-    ...(list.length ? [h('span', { class: 'opts__label' }, t('marker.list')), ...list] : [h('p', { class: 'opts__tip' }, t('marker.none'))]),
-  ];
+  const marker = () => (selected?.kind === 'marker' ? (selected.obj as Marker) : null);
+  const markers = () => world.scene.markers ?? [];
+  markerList = nameList({
+    label: t('marker.list'), search: t('marker.search'), empty: t('marker.none'), query: markerQuery, searched: (q) => (markerQuery = q),
+    // Each marker's pin, in its colour: a tap on it picks another colour.
+    picture: (name) => {
+      if (name === START) return iconPicture('flag');
+      const m = markers().find((o) => o.name === name)!;
+      // A picked marker's colour goes to every marker picked.
+      const colour = (c: string) => {
+        const picked = pickedMarkers();
+        const to = picked.includes(m) ? picked : [m];
+        if (to.every((o) => (o.color ?? PIN_COLORS[0]) === c)) return;
+        edit(() => { for (const o of to) o.color = c; });
+        showOptions();
+      };
+      return colorField(t('marker.color'), PIN_COLORS.map((c) => ({ id: c, color: c })), () => m.color ?? PIN_COLORS[0], colour, undefined, (o) => iconPicture('pin', S, pinColors(o?.color)));
+    },
+    // The start point heads the list (picked alone; it cannot be renamed, copied or taken away), the markers follow by name, wood2 before wood10.
+    names: () => [START, ...markers().map((m) => m.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))],
+    selected: () => (selected?.kind === 'spawn' ? [START] : pickedMarkers().map((m) => m.name)),
+    canRename: (name) => name !== START,
+    pick: (names) => {
+      if (names[names.length - 1] === START) {
+        morePicked = [];
+        selected = { kind: 'spawn', obj: world.scene.spawn };
+        version++;
+      } else pickMarkers(names.flatMap((n) => markers().find((o) => o.name === n) ?? []));
+      clone.disabled = !marker();
+      markerList?.redraw();
+    },
+    rename: (from, to) => {
+      const m = markers().find((o) => o.name === from);
+      if (!m) return;
+      if (!MARKER_NAME.test(to)) return say(t('marker.badName'));
+      if (to === START || markers().some((o) => o.name === to)) return say(t('marker.taken'));
+      edit(() => (m.name = to));
+    },
+  });
+  const clone = Object.assign(pixelButton(t('marker.clone'), { icon: 'copy' }, () => { const m = marker(); if (m) addMarker(m); }), { disabled: !marker() });
+  return [h('div', { class: 'urow' }, pixelButton(t('marker.new'), { icon: 'plus' }, () => addMarker()), clone), markerList];
 }
 
 /** Alive and roaming, or held in one frame of a clip, as a prop. */
@@ -3402,6 +3493,7 @@ function mount(): void {
       toggle(t('zoom.grid'), { icon: 'grid' }, prefs.grid, (grid) => set({ grid })),
       toggle(t('zoom.water'), { icon: 'water' }, prefs.water, (water) => set({ water })),
       toggle(t('zoom.colliders'), { icon: 'collider' }, prefs.colliders, (colliders) => set({ colliders })),
+      toggle(t('zoom.markers'), { icon: 'pin' }, prefs.markers, (markers) => set({ markers })),
       toggle(t('zoom.fps'), { icon: 'gauge' }, prefs.fps, (fps) => set({ fps })),
       fpsLine,
     ),

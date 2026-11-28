@@ -1,5 +1,6 @@
 // A pixel font, from Lop Hop: capitals 3 pixels wide (E F L 2, M and W 5) and 5 tall, in a cell of 8 rows: two above (an
-// umlaut's dots, a blank row clear of the full-size letter) and one below (tails). Text is written in capitals; ß as SS.
+// umlaut's dots, a blank row clear of the full-size letter) and one below (tails). Text is written in capitals; ß as SS;
+// names keep their small letters (`cased`).
 //
 // A letter: its rows top to bottom, each a number in base 32 whose bits are its pixels, 3 wide or, where a row needs
 // more, 5 wide. Five rows (the letter), seven (with a row above and below) or eight (two above). A letter is as wide as
@@ -11,6 +12,11 @@ export const GLYPHS: Record<string, string> = {
   Ä: '50257550', Ö: '50255520', Ü: '50555570',
   ' ': '00000', '.': '00002', ':': '02020', '!': '22202', '-': '00700', '/': '1122244', '+': '02720', '<': '12421', '>': '42124', '?': '61202',
   '(': '1222221', ')': '4222224', ',': '0000022', "'": '22000', '%': '51245', '×': '05250',
+  // Small letters, for text kept as typed (names): 4 rows tall under the capitals' top, ascenders up to it, tails below.
+  a: '03553', b: '46556', c: '02442', d: '13553', e: '03743', f: '26444', g: '0035316', h: '46555', i: '2022220', j: '2022224',
+  k: '45655', l: '44442', m: '0ulll', n: '06555', o: '02552', p: '0065644', q: '0035311', r: '06444', s: '03416', t: '46442',
+  u: '05553', v: '05552', w: '0llla', x: '05225', y: '0055316', z: '07127',
+  ä: '05035530', ö: '05025520', ü: '05055530',
 };
 /** Rows of the cell over a letter's top: an umlaut's dots and a blank row. */
 export const ABOVE = 2;
@@ -38,25 +44,27 @@ function glyphOf(written: string): Glyph {
   return g;
 }
 
-/** Text as the font writes it: capitals, and what it has no letter for spelled with what it has. */
-export const normal = (s: string) =>
-  String(s).replace(/ß/g, 'SS').replace(/…/g, '...').replace(/[’‘`]/g, "'").replace(/[—–]/g, '-').replace(/[“”„"]/g, "'").toUpperCase();
+/** Text as the font writes it: capitals (unless `cased`), and what it has no letter for spelled with what it has. */
+export const normal = (s: string, cased = false) => {
+  s = String(s).replace(/…/g, '...').replace(/[’‘`]/g, "'").replace(/[—–]/g, '-').replace(/[“”„"]/g, "'");
+  return cased ? s.replace(/ß/g, 'ss') : s.replace(/ß/g, 'SS').toUpperCase();
+};
 
 const glyphFor = (ch: string) => glyphOf(GLYPHS[ch] ?? GLYPHS[' ']);
 
 /** How wide text is, in font pixels. */
-export function textWidth(s: string): number {
-  s = normal(s);
+export function textWidth(s: string, cased = false): number {
+  s = normal(s, cased);
   let w = -1;
   for (const ch of s) w += glyphFor(ch).w + 1;
   return Math.max(0, w);
 }
 
 /** Writes text with its letters' tops at y. */
-export function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, color: string, align: 'left' | 'center' | 'right' = 'left'): void {
-  s = normal(s);
-  if (align === 'center') x -= textWidth(s) / 2;
-  if (align === 'right') x -= textWidth(s);
+export function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, color: string, align: 'left' | 'center' | 'right' = 'left', cased = false): void {
+  s = normal(s, cased);
+  if (align === 'center') x -= textWidth(s, true) / 2;
+  if (align === 'right') x -= textWidth(s, true);
   x = Math.round(x);
   ctx.fillStyle = color;
   ctx.beginPath();

@@ -1,7 +1,7 @@
 // The component overview: every pixel component of engine/ui once, on the page's plain ground, under its name. A component
 // is defined in ui/components.ts and nowhere else; a new one shows up here or it does not exist yet.
 import { drawRows, label, speechBubble } from '../../shared/pixel-ui.ts';
-import { sidebarButton, bar, box, choice, filterToggles, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, rangeSlider, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
+import { sidebarButton, bar, box, nameList, choice, filterToggles, colorField, colorPicker, confirmDialog, library, swatchGrid, formDialog, previewFrame, tileGrid, toast, toggle, dialog, field, fields, header, hud, numberField, iconPicture, menu, searchField, sidePanel, turnView, viewTools, workspace, panelPicture, pixelButton, rangeSlider, section, slider, slot, swatch, textField, type Option } from '../../ui/components.ts';
 import { iconRows } from '../../ui/icons.ts';
 import { TOOLS, toolHref } from '../../shared/tools.ts';
 import { uiPage } from '../../ui/page.ts';
@@ -72,6 +72,7 @@ const COMPONENTS: [string, (() => HTMLElement)[]][] = [
   )]],
   ['section', [() => section({ icon: 'clothes' }, [pixelButton('One', { icon: 'sun' }, noop)])]],
   ['text field', [() => textField('Name', 'Mara', noop, { dice: () => 'Kai' })]],
+  ['name list', [() => { let on = ['crateSpot']; const names = ['crateSpot', 'driftwood1', 'driftwood2', 'stone1', 'stone2', 'stone3', 'wreck', 'hut', 'raft', 'fishSpot', 'lookout']; const list = nameList({ label: 'Markers', icon: 'pin', names: () => names, selected: () => on, pick: (picked) => { on = picked; list.redraw(); }, rename: (from, to) => { names[names.indexOf(from)] = to; on = on.map((n) => (n === from ? to : n)); } }); return Object.assign(list, { style: 'width: 200px; height: 200px' }); }]],
   ['search field', [() => Object.assign(searchField('Search', noop), { style: 'width: 200px; display: block' })]],
   ['library', [() => { const { panel, body } = sidePanel('left', 'pixel-ui-library', 220); panel.style.height = '240px'; const shelf = library({ key: 'pixel-ui-library', items: () => icons.map((o) => ({ id: o.id, icon: o.icon, words: o.id })), selected: () => picked.shelf, pick: (id) => { picked.shelf = id; shelf.redraw(); } }); body.append(shelf); return panel; }]],
   ['side panel button', [() => sidebarButton('Side panel'), () => sidebarButton('Inspector', 'right')]],

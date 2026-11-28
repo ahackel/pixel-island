@@ -354,7 +354,7 @@ export function nameTag(): { el: HTMLElement; set: (name: string, placeholder: s
     set: (name, placeholder) => {
       if (el.contains(document.activeElement)) return;
       el.replaceChildren(textField(word('name'), name, () => {}, {
-        placeholder, width: Math.min(120, Math.max(30, textWidth((name || placeholder).toUpperCase()) + 8)), flat: true,
+        placeholder, width: Math.min(120, Math.max(30, textWidth(name || placeholder, !!name) + 8)), flat: true,
         done: (v) => { if (v.trim()) rename(v.trim()); },
       }));
     },

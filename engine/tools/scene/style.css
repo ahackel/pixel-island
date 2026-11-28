@@ -84,14 +84,19 @@ body {
   gap: 12px;
   font: 500 14px/1.4 'Pixelify Sans', ui-monospace, monospace;
 }
+/* A list of names (the Marker tool's) spans the inspector and reaches its bottom. */
+.opts__body:has(> .unames) {
+  flex: 1;
+  min-height: 0;
+}
+.opts__body > .unames {
+  align-self: stretch;
+  flex: 1;
+}
 .opts__head {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.opts__head b {
-  font-weight: 600;
-  font-size: 16px;
 }
 .opts__tip {
   margin: 0;
@@ -127,13 +132,37 @@ body {
 }
 /* The tabs over the scenes on the desk: each scene's name (to pick or drag it) and a button to close it. */
 .desk-tab {
-  display: flex;
-  gap: 2px;
   touch-action: none;
   cursor: grab;
 }
 .desk-tab:active {
   cursor: grabbing;
+}
+/* A scene's name over the desk (its tab, a way to it), in pixels of 3 (TAB_S): a pixel of padding, a pixel of drop
+   shadow and its corners rounded, as a floating panel's. */
+.desk-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  box-shadow: 0 3px 0 #00000040;
+  background: var(--ui-paper);
+  white-space: nowrap;
+}
+.desk-tab__close {
+  display: flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.desk-label--lit {
+  background: #e8862a;
+}
+button.desk-label {
+  border: 0;
+  cursor: pointer;
 }
 .desk-tab--crowded {
   outline: 3px solid #d9412b;
@@ -172,6 +201,8 @@ body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
 .desk-marker {
   pointer-events: none;
   padding: 0 3px;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 #00000040;
   font: 10px/14px monospace;
   color: #e8f1fb;
   background: #1d3f6ecc;

@@ -12,10 +12,10 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string) => Objec
 export const caps = (s: string) => s.toUpperCase();
 
 /** An icon alone, as a picture. */
-export function iconPicture(name: string, scale = S): HTMLCanvasElement {
+export function iconPicture(name: string, scale = S, colors: Record<string, string> = PAINT): HTMLCanvasElement {
   const rows = iconRows(name);
   const { canvas, ctx } = pixelCanvas(rows[0].length, rows.length, scale);
-  drawRows(ctx, rows, 0, 0, PAINT);
+  drawRows(ctx, rows, 0, 0, colors);
   return canvas;
 }
 
@@ -261,17 +261,18 @@ function colorsLook<T>(label: string, picks: { value: T; color?: string; icon?: 
     });
     self.replaceChildren(canvas);
   };
-  const at = (e: PointerEvent) => {
+  // A press picks even the colour shown (a page may give it to more than one thing); a drag picks each new one it crosses.
+  const at = (e: PointerEvent, press = false) => {
     const x = (e.clientX - self.getBoundingClientRect().left) / S;
     const found = picks.findIndex((_, i) => x < edge(i + 1));
     const n = found < 0 ? picks.length - 1 : found;
-    if (picks[n].value === get()) return;
+    if (!press && picks[n].value === get()) return;
     choose(picks[n].value);
     self.redraw();
   };
   self.setAttribute('aria-label', label);
   self.title = label;
-  self.addEventListener('pointerdown', (e) => { self.setPointerCapture(e.pointerId); at(e); });
+  self.addEventListener('pointerdown', (e) => { self.setPointerCapture(e.pointerId); at(e, true); });
   self.addEventListener('pointermove', (e) => { if (self.hasPointerCapture(e.pointerId)) at(e); });
   self.redraw();
   return self;
@@ -317,11 +318,12 @@ const faceOf = (o: Option): ButtonFace => ({ icon: o.icon, color: o.icon ? undef
 /**
  * Opens a panel of `content` under `anchor`, kept on the page: it floats over everything (a side panel's scrolling does not
  * clip it) and shifts left or above when there is no room. A tap outside `anchor` and the panel, Escape, or `close` shuts it;
- * `closed` is told. Returns `close`.
+ * `closed` is told. `bare`: the content floats as it is, with no panel round it. Returns `close`.
  */
-export function popover(anchor: HTMLElement, content: (close: () => void) => Node, closed?: () => void): () => void {
+export function popover(anchor: HTMLElement, content: (close: () => void) => Node, closed?: () => void, bare = false): () => void {
   const pop = el('div', 'upop');
-  pop.append(box(content(() => close())));
+  const inner = content(() => close());
+  pop.append(bare ? inner : box(inner));
   const place = () => {
     if (!anchor.isConnected) return close();
     const a = anchor.getBoundingClientRect(), p = pop.getBoundingClientRect();
@@ -440,13 +442,13 @@ function colorFace(face: { color?: string; icon?: string } | null): HTMLCanvasEl
 }
 
 /** The button of a colour field: its face, and a popup of `content` on a tap (a second tap shuts it). */
-function colorButton(label: string, face: () => { color?: string; icon?: string } | null, content: (close: () => void) => Node): Live {
+function colorButton(label: string, face: () => Node, content: (close: () => void) => Node, bare = false): Live {
   const self = Object.assign(el('span', 'ucolor'), { redraw: () => {} }) as Live;
   let close: (() => void) | null = null;
   const b = el('button', 'pbtn');
   b.title = b.ariaLabel = label;
-  b.addEventListener('click', () => { close ? close() : (close = popover(self, content, () => { close = null; })); });
-  self.redraw = () => b.replaceChildren(colorFace(face()));
+  b.addEventListener('click', () => { close ? close() : (close = popover(self, content, () => { close = null; }, bare)); });
+  self.redraw = () => b.replaceChildren(face());
   self.append(b);
   self.redraw();
   return self;
@@ -485,10 +487,19 @@ export function swatchGrid(label: string, options: Option[], get: () => string |
   return wrap;
 }
 
-/** One colour of many: a field showing the chosen one, a popup of swatches to change it (see `swatchGrid` for `columns`). */
-export function colorField(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, columns?: number): Live {
-  const self: Live = colorButton(label, () => options.find((o) => o.id === get()) ?? null,
-    (close) => swatchGrid(label, options, get, (id) => { close(); if (id !== get()) pick(id); self.redraw(); }, columns));
+/**
+ * One colour of many: a field showing the chosen one, and a popup to change it: the colour bar (`choice(..., 'colors')`) for up
+ * to `BAR_COLORS`, floating alone, else swatches in a panel (see `swatchGrid` for `columns`). `picture` (optional) is shown in place of the field, for the
+ * chosen option (an icon in its colour, say).
+ */
+export function colorField(label: string, options: Option[], get: () => string | null, pick: (id: string) => void, columns?: number, picture?: (option: Option | null) => Node): Live {
+  const chosen = () => options.find((o) => o.id === get()) ?? null;
+  const self: Live = colorButton(label, () => picture?.(chosen()) ?? colorFace(chosen()),
+    (close) => {
+      // The colour shown counts as a pick too: a page may give it to more than the one shown (several picked markers).
+      const chose = (id: string) => { close(); pick(id); self.redraw(); };
+      return options.length > BAR_COLORS ? swatchGrid(label, options, get, chose, columns) : choice(label, options, get, chose, 'colors', Math.max(60, options.length * 6));
+    }, options.length <= BAR_COLORS);
   return self;
 }
 
@@ -515,7 +526,7 @@ export function hexToHsv(hex: string): { h: number; s: number; v: number } | nul
  * told every step of a drag; `done` once it ends (or a number or hex is typed), for undo.
  */
 export function colorPicker(label: string, get: () => string, change: (hex: string) => void, o: { presets?: string[]; done?: (hex: string) => void } = {}): Live {
-  const self: Live = colorButton(label, () => ({ color: get() }), () => hsvPanel(label, get, (hex, end) => { change(hex); self.redraw(); if (end) o.done?.(hex); }, o.presets ?? []));
+  const self: Live = colorButton(label, () => colorFace({ color: get() }), () => hsvPanel(label, get, (hex, end) => { change(hex); self.redraw(); if (end) o.done?.(hex); }, o.presets ?? []));
   return self;
 }
 
@@ -650,14 +661,14 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
     if (icon) drawRows(ctx, icon, 2, Math.floor((H - icon.length) / 2), PAINT);
     const crossed = o.clearable && input.value;
     const room = w - left - (crossed ? 11 : 3);
-    const shown = input.value.toUpperCase();
-    const caretAt = textWidth(shown.slice(0, input.selectionStart ?? shown.length));
+    const shown = input.value;
+    const caretAt = textWidth(shown.slice(0, input.selectionStart ?? shown.length), true);
     const shift = Math.max(0, caretAt - room + 1);
     ctx.save();
     ctx.beginPath();
     ctx.rect(left, 0, room, H);
     ctx.clip();
-    if (shown) text(ctx, shown, left - shift, 4, C.ink);
+    if (shown) text(ctx, shown, left - shift, 4, C.ink, 'left', true);
     else if (o.placeholder && document.activeElement !== input) text(ctx, o.placeholder.toUpperCase(), left, 4, C.empty);
     if (document.activeElement === input && Math.floor(Date.now() / 500) % 2 === 0) { ctx.fillStyle = C.ink; ctx.fillRect(left - shift + caretAt + (caretAt ? 1 : 0), 3, 1, 7); }
     ctx.restore();
@@ -975,6 +986,86 @@ export function library(o: { key: string; label?: string; items: () => LibraryIt
   };
   const search = searchField(o.label ?? 'Search', (v) => { query = v; try { localStorage.setItem(KEY, v); } catch { /* not kept */ } self.redraw(); }, query);
   self.append(search, filters, list);
+  self.redraw();
+  return self;
+}
+
+/**
+ * A list of names to pick from, under a search box, scrolling when long; the picked ones are lit. A tap picks one name;
+ * Cmd/Ctrl-tap adds or takes away one, Shift-tap picks the run from the last tapped. `pick` is told the names, the one tapped
+ * last at the end. A double-click on a name edits it in place (Enter or leaving the field keeps it, Escape takes it back), and
+ * `rename` is told the new name. `picture` (optional, in place of `icon`) is a row's own, and may be a control: a tap on it
+ * neither picks nor renames. `canRename` (optional) says which names a double-click may edit. `query` is the search to start with and `searched` is told each change, so a page that builds the
+ * list again can keep it. Call `redraw` after the names or the picked ones changed: a change of pick alone keeps the rows, so
+ * a double-click holds.
+ */
+export function nameList(o: { label: string; icon?: string; picture?: (name: string) => Node; names: () => string[]; selected: () => string[]; pick: (names: string[]) => void; rename: (from: string, to: string) => void; canRename?: (name: string) => boolean; search?: string; query?: string; searched?: (query: string) => void; empty?: string }): Library {
+  let query = o.query ?? '';
+  let shownKey: string | null = null;
+  const self = Object.assign(el('div', 'unames'), { redraw: () => {} }) as Library;
+  const list = el('div', 'unames__list');
+  const rows = new Map<string, HTMLElement>();
+  /** The names shown (as searched), and the one a Shift-tap runs from. */
+  let shown: string[] = [];
+  let anchor: string | null = null;
+  const tap = (name: string, e: MouseEvent | KeyboardEvent) => {
+    const now = o.selected();
+    const from = anchor && shown.includes(anchor) ? shown.indexOf(anchor) : -1;
+    let next = [name];
+    if (e.metaKey || e.ctrlKey) next = now.includes(name) ? now.filter((n) => n !== name) : [...now, name];
+    else if (e.shiftKey && from >= 0) {
+      const to = shown.indexOf(name);
+      next = [...shown.slice(Math.min(from, to), Math.max(from, to) + 1).filter((n) => n !== name), name];
+    }
+    if (!e.shiftKey) anchor = name;
+    o.pick(next);
+  };
+  const edit = (row: HTMLElement, name: string) => {
+    let over = false;
+    const finish = (to: string | null) => {
+      if (over) return;
+      over = true;
+      shownKey = null;
+      if (to !== null && to !== name) o.rename(name, to);
+      self.redraw();
+    };
+    const well = textField(o.label, name, () => {}, { done: (v) => finish(v) });
+    const input = well.querySelector('input')!;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); });
+    input.addEventListener('blur', () => finish(input.value));
+    row.replaceWith(well);
+    input.focus();
+    input.select();
+  };
+  const row = (name: string) => {
+    const r = el('div', 'uname');
+    r.title = r.ariaLabel = name;
+    r.role = 'button';
+    r.tabIndex = 0;
+    const pic = o.picture?.(name) ?? (o.icon ? iconPicture(o.icon) : null);
+    if (pic) r.append(pic);
+    r.append(label_(name, C.ink, S, true));
+    const onPicture = (e: Event) => !!o.picture && !!pic?.contains(e.target as Node);
+    r.addEventListener('click', (e) => { if (!onPicture(e)) tap(name, e); });
+    r.addEventListener('dblclick', (e) => { if (!onPicture(e) && !e.shiftKey && !e.metaKey && !e.ctrlKey && (o.canRename?.(name) ?? true)) edit(r, name); });
+    r.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === r) tap(name, e); });
+    return r;
+  };
+  self.redraw = () => {
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const names = (shown = o.names().filter((n) => words.every((w) => n.toLowerCase().includes(w))));
+    const key = names.join('\n');
+    if (key !== shownKey) {
+      shownKey = key;
+      for (const n of [...rows.keys()]) if (!names.includes(n)) rows.delete(n);
+      list.replaceChildren(...(names.length ? names.map((n) => rows.get(n) ?? rows.set(n, row(n)).get(n)!) : [label_(caps(o.empty ?? 'Nothing matches'), C.ink, S)]));
+    }
+    const picked = o.selected();
+    for (const [n, b] of rows) { b.classList.toggle('uname--on', picked.includes(n)); b.setAttribute('aria-pressed', String(picked.includes(n))); }
+    const last = picked[picked.length - 1];
+    if (last) rows.get(last)?.scrollIntoView({ block: 'nearest' });
+  };
+  self.append(searchField(o.search ?? 'Search', (v) => { query = v; o.searched?.(v); self.redraw(); }, query), list);
   self.redraw();
   return self;
 }
