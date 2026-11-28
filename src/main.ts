@@ -1637,6 +1637,8 @@ if (import.meta.env.DEV) {
     sail: () => setSail(),
     /** Stands the survivor somewhere (to reach a fish or a crab that will not wait), and stops their walk. */
     place: (i: number, j: number) => { target = null; Object.assign(actor, { i, j }); },
+    /** Where a tap on a thing at `i`, `j` sends the survivor (the near side), whether that spot can be walked on, and how long the way to it is. */
+    probe: (i: number, j: number) => { const n = nearSide({ i, j }); return { goal: at(n), walkable: world.canWalk(n, n), way: findPath(world, actor, n, passable).length }; },
     /** Draws frames, or not: the rules run the same, and far faster, with no drawing. */
     draw: (on: boolean) => { drawing = on; },
     /** Puts away the thoughts in the story box. */

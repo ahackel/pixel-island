@@ -252,7 +252,8 @@ await step('quest 5, crate: smashed with a stone', async () => {
     await T('tap', crate.i, crate.j, up);
     await idle('smashing the crate');
     const after = await S();
-    log(`   crate tap up ${up}: survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, hand ${after.hand}, crates ${after.crates.length}, thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
+    const probe = await T('probe', crate.i, crate.j);
+    log(`   crate tap up ${up}: probe ${JSON.stringify(probe)}; survivor ${s.at.i},${s.at.j} -> ${after.at.i},${after.at.j}, bag ${after.bag.join(',')}, hand ${after.hand}, crates ${after.crates.length}, thought: ${await page.$eval('.bubble', (b) => (b.hidden ? '' : b.getAttribute('aria-label'))).catch(() => '')}`);
   }
   await until('the crate smashed and the quest done', (s) => s.quest.done && s.quest.id === 'crate', 8000);
 });
