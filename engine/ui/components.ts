@@ -1,6 +1,6 @@
 // The pixel interface's building blocks, game-agnostic: each is a small canvas shown at `S` times, so a button is only a
 // place to tap. Colours come from theme.ts, pictures from icons.ts, words from the pixel font (capitals).
-import { LINE_H, LINE_STEP, text, textWidth, wrap } from '../shared/pixel-font.ts';
+import { ABOVE, LINE_H, LINE_STEP, text, textWidth, wrap } from '../shared/pixel-font.ts';
 import { drawRows, label as label_, panel, pixelCanvas, rounded } from '../shared/pixel-ui.ts';
 import { iconRows } from './icons.ts';
 import { C, PAINT, S } from './theme.ts';
@@ -632,15 +632,17 @@ export function textField(label: string, value: string, change: (value: string) 
 
 const CROSS = ['x...x', '.x.x.', '..x..', '.x.x.', 'x...x'];
 
-interface WellOptions { value?: string; change: (value: string) => void; done?: (value: string) => void; placeholder?: string; icon?: readonly string[]; clearable?: boolean; width?: number }
+interface WellOptions { value?: string; change: (value: string) => void; done?: (value: string) => void; placeholder?: string; icon?: readonly string[]; clearable?: boolean; width?: number; inline?: boolean }
 
 /**
  * A line of text, all drawn on the raster: a well, an optional small icon at the left, the typed words in the pixel font and,
  * if `clearable`, a small cross at the right while there is text (tap it to clear). A transparent input over it takes the typing;
  * the caret is drawn too (a long text scrolls to keep it in view). Without `width` (raster pixels) it stretches over its parent.
+ * `inline`: as tall as a label and no margin, to edit a label's words in its place.
  */
 function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLInputElement; redraw: () => void } {
-  const H = 13;
+  const H = o.inline ? LINE_H : 13;
+  const top = o.inline ? ABOVE : 4; // the letters' top
   const wrap = el('span', 'usearch');
   if (o.width) wrap.style.width = `${o.width * S}px`;
   const input = Object.assign(el('input', 'usearch__input'), { spellcheck: false, value: o.value ?? '' });
@@ -648,19 +650,20 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
   input.title = label;
   const clear = el('button', 'usearch__clear');
   clear.title = clear.ariaLabel = 'Clear';
-  let left = 3;
+  const margin = o.inline ? 0 : 3;
+  let left = margin;
   let canvas: HTMLCanvasElement | null = null;
   let blink: number | undefined;
   const draw = () => {
     const icon = input.value || document.activeElement === input ? undefined : o.icon;
-    left = icon ? 2 + icon[0].length + 3 : 3; // the icon goes once the field has the focus or text
+    left = icon ? 2 + icon[0].length + 3 : margin; // the icon goes once the field has the focus or text
     const w = o.width ?? Math.max(left + 14, Math.floor(wrap.clientWidth / S));
     const made = pixelCanvas(w, H, S);
     const { ctx } = made;
-    panel(ctx, 0, 0, w, H, C.track);
+    if (!o.inline) panel(ctx, 0, 0, w, H, C.track);
     if (icon) drawRows(ctx, icon, 2, Math.floor((H - icon.length) / 2), PAINT);
     const crossed = o.clearable && input.value;
-    const room = w - left - (crossed ? 11 : 3);
+    const room = w - left - (crossed ? 11 : margin + 1);
     const shown = input.value;
     const caretAt = textWidth(shown.slice(0, input.selectionStart ?? shown.length), true);
     const shift = Math.max(0, caretAt - room + 1);
@@ -668,9 +671,16 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
     ctx.beginPath();
     ctx.rect(left, 0, room, H);
     ctx.clip();
-    if (shown) text(ctx, shown, left - shift, 4, C.ink, 'left', true);
-    else if (o.placeholder && document.activeElement !== input) text(ctx, o.placeholder.toUpperCase(), left, 4, C.empty);
-    if (document.activeElement === input && Math.floor(Date.now() / 500) % 2 === 0) { ctx.fillStyle = C.ink; ctx.fillRect(left - shift + caretAt + (caretAt ? 1 : 0), 3, 1, 7); }
+    // The selection, drawn here: the input's own would show its text over the drawn one.
+    const [from, to] = [input.selectionStart ?? 0, input.selectionEnd ?? 0];
+    if (document.activeElement === input && to > from) {
+      const x = textWidth(shown.slice(0, from), true) + (from ? 1 : 0);
+      ctx.fillStyle = C.lit;
+      ctx.fillRect(left - shift + x - 1, top - 2, textWidth(shown.slice(0, to), true) - x + 3, 9);
+    }
+    if (shown) text(ctx, shown, left - shift, top, C.ink, 'left', true);
+    else if (o.placeholder && document.activeElement !== input) text(ctx, o.placeholder.toUpperCase(), left, top, C.empty);
+    if (document.activeElement === input && Math.floor(Date.now() / 500) % 2 === 0) { ctx.fillStyle = C.ink; ctx.fillRect(left - shift + caretAt + (caretAt ? 1 : 0), top - 1, 1, 7); }
     ctx.restore();
     if (crossed) drawRows(ctx, CROSS, w - 8, 4, C.ink);
     clear.hidden = !crossed;
@@ -683,9 +693,10 @@ function inputWell(label: string, o: WellOptions): HTMLElement & { input: HTMLIn
   input.addEventListener('input', () => { draw(); o.change(input.value); });
   input.addEventListener('change', () => o.done?.(input.value));
   clear.addEventListener('click', () => { input.value = ''; draw(); o.change(''); o.done?.(''); input.focus(); });
-  for (const type of ['keyup', 'click', 'blur'] as const) input.addEventListener(type, draw);
+  for (const type of ['keyup', 'click', 'blur', 'select'] as const) input.addEventListener(type, draw);
   input.addEventListener('focus', () => { draw(); blink = window.setInterval(draw, 500); });
   input.addEventListener('blur', () => window.clearInterval(blink));
+  input.style.height = `${H * S}px`;
   wrap.append(input, clear);
   new ResizeObserver(draw).observe(wrap);
   return Object.assign(wrap, { input, redraw: draw });
@@ -1026,14 +1037,17 @@ export function nameList(o: { label: string; icon?: string; picture?: (name: str
       if (over) return;
       over = true;
       shownKey = null;
+      rows.delete(name);
       if (to !== null && to !== name) o.rename(name, to);
       self.redraw();
     };
-    const well = textField(o.label, name, () => {}, { done: (v) => finish(v) });
-    const input = well.querySelector('input')!;
+    // The name's label becomes a field in the row; the row's picture stays.
+    const words = row.lastElementChild!;
+    const well = inputWell(o.label, { value: name, change: () => {}, done: (v) => finish(v), inline: true });
+    const { input } = well;
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); });
     input.addEventListener('blur', () => finish(input.value));
-    row.replaceWith(well);
+    words.replaceWith(well);
     input.focus();
     input.select();
   };
@@ -1045,7 +1059,8 @@ export function nameList(o: { label: string; icon?: string; picture?: (name: str
     const pic = o.picture?.(name) ?? (o.icon ? iconPicture(o.icon) : null);
     if (pic) r.append(pic);
     r.append(label_(name, C.ink, S, true));
-    const onPicture = (e: Event) => !!o.picture && !!pic?.contains(e.target as Node);
+    // Presses on the picture (its own button) or in the name being edited are not the row's.
+    const onPicture = (e: Event) => (!!o.picture && !!pic?.contains(e.target as Node)) || (e.target as Element).tagName === 'INPUT';
     r.addEventListener('click', (e) => { if (!onPicture(e)) tap(name, e); });
     r.addEventListener('dblclick', (e) => { if (!onPicture(e) && !e.shiftKey && !e.metaKey && !e.ctrlKey && (o.canRename?.(name) ?? true)) edit(r, name); });
     r.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === r) tap(name, e); });
