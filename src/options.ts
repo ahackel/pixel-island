@@ -19,8 +19,9 @@ export interface Options {
   /** `?cheats`: the orange cheat buttons. */
   cheats: boolean;
   /**
-   * `?seed=42`: what is left to chance in play (where the sea leaves things without a marker, the fish, the crabs, a
-   * grab's luck) the same every time; null, a new seed each load. The playthrough plays with a fixed one.
+   * `?seed=42`: what is left to chance in a new game (where the sea leaves things without a marker, the fish, the crabs,
+   * a grab's luck) the same every time; null, a new seed for each new game. A saved game keeps its own seed (with
+   * `?new` the seed given starts a new one). The playthrough plays with a fixed one.
    */
   seed: number | null;
 }

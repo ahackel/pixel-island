@@ -21,6 +21,11 @@ export interface Shore {
   /** The ground's surface at a spot ('beach', ...). */
   surface(p: Spot): string;
   random(): number;
+  /**
+   * The island scene's markers. Those named for a morning's gift (`wood1`, `wood2`, …, and likewise `drift`, `coconut`
+   * and `stone`) are where the sea leaves it, the same every game; an island with none of a kind has it left anywhere.
+   */
+  markers?: readonly (Spot & { name: string })[];
 }
 
 /** How many sticks, and pieces of driftwood, the sea leaves lying on the beach at most. */
@@ -63,18 +68,41 @@ export type Around = { at: Spot; within: number } | { marker: Spot };
 
 /** Round a marker, in order: the spot itself, then a ring of eight 0.7 m out, then one of eight 1.4 m out. */
 const ROUND = [[0, 0], ...[0.7, 1.4].flatMap((r) => Array.from({ length: 8 }, (_, k) => [r * Math.cos((k * Math.PI) / 4), r * Math.sin((k * Math.PI) / 4)]))];
+/** Whether something already lies, stands or burns at a spot, so nothing more is laid there. */
+function taken(g: Game, c: Spot, more: readonly Spot[] = []): boolean {
+  const near = (o: Spot, r: number) => Math.hypot(o.i - c.i, o.j - c.j) < r;
+  return [...g.lying, ...g.items, ...more].some((o) => near(o, 0.5)) || g.fires.some((o) => near(o, 0.8)) || g.builds.some((o) => near(o, 1.5));
+}
 /** The `n` spots things laid at a marker go to: the first round it (see ROUND) that are above the water and clear of the palms' trunks and of what lies there already. */
 export function markerSpots(s: Shore, g: Game, at: Spot, n: number): Spot[] {
   const out: Spot[] = [];
-  const taken = (c: Spot) => [...g.lying, ...g.items, ...out].some((o) => Math.hypot(o.i - c.i, o.j - c.j) < 0.5);
   for (const [di, dj] of ROUND) {
     if (out.length >= n) break;
     const c = { i: at.i + di, j: at.j + dj };
-    if (s.aboveWater(c) && !s.palms.some((q) => Math.hypot(q.i - c.i, q.j - c.j) < TRUNK_CLEAR) && !taken(c)) out.push(c);
+    if (s.aboveWater(c) && !s.palms.some((q) => Math.hypot(q.i - c.i, q.j - c.j) < TRUNK_CLEAR) && !taken(g, c, out)) out.push(c);
   }
   // A marker with no room round it (it should be moved): what is left goes on it.
   while (out.length < n) out.push({ ...at });
   return out;
+}
+
+/** A morning gift's markers (`kind` 'wood': wood1, wood2, …), by their number. */
+export function giftMarkers(s: Shore, kind: string): (Spot & { name: string })[] {
+  const nth = (name: string) => (name.startsWith(kind) && /^\d+$/.test(name.slice(kind.length)) ? Number(name.slice(kind.length)) : NaN);
+  return (s.markers ?? []).filter((m) => !Number.isNaN(nth(m.name))).sort((a, b) => nth(a.name) - nth(b.name));
+}
+/**
+ * Where the sea leaves a morning's thing of `kind` on an island with markers for it: on the first of them (of those
+ * `ok` lets) with nothing there yet, or with all of them taken, as close round the first as there is room. Undefined
+ * on an island with none, where it is left anywhere; null when `ok` lets none.
+ */
+function giftSpot(s: Shore, g: Game, kind: string, ok: (m: Spot) => boolean = () => true): Spot | null | undefined {
+  const all = giftMarkers(s, kind);
+  if (!all.length) return undefined;
+  const ms = all.filter(ok);
+  if (!ms.length) return null;
+  const free = ms.find((m) => !taken(g, m));
+  return free ? { i: free.i, j: free.j } : markerSpots(s, g, ms[0], 1)[0];
 }
 
 /** Somewhere on the beach, anywhere in its tile, near `around` if there is beach there, else anywhere; there must be beach. */
@@ -92,8 +120,18 @@ function onBeach(s: Shore, around?: { at: Spot; within: number }): Spot {
   return at;
 }
 
-/** A coconut falls from a palm, near its foot, never more than three under one; a burnt or felled palm has none. */
+/**
+ * A coconut falls from a palm, near its foot, never more than three under one; a burnt or felled palm has none. On an
+ * island with coconut markers it falls on the first free one whose nearest palm still bears.
+ */
 export function dropCoconuts(s: Shore, g: Game): void {
+  const bears = (k: number) => k >= 0 && k !== g.struck && !g.felled.includes(k);
+  const nearest = (m: Spot) => s.palms.reduce((best, p, k) => (best < 0 || Math.hypot(p.i - m.i, p.j - m.j) < Math.hypot(s.palms[best].i - m.i, s.palms[best].j - m.j) ? k : best), -1);
+  const marked = giftSpot(s, g, 'coconut', (m) => bears(nearest(m)));
+  if (marked !== undefined) {
+    if (marked) lay(g, 'coconut', marked);
+    return;
+  }
   const bearing = s.palms.filter((p, k) => k !== g.struck && !g.felled.includes(k) && g.lying.filter((c) => c.item === 'coconut' && Math.hypot(c.i - p.i, c.j - p.j) < 1.8).length < 3);
   if (!bearing.length) return;
   for (const c of spotsNear(s, bearing[Math.floor(s.random() * bearing.length)], 1, 0.7, 0.6, 20)) lay(g, 'coconut', c);
@@ -110,11 +148,14 @@ export function washUp(s: Shore, g: Game, items: readonly string[], around?: Aro
   });
 }
 
+/** Where the sea leaves a morning's thing of `kind`: at its markers, if the island has them, else anywhere on the beach. */
+const giftAt = (s: Shore, g: Game, kind: string): Spot => giftSpot(s, g, kind) ?? onBeach(s);
+
 /** Each morning the sea leaves a stick or two and a piece of driftwood, dry by the time they are found. */
 export function washWood(s: Shore, g: Game): void {
   if (!s.beach.length) return;
-  for (let n = 0; n < 2 && lyingCount(g, 'wood') < WOOD_LYING; n++) lay(g, 'wood', onBeach(s));
-  if (lyingCount(g, 'drift') < DRIFT_LYING) lay(g, 'drift', onBeach(s));
+  for (let n = 0; n < 2 && lyingCount(g, 'wood') < WOOD_LYING; n++) lay(g, 'wood', giftAt(s, g, 'wood'));
+  if (lyingCount(g, 'drift') < DRIFT_LYING) lay(g, 'drift', giftAt(s, g, 'drift'));
 }
 
 /** A quest's `stones` effect: stones laid on the beach (from then on `topUpStones` keeps some to find). */
@@ -133,7 +174,7 @@ export function morningGifts(s: Shore, g: Game): void {
 /** Once a quest has brought stones there are always STONES_OUT to find, lying about or in the bag (one in a spear or axe is used up). */
 export function topUpStones(s: Shore, g: Game): void {
   if (!stonesOut(g.quest.quest, questsOf(g)) || !s.beach.length) return;
-  for (let n = lyingCount(g, 'stone') + g.bag.filter((it) => it === 'stone').length; n < STONES_OUT; n++) lay(g, 'stone', onBeach(s));
+  for (let n = lyingCount(g, 'stone') + g.bag.filter((it) => it === 'stone').length; n < STONES_OUT; n++) lay(g, 'stone', giftAt(s, g, 'stone'));
 }
 
 /** The hut (at its fixed place) or raft that could be built, or built further, standing at `at` with what is in the bag. */

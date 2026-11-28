@@ -1,4 +1,4 @@
-// The first island: a low patch of sand in the sea with a few palms, the same every time from a seed.
+// The tutorial, the first island: a low patch of sand in the sea with a few palms, the same every time from a seed.
 // The island is shaped in a square of its own and set in the middle of a larger map, with the sea bed
 // round it laid by hand (see `seaBed`), so there is open water on every side. Driftwood is the game's
 // own, to pick up (see fire.ts), so it is not among the decorations.
@@ -10,7 +10,7 @@ import { rng } from '@pixel/shared/random.ts';
 
 /** How an island is made: the square it is shaped in, the map it is set in the middle of, its seed and its hills. */
 interface Shape { island: number; size: number; seed: number; peak: number; land: number }
-const FIRST: Shape = { island: 16, size: 24, seed: 7, peak: 2, land: 0.55 };
+const TUTORIAL: Shape = { island: 16, size: 24, seed: 7, peak: 2, land: 0.55 };
 /** How many tiles of sea bed there are to a level: how far the shallows reach, and how gently the bed falls away. */
 const SHELF = 2;
 /** The palms, from the flora catalogue: three tall leaning ones (no bushy palm, no sapling), each grown from its own seed. */
@@ -54,8 +54,8 @@ export const savedScene = (slug: string): Scene | null => {
   return scene;
 };
 
-/** The first island: the scene saved as `island` when there is one, else the one made from its seed. */
-export const firstIsland = (): Scene => savedScene('island') ?? islandOf(FIRST);
+/** The tutorial island: the scene saved as `tutorial` when there is one, else the one made from its seed. */
+export const tutorialIsland = (): Scene => savedScene('tutorial') ?? islandOf(TUTORIAL, 'Tutorial');
 
 /** An island of a shape, with `ground` changing its land before the sea bed is laid and the palms placed. */
 function islandOf({ island: ISLAND, size: SIZE, seed: SEED, peak, land }: Shape, name = 'Island', ground?: (map: HeightMap) => void): Scene {

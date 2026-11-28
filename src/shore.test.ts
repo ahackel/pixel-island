@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSpot, markerSpots, headSide, HALF_BODY, layStones, lyingCount, washUp, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
 import { HUT_AT } from './crafts.ts';
-import { FIRST } from './islands.ts';
+import { TUTORIAL } from './islands.ts';
 import { startProgress } from './quests.ts';
 
-const QUESTS = FIRST.quests;
+const QUESTS = TUTORIAL.quests;
 import type { Game } from './save.ts';
 
 // A square of land, 4 to 16 on each side, with its edge rows beach; everything else sea.
@@ -19,7 +19,7 @@ const shore: Shore = {
 };
 const game = (more: Partial<Game> = {}): Game => ({
   day: 1, hunger: 1, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [], builds: [],
-  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), story: 'first', weather: 'sunny', ...more,
+  at: { i: 8, j: 8 }, hat: null, who: {} as Game['who'], quest: startProgress(), story: 'tutorial', weather: 'sunny', ...more,
 });
 
 test('the sea never leaves more wood than its limits, however many mornings', () => {
@@ -149,4 +149,36 @@ test('things laid at a marker go on it and close round it, the same every time, 
   const byPalm = markerSpots(shore, game(), { i: 8.7, j: 8 }, 3);
   assert.ok(byPalm.every((c) => Math.hypot(c.i - 8, c.j - 8) >= 0.8), JSON.stringify(byPalm));
   assert.deepEqual(markerSpots({ ...shore, aboveWater: () => false }, game(), at, 2), [at, at]);
+});
+
+test('on an island with markers for them, the morning\'s gifts go on the first free ones, the same every game', () => {
+  const markers = [
+    { name: 'wood2', i: 6, j: 5 }, { name: 'wood1', i: 5, j: 5 }, { name: 'wood3', i: 7, j: 5 }, { name: 'wood4', i: 8, j: 5 }, { name: 'woodpile', i: 14, j: 14 },
+    { name: 'drift1', i: 5, j: 14 }, { name: 'stone1', i: 12, j: 5 }, { name: 'stone2', i: 13, j: 5 },
+    { name: 'coconut1', i: 8.9, j: 8 }, { name: 'coconut2', i: 12, j: 12.9 },
+  ];
+  const palms = [{ plant: 'plant-palms-0', i: 8, j: 8 }, { plant: 'plant-palms-0', i: 12, j: 12 }];
+  const s: Shore = { ...shore, palms, markers, random: () => assert.fail('nothing is left to chance') };
+  const g = game();
+  washWood(s, g);
+  // By number, not by the order they were set in; `woodpile` is no wood marker.
+  assert.deepEqual(g.lying.map((l) => [l.item, l.i, l.j]), [['wood', 5, 5], ['wood', 6, 5], ['drift', 5, 14]]);
+  g.lying.splice(0, 1);
+  washWood(s, g);
+  assert.deepEqual(g.lying.filter((l) => l.item === 'wood').map((l) => [l.i, l.j]), [[6, 5], [5, 5], [7, 5]]);
+  // With every drift marker taken, the next lies close round the first.
+  const second = g.lying.filter((l) => l.item === 'drift')[1];
+  assert.ok(Math.hypot(second.i - 5, second.j - 14) > 0.5 && Math.hypot(second.i - 5, second.j - 14) < 1.5);
+
+  const c = game({ felled: [0] });
+  morningGifts(s, c);
+  // The palm by coconut1 is felled: it falls by the other.
+  assert.deepEqual(c.lying.filter((l) => l.item === 'coconut').map((l) => [l.i, l.j]), [[12, 12.9]]);
+  const none = game({ felled: [0], struck: 1 });
+  morningGifts(s, none);
+  assert.equal(lyingCount(none, 'coconut'), 0);
+
+  const stones = game({ quest: { quest: QUESTS.findIndex((q) => q.id === 'crate'), count: 0, done: false } });
+  topUpStones(s, stones);
+  assert.deepEqual(stones.lying.map((l) => [l.item, l.i, l.j]), [['stone', 12, 5], ['stone', 13, 5]]);
 });

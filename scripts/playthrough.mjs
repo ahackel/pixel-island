@@ -1,4 +1,4 @@
-// Plays the first island's whole tutorial in a real browser, from the first coconut to setting sail on the raft, through
+// Plays the whole tutorial (the first island) in a real browser, from the first coconut to setting sail on the raft, through
 // the game's own handlers (the dev server's test hook, `window.__test`, set at the end of src/main.ts), and fails with the
 // game's state where it gets stuck. It checks what the unit tests cannot: that main.ts reports each goal, that every
 // step of the story can be done with what the story gives, and that the ending is reached.

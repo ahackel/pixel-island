@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
 import { advance, checkContent, ITEM_GOALS, knownGoals, next, reportedGoals, startProgress, stonesOut, waiting, weatherOf, type Quest } from './quests.ts';
 import { RULES } from './interactions.ts';
-import { FIRST } from './islands.ts';
+import { TUTORIAL } from './islands.ts';
 import { LOOSE } from './crafts.ts';
 
-const QUESTS = FIRST.quests;
-const REPORTED = reportedGoals(FIRST.rules);
+const QUESTS = TUTORIAL.quests;
+const REPORTED = reportedGoals(TUTORIAL.rules);
 
 test('the shipped quests and texts are valid, and every goal a quest waits for is reported by something', () => {
   assert.deepEqual(checkContent(QUESTS, loca, ['crate', ...LOOSE], REPORTED), []);

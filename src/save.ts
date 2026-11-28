@@ -45,6 +45,10 @@ export interface Game {
   chests: Record<string, BagItem[]>;
   /** Doors opened, unlocked or found, by scene and edge (`scene|H3,4`): the state each is in now. */
   doors: Record<string, DoorState>;
+  /** The seed the game's chance came from (see `chance.ts`); older saves have none and get a new one. */
+  seed?: number;
+  /** Where each of its streams had got to when saved, so a game loaded from the save goes on the same way every time. */
+  chance?: number[];
 }
 
 export interface Lying { item: BagItem; i: number; j: number }
@@ -72,7 +76,7 @@ export function loadGame(size: number, palms: number, island: number): Game | nu
   if (!g || (g.island !== undefined && g.island !== island)) return null;
   if (![4, 5, VERSION].includes(g.v) || !num(g.day, 1, 1e6) || !num(g.hunger, 0, 1) || !num(g.energy, 0, 1) || !spot(g.at, size)) return null;
   if (!Array.isArray(g.bag) || !Array.isArray(g.items)) return null;
-  const story = isStory(g.story) ? g.story : 'first';
+  const story = isStory(g.story) ? g.story : 'tutorial';
   const quests = bundleOf(story).quests;
   const q = g.quest;
   if (!q || !int(q.quest, 0, quests.length - 1) || !int(q.count, 0, 99) || typeof q.done !== 'boolean') return null;
@@ -108,6 +112,8 @@ export function loadGame(size: number, palms: number, island: number): Game | nu
       .map(([k, v]) => [k, (v as unknown[]).filter(isBagItem)])),
     doors: Object.fromEntries(Object.entries(g.doors && typeof g.doors === 'object' ? g.doors : {})
       .filter(([k, v]) => /^[\w-]{1,60}\|[HV]-?\d+,-?\d+$/.test(k) && (DOOR_STATES as readonly unknown[]).includes(v))) as Record<string, DoorState>,
+    ...(int(g.seed, 0, 2 ** 32 - 1) ? { seed: g.seed } : {}),
+    ...(Array.isArray(g.chance) && g.chance.length === 3 && g.chance.every((c: unknown) => int(c, 0, 2 ** 32 - 1)) ? { chance: [...g.chance] } : {}),
   };
 }
 

@@ -31,19 +31,19 @@ import { edgeKey } from '@pixel/engine/world/building/building.ts';
 import { spawnFish, swim } from '@pixel/engine/world/fish.ts';
 import { crabAt, crabThing, scare, scuttle, spawnCrab, type Crab } from '@pixel/engine/world/crab.ts';
 import { cruise, finShows, finThing, sharkNear, spawnSharks } from './shark.ts';
-import { rng } from '@pixel/shared/random.ts';
+import { chanceAt, newSeed, setChance, startOf, stateOf } from './chance.ts';
 import { DAY_S, drain, DUSK_S, faints, LOW, phaseAt, speedOf, SUNSET_S, wake } from './clock.ts';
 import { C, caps, hud, pixelButton, S, slot } from '@pixel/shared/game-ui.ts';
 import { label } from '@pixel/shared/pixel-ui.ts';
 import { wrap } from '@pixel/shared/pixel-font.ts';
 import { PALETTE } from '@pixel/engine/core/palette.ts';
-import { caveScene, firstIsland, rockyIsland, savedScene } from './island.ts';
+import { caveScene, tutorialIsland, rockyIsland, savedScene } from './island.ts';
 import { BAG_SLOTS, islandId, loadGame, saveGame, type Game, type Lying } from './save.ts';
 import { t, type Key } from './i18n.ts';
 import { idle, run, type Doer, type Handler } from './effects.ts';
 import { HAS, hasRule, ruleFor, type StaticCondition, type Target } from './interactions.ts';
 import { advance, KINDS, next, startProgress, waiting, type Goal, type Kind, type Progress, type QuestIcon } from './quests.ts';
-import { FIRST, ROCKY } from './islands.ts';
+import { ROCKY, TUTORIAL } from './islands.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
@@ -61,8 +61,8 @@ import { asSeen, nightfall, tintAt, weatherLight } from './sky.ts';
 import { breakOf, Burst, campfireThing, STICK, Strike, stumpThings, torchAt } from './fire.ts';
 
 /** The debug options in the address (options.ts); a tryout ends when a new game is started from the menu. */
-// Which island's story is played: the rocky island's with `?island=2` (or `?cave`), else the first's.
-const bundle = optionsOf(location.search, 1).island2 ? ROCKY : FIRST;
+// Which island's story is played: the rocky island's with `?island=2` (or `?cave`), else the tutorial's.
+const bundle = optionsOf(location.search, 1).island2 ? ROCKY : TUTORIAL;
 const opts = optionsOf(location.search, bundle.quests.length);
 /** A new game from the menu is a real one: the first quest, saved, and the tryout's `?quest` gone from the address. */
 function endTryout(): void {
@@ -93,7 +93,7 @@ const GRAB_LUCK = 0.25;
 // ------------------------------------------------------------------ the world
 
 const rocky = opts.island2 ? rockyIsland() : null;
-const islandScene = rocky?.scene ?? SCENE_TRY ?? firstIsland();
+const islandScene = rocky?.scene ?? SCENE_TRY ?? tutorialIsland();
 /** The island; everything of the island's own (its fish, palms, crabs and hut) lives here, wherever the survivor is. */
 const island = new World(islandScene);
 island.pieceKinds = PIECE_KINDS;
@@ -117,22 +117,26 @@ const inCave = () => !!world.scene.cave;
 const inDark = () => settingsOf(world.scene).light === 'dark';
 /** Whether the survivor is on the island's open ground, where the island's own things (hut, fires, crabs, palms, bag drops) are. */
 const onIsland = () => world === island && !inCave();
-/**
- * What is left to chance in play comes from one seed (`?seed=`, else a new one each load), in a stream for each part of
- * the game, so that what one part draws does not shift another's: where the sea leaves things, the fish, sharks and
- * crabs, and a grab's luck. With the same seed and the same moves a game plays out the same (the playthrough relies on it).
- */
-const SEED = opts.seed ?? Math.floor(Math.random() * 1e9);
-const shoreRandom = rng(SEED);
-const fishRandom = rng(SEED ^ 0x2545f491);
-const luck = rng(SEED ^ 0x68e31da4);
-island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
-/** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
-const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
 const palms = [...islandScene.plants];
 /** The island's fingerprint, kept in the save, so a save of another island (one edited since) is not loaded onto this one. */
 const ISLAND_ID = islandId(islandScene.levels, palms);
+const saved = opts.fresh || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
+/**
+ * What is left to chance in play comes from one seed, in a stream for each part of the game (chance.ts): where the sea
+ * leaves things that have no marker, the fish, sharks and crabs, and a grab's luck. A new game's seed is `?seed=`, else
+ * a new one; it is kept in the save, with where each stream had got to, so a loaded game goes on the same way every
+ * time (an older save without one gets a new seed). With the same seed and the same moves a game plays out the same
+ * (the playthrough relies on it).
+ */
+const SEED = saved?.seed ?? opts.seed ?? newSeed();
+const chance = chanceAt(saved?.seed !== undefined && saved.chance ? saved.chance : startOf(SEED));
+const shoreRandom = chance.shore;
+const fishRandom = chance.fish;
+const luck = chance.luck;
+island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
+/** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
+const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
 /** Shows (and lets block the way) only the palms not cut down. */
 const keepStanding = () => (islandScene.plants = palms.filter((_, k) => !game.felled.includes(k)));
 /** The crabs out today, and how many have come out so far; all gone by the next morning. */
@@ -166,13 +170,13 @@ function around(at: { i: number; j: number }, near?: number, mark?: string): Aro
   return m ? { marker: m } : near ? { at, within: near } : undefined;
 }
 
-function newGame(who = firstWho()): Game {
+function newGame(who = firstWho(), seed = SEED): Game {
   // Washed ashore along the water's edge, the hat on the sand beyond their head (shore.ts).
   const { at, hat } = washedUp(isle, scene.spawn, dry, !!who.worn.hat);
   const quest: Progress = { ...startProgress(), quest: opts.startQuest };
   const g: Game = {
     day: 1, hunger: 0.5, energy: 1, bag: [], items: [], chests: {}, doors: {}, struck: null, fires: [], lying: [], felled: [],
-    builds: [], at, hat, who, quest, story: bundle.id, weather: kindFor(bundle.quests, opts.startQuest, 1),
+    builds: [], at, hat, who, quest, story: bundle.id, weather: kindFor(bundle.quests, opts.startQuest, 1), seed,
   };
   if (opts.island2) g.bag.push('lantern');
   // The island starts with two coconuts lying about.
@@ -196,12 +200,12 @@ for (let j = 0; j < scene.h; j++) for (let i = 0; i < scene.w; i++) if (surfaceA
 const isle: Shore = {
   beach,
   palms,
+  markers: islandScene.markers,
   dry: (p) => isLand(island.map, Math.floor(p.i), Math.floor(p.j)),
   aboveWater: (p) => heightAt(island.map, p.i, p.j) > island.water + 0.1,
   surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
   random: shoreRandom,
 };
-const saved = opts.fresh || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
 // Saves from before doors kept them have none opened.
 game.doors ??= {};
@@ -470,7 +474,10 @@ const kindTomorrow = () => {
 };
 
 function startNew(who: State): void {
-  game = newGame(who);
+  // A new game draws from a new seed (or `?seed=`'s), from its start.
+  const seed = opts.seed ?? newSeed();
+  setChance(chance, startOf(seed));
+  game = newGame(who, seed);
   for (const w of visited.values()) doorsOf(w);
   present = true;
   veilDay = 0;
@@ -766,7 +773,7 @@ function leaveCave(): void {
 /** The scenes the survivor can be led to (by file name), made into worlds when first visited; the island is one of them. */
 const visited = new Map<string, World>([
   // By the island's own file name (see island.ts), so a way back to it comes back to this world.
-  [rocky ? 'rocky-island' : (opts.scene ?? 'island'), island],
+  [rocky ? 'rocky-island' : (opts.scene ?? 'tutorial'), island],
   // The rocky island's cave is the same world whether walked into at its mouth or climbed down into.
   ...(cave ? [['smuggler-cave', cave.world] as [string, World]] : []),
 ]);
@@ -901,7 +908,7 @@ function nearSideOf(door: SceneDoor): { i: number; j: number } {
 }
 
 /** The scene a world shows, by the name the ways use. */
-const nameOf = (w: World) => [...visited].find(([, v]) => v === w)?.[0] ?? 'island';
+const nameOf = (w: World) => [...visited].find(([, v]) => v === w)?.[0] ?? 'tutorial';
 /** Each door's state as its scene has it, before the game changed any. */
 const doorsAsMade = new WeakMap<SceneDoor, SceneDoor['state']>();
 /** A door's key in the save (`scene|edge`). */
@@ -1252,6 +1259,7 @@ let strikeNow = false;
 
 /** Saves the game, if this one is saved; says so when the browser refuses. */
 function store(): void {
+  game.chance = stateOf(chance);
   if (saves() && !saveGame(game, ISLAND_ID)) tellAfterFade('think.notSaved');
 }
 /** Tells a thought once the fade has come back in. */
@@ -1646,7 +1654,7 @@ if (import.meta.env.DEV) {
   const at = (p: { i: number; j: number }) => ({ i: Math.round(p.i * 100) / 100, j: Math.round(p.j * 100) / 100 });
   (window as any).__test = {
     state: () => ({
-      seed: SEED, frames,
+      seed: game.seed, frames,
       story: bundle.id, day: game.day, hunger: game.hunger, energy: game.energy, weather: game.weather,
       bag: [...game.bag], hand,
       quest: { n: game.quest.quest, id: questNow().id, goal: questNow().goal, count: game.quest.count, done: game.quest.done },

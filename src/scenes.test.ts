@@ -9,11 +9,11 @@ import { createServer } from 'vite';
 test('every saved scene is read back whole, as the game reads it', async () => {
   const vite = await createServer({ server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', logLevel: 'error' });
   try {
-    const { savedScene, firstIsland, rockyIsland, caveScene } = await vite.ssrLoadModule('/src/island.ts');
+    const { savedScene, tutorialIsland, rockyIsland, caveScene } = await vite.ssrLoadModule('/src/island.ts');
     const names = readdirSync(new URL('./content/scenes/', import.meta.url)).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));
-    assert.ok(names.includes('island'), 'island.json is the island the game plays');
+    assert.ok(names.includes('tutorial'), 'tutorial.json is the island the game plays');
     for (const name of names) assert.ok(savedScene(name), `${name}.json is not a valid scene`);
-    assert.ok(firstIsland() && rockyIsland().scene && caveScene().scene);
+    assert.ok(tutorialIsland() && rockyIsland().scene && caveScene().scene);
   } finally {
     await vite.close();
   }

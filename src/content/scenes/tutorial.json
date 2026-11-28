@@ -3,7 +3,7 @@
  "version": 1,
  "scene": {
   "id": "osvg5jx2",
-  "name": "Island",
+  "name": "Tutorial",
   "w": 24,
   "h": 24,
   "levels": [
@@ -1265,29 +1265,89 @@
   },
   "markers": [
    {
-    "name": "stonesSpot",
-    "i": 9.5,
-    "j": 14.5
+    "name": "stones",
+    "i": 10.5,
+    "j": 14.6
    },
    {
-    "name": "crateSpot",
-    "i": 15.5,
-    "j": 14.5
+    "name": "crate",
+    "i": 15.4,
+    "j": 13.4
    },
    {
-    "name": "hammerSpot",
-    "i": 8.5,
-    "j": 8.5
+    "name": "hammer",
+    "i": 8.4,
+    "j": 8.6
    },
    {
-    "name": "vineSpot",
-    "i": 13.5,
-    "j": 15.5
+    "name": "vine",
+    "i": 12.8,
+    "j": 15.6
    },
    {
-    "name": "clothSpot",
-    "i": 11.5,
-    "j": 8.5
+    "name": "cloth",
+    "i": 11.3,
+    "j": 8.4
+   },
+   {
+    "name": "wood1",
+    "i": 9.9,
+    "j": 7.7
+   },
+   {
+    "name": "wood2",
+    "i": 14.4,
+    "j": 10.6
+   },
+   {
+    "name": "wood3",
+    "i": 11.4,
+    "j": 16.3
+   },
+   {
+    "name": "wood4",
+    "i": 14.4,
+    "j": 16.3
+   },
+   {
+    "name": "drift1",
+    "i": 7.6,
+    "j": 10.5
+   },
+   {
+    "name": "drift2",
+    "i": 16.3,
+    "j": 14.6
+   },
+   {
+    "name": "drift3",
+    "i": 12.9,
+    "j": 9.3
+   },
+   {
+    "name": "coconut1",
+    "i": 12.9,
+    "j": 11.5
+   },
+   {
+    "name": "coconut2",
+    "i": 7.6,
+    "j": 12.5
+   },
+   {
+    "name": "coconut3",
+    "i": 14.2,
+    "j": 12.8
+   },
+   {
+    "name": "stone1",
+    "i": 12,
+    "j": 14.4
+   },
+   {
+    "name": "stone2",
+    "i": 9.2,
+    "j": 13.6
    }
   ]
  }

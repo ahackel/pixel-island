@@ -71,12 +71,12 @@ test('wash-ups and stones may be left near the survivor: the plain forms and the
 test('wash-ups and stones may be laid at a marker: the name is passed on, and checked against the scene\'s markers', () => {
   const log: string[] = [];
   const d: Doer = { ...idle, washUp: (items, near, at) => log.push(`washUp ${items} ${near} ${at}`), stones: (n, near, at) => log.push(`stones ${n} ${near} ${at}`) };
-  run([{ washUp: { items: ['crate'], at: 'crateSpot' } }, { stones: { n: 3, at: 'stones' } }], d);
-  assert.deepEqual(log, ['washUp crate undefined crateSpot', 'stones 3 undefined stones']);
+  run([{ washUp: { items: ['crate'], at: 'crate' } }, { stones: { n: 3, at: 'stones' } }], d);
+  assert.deepEqual(log, ['washUp crate undefined crate', 'stones 3 undefined stones']);
   const check = (e: unknown, markers?: string[]) => checkEffects([e], 'start', 's', { ...known, markers });
-  assert.deepEqual(check({ washUp: { items: ['crate'], at: 'crateSpot' } }, ['crateSpot']), []);
-  assert.deepEqual(check({ washUp: { items: ['crate'], at: 'crateSpot' } }), []);
-  assert.equal(check({ washUp: { items: ['crate'], at: 'elsewhere' } }, ['crateSpot']).length, 1);
+  assert.deepEqual(check({ washUp: { items: ['crate'], at: 'crate' } }, ['crate']), []);
+  assert.deepEqual(check({ washUp: { items: ['crate'], at: 'crate' } }), []);
+  assert.equal(check({ washUp: { items: ['crate'], at: 'elsewhere' } }, ['crate']).length, 1);
   assert.equal(check({ stones: { n: 2, at: '2bad' } }).length, 1);
   assert.equal(check({ stones: { n: 2, at: 'a', near: 4 } }).length, 1);
 });

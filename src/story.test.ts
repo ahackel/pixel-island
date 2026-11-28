@@ -1,21 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FIRST, ROCKY } from './islands.ts';
+import { TUTORIAL, ROCKY } from './islands.ts';
 import { checkStory, HANDLER_YIELDS, NATURAL } from './story.ts';
 import { HANDLERS } from './effects.ts';
 import type { Effect } from './effects.ts';
 import type { Quest } from './quests.ts';
 
 /** The first island's quests with `change` done to the one called `id`. */
-const first = (id: string, change: (q: Quest) => Quest | null): Quest[] => FIRST.quests.flatMap((q) => (q.id === id ? change(structuredClone(q)) ?? [] : [q]));
-const story = (quests: readonly Quest[], rules = FIRST.rules) => checkStory(quests, rules);
+const first = (id: string, change: (q: Quest) => Quest | null): Quest[] => TUTORIAL.quests.flatMap((q) => (q.id === id ? change(structuredClone(q)) ?? [] : [q]));
+const story = (quests: readonly Quest[], rules = TUTORIAL.rules) => checkStory(quests, rules);
 const noStart = (q: Quest): Quest => ({ ...q, start: undefined });
 const without = (key: string) => (q: Quest): Quest => ({ ...q, start: q.start?.filter((e) => !(key in e)) });
 /** Only the one line about quest `id` that the others do not already say. */
 const about = (lines: string[], id: string) => lines.filter((l) => l.includes(`"${id}"`));
 
 test('the first island can be finished: every goal, in order, can be reached with what the quests before it bring', () => {
-  assert.deepEqual(story(FIRST.quests), []);
+  assert.deepEqual(story(TUTORIAL.quests), []);
 });
 
 test('the rocky island, as far as it goes, can be finished too: the pot, the torch from flint, the spear from stones, the soup', () => {
@@ -51,12 +51,12 @@ test('a fire from lightning needs the lightning, and the storm and the crabs nee
   assert.ok(about(story(first('crab', without('weather'))), 'crab')[0].includes('windy'));
   assert.ok(about(story(first('storm', without('weather'))), 'storm')[0].includes('no storm'));
   // Sleeping out a storm needs the hut built before.
-  assert.ok(about(story(FIRST.quests.filter((q) => q.id !== 'hut')), 'storm')[0].includes('no hut'));
+  assert.ok(about(story(TUTORIAL.quests.filter((q) => q.id !== 'hut')), 'storm')[0].includes('no hut'));
 });
 
 test('a quest that waits for what comes later in the story is caught: the order matters', () => {
-  const raft = FIRST.quests.find((q) => q.id === 'raft')!;
-  const early = story([raft, ...FIRST.quests.filter((q) => q.id !== 'raft')]);
+  const raft = TUTORIAL.quests.find((q) => q.id === 'raft')!;
+  const early = story([raft, ...TUTORIAL.quests.filter((q) => q.id !== 'raft')]);
   assert.ok(about(early, 'raft')[0].includes('nothing gives'), early.join('\n'));
   assert.ok(about(early, 'raft')[0].includes('quest 1'));
 });
