@@ -493,40 +493,7 @@ export function refreshLinks(scene: Scene, sources = linkSources()): boolean {
   return changed;
 }
 
-// ------------------------------------------------------------------ storage
-
-const STORAGE_KEY = 'pixel-scenes';
-
-/** The editor's scenes: the one being edited, those open on its desk beside it (by id, the current one among them), and all of them. */
-export interface Library { current: string; open: string[]; scenes: Scene[] }
-
-/** The scenes saved here; the first visit gets one island to start with. Broken scenes are skipped. */
-export function loadLibrary(firstName: string): Library {
-  let scenes: Scene[] = [];
-  let current = '';
-  let open: string[] = [];
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-    if (saved && Array.isArray(saved.scenes)) {
-      for (const s of saved.scenes) {
-        try {
-          scenes.push(cleanScene(s));
-        } catch {
-          // One unreadable scene does not take the others with it.
-        }
-      }
-      current = typeof saved.current === 'string' ? saved.current : '';
-      if (Array.isArray(saved.open)) open = saved.open.filter((id: unknown) => typeof id === 'string');
-    }
-  } catch {
-    // Without storage the page starts with a fresh island.
-  }
-  if (!scenes.length) scenes = [createScene(firstName, 28, 28, true, 7)];
-  if (!scenes.some((s) => s.id === current)) current = scenes[0].id;
-  open = [...new Set(open)].filter((id) => scenes.some((s) => s.id === id));
-  if (!open.includes(current)) open.push(current);
-  return { current, open, scenes };
-}
+// ------------------------------------------------------------------ files
 
 /** The ids of every prop kind a scene draws: its plants, items and props. */
 const kindsUsed = (scene: Scene) => [...scene.plants.map((p) => p.plant), ...scene.items.filter((it) => !it.item.startsWith(OWN)).map((it) => `object:${it.item}`), ...(scene.props ?? []).map((p) => p.kind)];
@@ -536,16 +503,6 @@ export const withCarried = (scene: Scene): Scene => {
   const { carried: _, ...rest } = scene;
   return carried ? { ...rest, carried } : rest;
 };
-
-/** False when the browser refuses, so the page can warn that changes are not kept. */
-export function saveLibrary(library: Library): boolean {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...library, scenes: library.scenes.map(withCarried) }));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const FILE_TYPE = 'pixel-scene';
 export const sceneFile = (scene: Scene) => JSON.stringify({ type: FILE_TYPE, version: 1, scene: withCarried(scene) });

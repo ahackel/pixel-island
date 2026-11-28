@@ -17,7 +17,7 @@ import { LOOT } from '../../engine/world/loot.ts';
 import { Herd } from '../../engine/world/herd.ts';
 import { findPath, type Waypoint } from '../../engine/world/path.ts';
 import {
-  CAVE_DEFAULTS, CAVE_OPEN, cleanWalls, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
+  CAVE_DEFAULTS, CAVE_OPEN, cleanWalls, createCave, createScene, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
 } from '../../engine/world/scene.ts';
 import { digHole, MARKER_NAME, type Marker } from '../../engine/world/scene.ts';
 import { doorFits, ladderOn, type Climb, type DoorState } from '../../engine/world/ways.ts';
@@ -158,10 +158,13 @@ interface Prefs {
   bright: boolean;
   /** The name the Marker tool sets down (or moves) a marker by. */
   marker: string;
+  /** The scene being edited and those open on the desk, by project file name; the scenes themselves are only in the project. */
+  scene: string;
+  open: string[];
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false, marker: 'spot' };
+  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false, marker: 'spot', scene: '', open: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
@@ -190,6 +193,8 @@ function loadPrefs(): Prefs {
     prefs.fps = saved?.fps === true;
     prefs.bright = saved?.bright === true;
     if (typeof saved?.marker === 'string' && MARKER_NAME.test(saved.marker)) prefs.marker = saved.marker;
+    if (typeof saved?.scene === 'string') prefs.scene = saved.scene;
+    if (Array.isArray(saved?.open)) prefs.open = saved.open.filter((f: unknown) => typeof f === 'string');
   } catch {
     // Settings are a convenience; without storage the defaults apply.
   }
@@ -206,7 +211,26 @@ function savePrefs(): void {
 
 // ------------------------------------------------------------------ scenes
 
-const library = loadLibrary(t('scene.first'));
+/** The scenes saved in the project (content/scenes) by file name; the dev server and the build both see them. */
+const projectScenes = Object.entries(import.meta.glob('/src/content/scenes/*.json', { eager: true, import: 'default' }))
+  .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data), title: undefined as string | undefined }));
+const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
+/** The editor's scenes: the project's files, read afresh on every visit (the editor keeps no copy of its own), and any made here. */
+const library = (() => {
+  const scenes: Scene[] = [];
+  const byFile = new Map<string, string>();
+  for (const p of projectScenes) {
+    try {
+      const s = readSceneFile(p.text);
+      scenes.push(s);
+      byFile.set(p.name, s.id);
+    } catch { /* a broken file shows its name in the list */ }
+  }
+  if (!scenes.length) scenes.push(createScene(t('scene.first'), 28, 28, true, 7));
+  const current = byFile.get(prefs.scene) ?? scenes[0].id;
+  const open = [...new Set([...prefs.open.flatMap((f) => byFile.get(f) ?? []), current])];
+  return { current, open, scenes };
+})();
 const sceneNow = () => library.scenes.find((s) => s.id === library.current)!;
 /** A scene's world in the editor: drawn alone while editing, so the other scenes on the desk show round it. */
 function worldFor(scene: Scene): World {
@@ -257,7 +281,9 @@ function store(): void {
   // The ground is copied to the scene when it is redrawn, which may not have happened yet.
   world.commit();
   current = canon(sceneNow());
-  if (!saveLibrary(library)) say(t('scene.saveFailed'));
+  prefs.scene = slug(sceneNow().name);
+  prefs.open = library.open.flatMap((id) => library.scenes.find((s) => s.id === id) ?? []).map((s) => slug(s.name));
+  savePrefs();
 }
 /** After any change to the scene: saved shortly after, so a drag is one write. */
 function sceneChanged(): void {
@@ -3256,9 +3282,6 @@ async function importScene(): Promise<void> {
 
 // ------------------------------------------------------------------ scene list
 
-/** The scenes saved in the project (content/scenes) by file name; the dev server and the build both see them. */
-const projectScenes = Object.entries(import.meta.glob('/src/content/scenes/*.json', { eager: true, import: 'default' }))
-  .map(([file, data]) => ({ name: file.slice(file.lastIndexOf('/') + 1, -5), text: JSON.stringify(data), title: undefined as string | undefined }));
 /** The scenes of the editor, then the project's own that the editor has not opened yet (a tap on one opens a copy of it). */
 const sceneTiles = () => [
   ...library.scenes.map((s) => ({ id: s.id, words: s.name, picture: sceneThumb(s) })),
@@ -3284,7 +3307,6 @@ function sceneThumb(s: Scene): HTMLCanvasElement {
   c.style.height = `${s.h * k}px`;
   return c;
 }
-const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scene';
 for (const p of projectScenes) {
   try { projectCanon.set(p.name, canon(readSceneFile(p.text))); } catch { /* a broken file counts as not saved */ }
 }
