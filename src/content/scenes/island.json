@@ -1262,6 +1262,33 @@
   "spawn": {
    "i": 11.5,
    "j": 12.5
-  }
+  },
+  "markers": [
+   {
+    "name": "stonesSpot",
+    "i": 9.5,
+    "j": 14.5
+   },
+   {
+    "name": "crateSpot",
+    "i": 15.5,
+    "j": 14.5
+   },
+   {
+    "name": "hammerSpot",
+    "i": 8.5,
+    "j": 8.5
+   },
+   {
+    "name": "vineSpot",
+    "i": 13.5,
+    "j": 15.5
+   },
+   {
+    "name": "clothSpot",
+    "i": 11.5,
+    "j": 8.5
+   }
+  ]
  }
 }

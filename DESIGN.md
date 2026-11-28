@@ -113,6 +113,7 @@ Decided per tool: the generic editors live in pixel-engine and load and save JSO
 ## Progression
 
 - **Mornings:** key items wash up with the quest that needs them, which guarantees a path to the boat. Random driftwood comes on top.
+- **The tutorial is laid out, not rolled:** what its quests bring (the stones, the crate, the hammer, the vine, the sailcloth) lies at named markers of the island's scene, set in the scene editor, the same every game. What is left to chance (the morning's sticks and driftwood, coconuts, fish, crabs) comes from one seed, which `?seed=` fixes; the playthrough plays a fixed seed, so it is the same game every run.
 - **Learning** happens three ways:
   - finding an item that unlocks something (flint → fire, hook → fishing);
   - combining items (stick + stone → axe);

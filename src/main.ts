@@ -12,7 +12,7 @@ import type { Mood } from '@pixel/engine/character/base.ts';
 import type { Look } from '@pixel/engine/core/puppet.ts';
 import { FRAMES } from '@pixel/engine/flora/flora.ts';
 import { Actor } from '@pixel/engine/world/actor.ts';
-import { settingsOf, type PlacedPerson } from '@pixel/engine/world/scene.ts';
+import { markerOf, settingsOf, type PlacedPerson } from '@pixel/engine/world/scene.ts';
 import { turnFacing } from '@pixel/engine/core/puppet.ts';
 import { light, lightByTile } from '@pixel/engine/world/daylight.ts';
 import { CLEAR, flashAt, lightning, type Weather } from '@pixel/engine/world/weather.ts';
@@ -48,7 +48,7 @@ import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
 import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
 import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
-import { buildSpot, dropCoconuts, headSide, lay, layStones, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washUp, washWood, type Shore } from './shore.ts';
+import { buildSpot, dropCoconuts, headSide, lay, layStones, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washUp, washWood, type Around, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
 import { chestKey, doorKey, doorState, openDoor as openDoorRule, passable as canPass, takeFromChest } from './places.ts';
 import { bagView } from './bag-ui.ts';
@@ -117,7 +117,15 @@ const inCave = () => !!world.scene.cave;
 const inDark = () => settingsOf(world.scene).light === 'dark';
 /** Whether the survivor is on the island's open ground, where the island's own things (hut, fires, crabs, palms, bag drops) are. */
 const onIsland = () => world === island && !inCave();
-const fishRandom = rng(Date.now());
+/**
+ * What is left to chance in play comes from one seed (`?seed=`, else a new one each load), in a stream for each part of
+ * the game, so that what one part draws does not shift another's: where the sea leaves things, the fish, sharks and
+ * crabs, and a grab's luck. With the same seed and the same moves a game plays out the same (the playthrough relies on it).
+ */
+const SEED = opts.seed ?? Math.floor(Math.random() * 1e9);
+const shoreRandom = rng(SEED);
+const fishRandom = rng(SEED ^ 0x2545f491);
+const luck = rng(SEED ^ 0x68e31da4);
 island.fish = spawnFish(island.floor, FISH_COUNT, fishRandom);
 /** The sharks out in the deep water: never caught, never gone, the reason there is no swimming away. */
 const sharks = spawnSharks(island.floor, SHARK_COUNT, fishRandom);
@@ -148,6 +156,16 @@ function faceToLie(): void {
   actor.lookAt(right ? 0 : 1, right ? 1 : 0);
 }
 
+/**
+ * Where a quest's wash-up or stones go: at the island scene's marker `mark` if it is named (and the scene has it), else
+ * within `near` metres of the survivor at `at`, else anywhere on the beach.
+ */
+function around(at: { i: number; j: number }, near?: number, mark?: string): Around | undefined {
+  const m = mark ? markerOf(islandScene, mark) : undefined;
+  if (mark && !m) console.warn(`No marker "${mark}" in the island's scene: laid anywhere on the beach.`);
+  return m ? { marker: m } : near ? { at, within: near } : undefined;
+}
+
 function newGame(who = firstWho()): Game {
   // Washed ashore along the water's edge, the hat on the sand beyond their head (shore.ts).
   const { at, hat } = washedUp(isle, scene.spawn, dry, !!who.worn.hat);
@@ -164,7 +182,7 @@ function newGame(who = firstWho()): Game {
   // What the quests so far brought (in a tryout, all those before the one it starts at): their start effects, as far as
   // they lie on the island; a strike before then has burnt its palm.
   for (let k = 0; k <= opts.startQuest; k++) {
-    run(bundle.quests[k].start ?? [], { ...idle, washUp: (items, near) => washUp(isle, g, items, near ? { at, within: near } : undefined), stones: (n, near) => layStones(isle, g, n, near ? { at, within: near } : undefined), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
+    run(bundle.quests[k].start ?? [], { ...idle, washUp: (items, near, mark) => washUp(isle, g, items, around(at, near, mark)), stones: (n, near, mark) => layStones(isle, g, n, around(at, near, mark)), strike: () => { if (k < opts.startQuest) burnPalm(isle, g, at); } });
   }
   return g;
 }
@@ -181,7 +199,7 @@ const isle: Shore = {
   dry: (p) => isLand(island.map, Math.floor(p.i), Math.floor(p.j)),
   aboveWater: (p) => heightAt(island.map, p.i, p.j) > island.water + 0.1,
   surface: (p) => surfaceAt(island.map, Math.floor(p.i), Math.floor(p.j)),
-  random: Math.random,
+  random: shoreRandom,
 };
 const saved = opts.fresh || !saves() ? null : loadGame(scene.w, palms.length, ISLAND_ID);
 let game = saved ?? newGame();
@@ -981,8 +999,8 @@ const doer = (subject: Subject = null): Doer => ({
   full: bagFull,
   call: (h) => DO[h](subject),
   weather: (kind) => void (game.weather = kind),
-  washUp: (items, near) => washUp(isle, game, items, near ? { at: actor, within: near } : undefined),
-  stones: (n, near) => layStones(isle, game, n, near ? { at: actor, within: near } : undefined),
+  washUp: (items, near, mark) => washUp(isle, game, items, around(actor, near, mark)),
+  stones: (n, near, mark) => layStones(isle, game, n, around(actor, near, mark)),
   strike: () => void (strikeNow = true),
 });
 
@@ -1065,7 +1083,7 @@ function catchCrab(crab: Crab): void {
   actor.lookAt(crab.i - actor.i, crab.j - actor.j);
   actor.emote('use', performance.now());
   if (bagFull()) return think('think.full');
-  if (hand !== 'spear' && Math.random() >= GRAB_LUCK) {
+  if (hand !== 'spear' && luck() >= GRAB_LUCK) {
     scare(crab, actor);
     return think('think.pinched');
   }
@@ -1351,7 +1369,8 @@ let strikeFx: Strike | null = null;
 /** Splinters flying from the crate smashed. */
 let bursts: Burst[] = [];
 const particles = new Particles();
-let last = performance.now();
+/** The time of the last frame; none before the first, which then moves nothing on (how long the page took to load does not count). */
+let last: number | null = null;
 /** Whether frames draw: the playthrough's test hook turns drawing off to run the game's rules fast (see the end of this file). */
 let drawing = true;
 /** Whether a frame has failed; the first failure is reported, later ones only logged. */
@@ -1360,7 +1379,10 @@ let failed = false;
  * Runs a frame and asks for the next one whatever happens in it, so one bad frame does not stop the game for good.
  * The first error goes to `reportError` (the console, and the page's error box in index.html).
  */
+/** Frames run so far, and the time of the last: the playthrough checks that only its own clock moves the game. */
+let frames = 0;
 function frame(ms: number): void {
+  frames++;
   try {
     step(ms);
   } catch (e) {
@@ -1373,7 +1395,7 @@ function frame(ms: number): void {
 /** One frame: the clock, walking, the creatures, the sky, drawing the world, and the page around it, in that order. */
 function step(ms: number): void {
   const begun = performance.now();
-  const dt = Math.min(0.1, (ms - last) / 1000);
+  const dt = last === null ? 0 : Math.min(0.1, (ms - last) / 1000);
   last = ms;
   view.update(dt);
   keepInView();
@@ -1624,6 +1646,7 @@ if (import.meta.env.DEV) {
   const at = (p: { i: number; j: number }) => ({ i: Math.round(p.i * 100) / 100, j: Math.round(p.j * 100) / 100 });
   (window as any).__test = {
     state: () => ({
+      seed: SEED, frames,
       story: bundle.id, day: game.day, hunger: game.hunger, energy: game.energy, weather: game.weather,
       bag: [...game.bag], hand,
       quest: { n: game.quest.quest, id: questNow().id, goal: questNow().goal, count: game.quest.count, done: game.quest.done },

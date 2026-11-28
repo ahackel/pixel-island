@@ -167,3 +167,17 @@ body.desk-dragging, body.desk-dragging * { cursor: grabbing !important; }
   z-index: 2;
   line-height: 0;
 }
+
+/* A marker's name over its pin while editing (the Marker tool): small, pale, not in the way of taps. */
+.desk-marker {
+  pointer-events: none;
+  padding: 0 3px;
+  font: 10px/14px monospace;
+  color: #e8f1fb;
+  background: #1d3f6ecc;
+  white-space: nowrap;
+}
+.desk-marker--lit {
+  background: #2f74c8;
+  outline: 2px solid #e8f1fb;
+}

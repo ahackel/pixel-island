@@ -10,7 +10,7 @@ Turn the 2D pixel-art tools into a small game engine with a scene editor, plus a
 | Engine | A shared runtime (iso world, terrain, sprites, input, camera, collision, saving) and a general scene editor on top of it. The island is one scene built with it |
 | Terrain | Built on `engine/world/terrain.ts` height map. Tools: paint tile type, raise and lower height. A tile lowered below sea level becomes seafloor |
 | Foliage | Plants from the flora tool (`engine/flora/flora.ts`), including plants saved in the flora tool |
-| Scenes | Several named scenes: create, rename, delete, switch. Map size per scene. Spawn point. Export and import as JSON. Saved locally |
+| Scenes | Several named scenes: create, rename, delete, switch. Map size per scene. Spawn point. Markers: named spots a game points at (`Scene.markers`, `world/markers.ts`; the Marker tool sets, moves and lists them, the eraser takes them away). Export and import as JSON. Saved locally |
 | Modes | Toggle between Edit (tools, free camera) and Play (character spawns, camera follows) |
 | Controls | Desktop: WASD/arrows to walk, Shift to run, mouse to paint and place. Touch: tap or drag to walk, touch to paint and place, pinch to zoom |
 | Collision | Water blocks; a step blocks where an edge's ends are more than a level apart, and so does too steep a slope (see **Heights, walls and ways**); every plant but grass blocks; walls and doors that are not open block their edge |

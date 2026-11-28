@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSpot, headSide, HALF_BODY, layStones, lyingCount, washUp, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
+import { buildSpot, markerSpots, headSide, HALF_BODY, layStones, lyingCount, washUp, sideways, washedUp, morningGifts, topUpStones, washWood, DRIFT_LYING, STONES_OUT, WOOD_LYING, type Shore } from './shore.ts';
 import { HUT_AT } from './crafts.ts';
 import { FIRST } from './islands.ts';
 import { startProgress } from './quests.ts';
@@ -131,4 +131,22 @@ test('the sea leaves nothing at a palm\'s foot, where it could not be walked up 
   const h = game();
   washUp(only, h, ['vine']);
   assert.equal(h.lying.length, 1);
+});
+
+test('things laid at a marker go on it and close round it, the same every time, clear of palms and of each other', () => {
+  const at = { i: 6, j: 10 };
+  const g = game();
+  washUp(shore, g, ['crate', 'hammer', 'vine'], { marker: at });
+  layStones(shore, g, 2, { marker: at });
+  const spots = [...g.items, ...g.lying].map((o) => `${o.i.toFixed(2)},${o.j.toFixed(2)}`);
+  // The crate on the marker, the rest on the ring 0.7 m round it, in order (east first), none on another.
+  assert.deepEqual(spots, ['6.00,10.00', '6.70,10.00', '6.49,10.49', '6.00,10.70', '5.51,10.49']);
+  const again = game();
+  washUp(shore, again, ['crate', 'hammer', 'vine'], { marker: at });
+  layStones(shore, again, 2, { marker: at });
+  assert.deepEqual([...again.items, ...again.lying].map((o) => `${o.i.toFixed(2)},${o.j.toFixed(2)}`), spots);
+  // Next to a palm, the spots within its trunk's reach are left out; with no room at all, things go on the marker.
+  const byPalm = markerSpots(shore, game(), { i: 8.7, j: 8 }, 3);
+  assert.ok(byPalm.every((c) => Math.hypot(c.i - 8, c.j - 8) >= 0.8), JSON.stringify(byPalm));
+  assert.deepEqual(markerSpots({ ...shore, aboveWater: () => false }, game(), at, 2), [at, at]);
 });

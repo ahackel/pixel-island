@@ -19,7 +19,7 @@ import { findPath, type Waypoint } from '../../engine/world/path.ts';
 import {
   CAVE_DEFAULTS, CAVE_OPEN, cleanWalls, createCave, createScene, loadLibrary, MAX_HEADROOM, MAX_SIZE, MIN_SIZE, readSceneFile, refreshLinks, resized, saveLibrary, SCENE_PRESETS, sceneFile, SEEDS, setSettings, settingsOf, TURNS, type PlacedAnimal, type PlacedPerson, type PlacedPlant, type Scene, type SceneSettings,
 } from '../../engine/world/scene.ts';
-import { digHole } from '../../engine/world/scene.ts';
+import { digHole, MARKER_NAME, type Marker } from '../../engine/world/scene.ts';
 import { doorFits, ladderOn, type Climb, type DoorState } from '../../engine/world/ways.ts';
 import { grows, rasterOf, smooth, World, type Rect, type Thing } from '../../engine/world/world.ts';
 import { DECOR, decorById, decorPixels } from '../../engine/world/decor.ts';
@@ -51,7 +51,7 @@ import { Overlay, type Line, type Pin } from './overlay.ts';
 /** Tints of a cave's dark to choose from: night blue first (the default), then deep green, purple, red-brown, brown and black. */
 const CAVE_TINTS = [CAVE_DEFAULTS.tint, '#0a3a3a', '#2a1060', '#501010', '#3a2a08', '#000000'];
 
-const TOOLS = ['move', 'ground', 'paint', 'walls', 'ways', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'exit', 'settings'] as const;
+const TOOLS = ['move', 'ground', 'paint', 'walls', 'ways', 'prop', 'plant', 'decor', 'animal', 'person', 'item', 'erase', 'spawn', 'marker', 'exit', 'settings'] as const;
 type Tool = (typeof TOOLS)[number];
 /**
  * What a stroke works as: a tool, or what the Ground tool does with a modifier key held (smooth, level) and what the
@@ -107,7 +107,7 @@ const ZOOM = { min: 0.5, max: 8 };
 const BRUSH_MAX = 7;
 /** Each tool's icon in the pixel library. */
 const TOOL_ICONS: Record<Work, string> = {
-  move: 'pointer', ground: 'mountain', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag', settings: 'cog',
+  move: 'pointer', ground: 'mountain', smooth: 'smooth', level: 'flat', shape: 'shapes', paint: 'brush', walls: 'wall', ways: 'ladder', prop: 'tool', exit: 'door', plant: 'palm', decor: 'shell', animal: 'paw', person: 'person', item: 'box', erase: 'eraser', spawn: 'flag', marker: 'pin', settings: 'cog',
 };
 
 interface Prefs {
@@ -156,10 +156,12 @@ interface Prefs {
   fps: boolean;
   /** A cave evenly lit while editing, rather than as dark as in Play. */
   bright: boolean;
+  /** The name the Marker tool sets down (or moves) a marker by. */
+  marker: string;
 }
 const PREFS_KEY = 'pixel-scenes-ui';
 function loadPrefs(): Prefs {
-  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false };
+  const prefs: Prefs = { mode: 'edit', tool: 'ground', paint: 2, levelTo: null, edges: 'keep', wall: 'brick', way: 'ladder', brush: 1, plant: FLORA.find((e) => e.category === 'palm')?.id ?? FLORA[0].id, prop: propKinds()[0]?.id ?? '', propQuery: '', decor: DECOR[0].id, item: 'crate', itemTurn: 0, animal: `preset:${PRESETS[0].id}`, character: '', person: '', pose: '', poseFrame: 0, rot: 0, grid: false, water: true, colliders: false, fps: false, bright: false, marker: 'spot' };
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
     if (saved?.mode === 'edit' || saved?.mode === 'play') prefs.mode = saved.mode;
@@ -187,6 +189,7 @@ function loadPrefs(): Prefs {
     prefs.colliders = saved?.colliders === true;
     prefs.fps = saved?.fps === true;
     prefs.bright = saved?.bright === true;
+    if (typeof saved?.marker === 'string' && MARKER_NAME.test(saved.marker)) prefs.marker = saved.marker;
   } catch {
     // Settings are a convenience; without storage the defaults apply.
   }
@@ -548,6 +551,7 @@ function paintDesk(image: { data: Uint8ClampedArray; width: number; height: numb
     ...stubs(ways).map(stubPin),
     ...ways.filter((w) => w.scene.id === world.scene.id).map(handlePin),
     ...openScenes().map(tabPin),
+    ...(world.scene.markers ?? []).map(markerPin),
   ] : [];
   const lines = editing ? [...linkLines(ways), ...linkDragLine()] : [];
   overlay.show(pins, (p) => ({ x: (p.x - here.x - view.x) * zoom, y: (p.y - here.y - view.y) * zoom }), lines);
@@ -1139,6 +1143,7 @@ function cannotEdit(at: { i: number; j: number }, w = world): boolean {
     case 'plant':
       return !grows(w.map, prefs.plant, at.i + 0.5, at.j + 0.5);
     case 'spawn':
+    case 'marker':
     case 'animal':
     case 'person':
       return !isLand(w.map, at.i, at.j);
@@ -1543,10 +1548,17 @@ function apply(at: { i: number; j: number }, stroke: StrokeState): void {
       world.scene.items = kept(world.scene.items, world.viewItems());
       if (world.scene.cave) world.scene.cave.exits = kept(world.scene.cave.exits, world.scene.cave.exits.map((e) => { const v = world.toView(e); return { vi: v.i, vj: v.j }; }));
       world.scene.props = kept(world.scene.props ?? [], world.viewProps());
+      if (world.scene.markers) {
+        world.scene.markers = kept(world.scene.markers, world.scene.markers.map((m) => { const v = world.toView(m); return { vi: v.i, vj: v.j }; }));
+        if (!world.scene.markers.length) delete world.scene.markers;
+      }
       break;
     }
     case 'spawn':
       world.scene.spawn = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
+      break;
+    case 'marker':
+      placeMarker(at);
       break;
   }
   // Nor is anything lowered under the cutaway's floor, out of reach.
@@ -1619,6 +1631,38 @@ function toggleExit(at: { i: number; j: number }): void {
   const here = (e: { i: number; j: number }) => { const v = world.toView(e); return Math.floor(v.i) === at.i && Math.floor(v.j) === at.j; };
   if (cave.exits.some(here)) cave.exits = cave.exits.filter((e) => !here(e));
   else cave.exits.push(world.toData({ i: at.i + 0.5, j: at.j + 0.5 }));
+}
+
+/** The marker named in the tool's field, set down in the middle of a tile of land, or moved there if the scene has it already. */
+function placeMarker(at: { i: number; j: number }): void {
+  if (!isLand(world.map, at.i, at.j)) return;
+  const name = prefs.marker;
+  if (!MARKER_NAME.test(name)) return say(t('marker.badName'));
+  const spot = world.toData({ i: at.i + 0.5, j: at.j + 0.5 });
+  const markers = (world.scene.markers ??= []);
+  const old = markers.find((m) => m.name === name);
+  if (old) Object.assign(old, spot);
+  else {
+    markers.push({ name, ...spot });
+    // The new one joins the panel's list (after this stroke's change is in).
+    queueMicrotask(showOptions);
+  }
+}
+/** A marker, shown while editing: a small blue pin, its name over it (`markerPin`). */
+const MARKER_MARK: Picture = {
+  get: (x, y) => (y >= 5 ? (x === 2 ? '#1d3f6e' : null) : Math.abs(x - 2) + Math.abs(y - 2) <= 2 ? (Math.abs(x - 2) + Math.abs(y - 2) === 2 ? '#1d3f6e' : '#4f9be8') : null),
+};
+/** A marker's name over the desk, just above its pin (desk pixels, like the ways' handles). */
+function markerPin(m: Marker): Pin {
+  const v = world.toView(m);
+  const o = offsetOf(world);
+  const g = toScreen(v.i, v.j, standingHeight(world.map, v.i, v.j));
+  const lit = m.name === prefs.marker && toolNow() === 'marker';
+  return {
+    key: `marker:${world.scene.id}:${m.name}:${lit}`,
+    at: { x: g.x + world.ground.origin.x + o.x, y: g.y + world.ground.origin.y + o.y - 9 }, out: { x: 0, y: -2 }, align: { x: 0.5, y: 1 },
+    make: () => h('div', { class: `desk-marker${lit ? ' desk-marker--lit' : ''}` }, m.name),
+  };
 }
 
 /** A way out, shown while editing: a little patch of daylight. */
@@ -2491,6 +2535,10 @@ function frame(ms: number): void {
     if (prefs.mode === 'play' && actor) all.push({ ...actor.thing(world, ms), silhouette: true }, ...actor.dropThings());
     else {
       all.push(flagOf(world));
+      for (const m of world.scene.markers ?? []) {
+        const v = world.toView(m);
+        all.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: MARKER_MARK, w: 5, h: 9, foot: { x: 2, y: 8 }, shadow: [] });
+      }
       for (const e of cave?.exits ?? []) {
         const v = world.toView(e);
         all.push({ spot: { i: v.i, j: v.j, level: standingHeight(world.map, v.i, v.j) }, picture: EXIT_MARK, w: 7, h: 7, foot: { x: 3, y: 3 }, shadow: [] });
@@ -2942,6 +2990,7 @@ function editOptions(): Node[] {
     out.push(picks(t('items'), objectChoices().map((c) => ({ id: c.id, name: c.name, picture: itemThumb(c.id, c.prop) })), prefs.item, (item) => set({ item })));
     out.push(link('../objects/', t('object.edit')));
   }
+  if (tool === 'marker') out.push(...markerOptions());
   if (tool === 'move' && selected) out.push(...selectionOptions(selected));
   if (tool === 'settings') out.push(...settingsOptions());
   if (tool === 'animal') {
@@ -2958,6 +3007,29 @@ function editOptions(): Node[] {
     out.push(link('../wardrobe/', t('character.edit')));
   }
   return out;
+}
+
+/** The Marker tool's name field, and the scene's markers: each picks its name for the tool, or is taken away. */
+function markerOptions(): Node[] {
+  const markers = sceneNow().markers ?? [];
+  const list = markers.map((m) => h('div', { class: 'urow' },
+    pixelButton(m.name, { icon: 'pin', words: m.name, pressed: m.name === prefs.marker }, () => { set({ marker: m.name }); }),
+    pixelButton(t('marker.remove'), { icon: 'trash' }, () => {
+      edit(() => {
+        const s = sceneNow();
+        s.markers = (s.markers ?? []).filter((o) => o !== m);
+        if (!s.markers.length) delete s.markers;
+      });
+      showOptions();
+    })));
+  return [
+    fields(field({ words: t('marker.name') }, textField(t('marker.name'), prefs.marker, (name) => {
+      if (!MARKER_NAME.test(name)) return;
+      prefs.marker = name;
+      savePrefs();
+    }, { placeholder: 'crateSpot', width: 90 }))),
+    ...(list.length ? [h('span', { class: 'opts__label' }, t('marker.list')), ...list] : [h('p', { class: 'opts__tip' }, t('marker.none'))]),
+  ];
 }
 
 /** Alive and roaming, or held in one frame of a clip, as a prop. */

@@ -55,11 +55,30 @@ export function spotsNear(s: Shore, p: Spot, n: number, r: number, span: number,
   return out;
 }
 
-/** Where the sea leaves things: on the beach within `within` metres of `at` (the survivor), where the island is too big to leave them anywhere. */
-export interface Around { at: Spot; within: number }
+/**
+ * Where the sea leaves things: on the beach within `within` metres of `at` (the survivor), where the island is too big
+ * to leave them anywhere; or, `marker`, at a marker: the first on it, the rest close round it, the same every game.
+ */
+export type Around = { at: Spot; within: number } | { marker: Spot };
+
+/** Round a marker, in order: the spot itself, then a ring of eight 0.7 m out, then one of eight 1.4 m out. */
+const ROUND = [[0, 0], ...[0.7, 1.4].flatMap((r) => Array.from({ length: 8 }, (_, k) => [r * Math.cos((k * Math.PI) / 4), r * Math.sin((k * Math.PI) / 4)]))];
+/** The `n` spots things laid at a marker go to: the first round it (see ROUND) that are above the water and clear of the palms' trunks and of what lies there already. */
+export function markerSpots(s: Shore, g: Game, at: Spot, n: number): Spot[] {
+  const out: Spot[] = [];
+  const taken = (c: Spot) => [...g.lying, ...g.items, ...out].some((o) => Math.hypot(o.i - c.i, o.j - c.j) < 0.5);
+  for (const [di, dj] of ROUND) {
+    if (out.length >= n) break;
+    const c = { i: at.i + di, j: at.j + dj };
+    if (s.aboveWater(c) && !s.palms.some((q) => Math.hypot(q.i - c.i, q.j - c.j) < TRUNK_CLEAR) && !taken(c)) out.push(c);
+  }
+  // A marker with no room round it (it should be moved): what is left goes on it.
+  while (out.length < n) out.push({ ...at });
+  return out;
+}
 
 /** Somewhere on the beach, anywhere in its tile, near `around` if there is beach there, else anywhere; there must be beach. */
-function onBeach(s: Shore, around?: Around): Spot {
+function onBeach(s: Shore, around?: { at: Spot; within: number }): Spot {
   const near = around ? s.beach.filter((b) => Math.hypot(b.i - around.at.i, b.j - around.at.j) <= around.within) : [];
   const pool = near.length ? near : s.beach;
   // The shore runs through the beach tiles: only a spot whose ground is above the water, so what lies there is seen.
@@ -83,10 +102,12 @@ export function dropCoconuts(s: Shore, g: Game): void {
 /** What the sea brings: the items given. A crate stands on the beach; the small things lie there to be picked up. */
 export function washUp(s: Shore, g: Game, items: readonly string[], around?: Around): void {
   if (!s.beach.length) return;
-  for (const item of items) {
-    if (isLoose(item)) lay(g, item, onBeach(s, around));
-    else g.items.push({ item, ...onBeach(s, around) });
-  }
+  const spots = around && 'marker' in around ? markerSpots(s, g, around.marker, items.length) : null;
+  items.forEach((item, k) => {
+    const at = spots ? spots[k] : onBeach(s, around as { at: Spot; within: number } | undefined);
+    if (isLoose(item)) lay(g, item, at);
+    else g.items.push({ item, ...at });
+  });
 }
 
 /** Each morning the sea leaves a stick or two and a piece of driftwood, dry by the time they are found. */
@@ -98,7 +119,9 @@ export function washWood(s: Shore, g: Game): void {
 
 /** A quest's `stones` effect: stones laid on the beach (from then on `topUpStones` keeps some to find). */
 export function layStones(s: Shore, g: Game, n: number, around?: Around): void {
-  for (let k = 0; k < n && s.beach.length; k++) lay(g, 'stone', onBeach(s, around));
+  if (!s.beach.length) return;
+  if (around && 'marker' in around) return markerSpots(s, g, around.marker, n).forEach((at) => lay(g, 'stone', at));
+  for (let k = 0; k < n; k++) lay(g, 'stone', onBeach(s, around));
 }
 
 /** The morning's gifts: a coconut once the last is eaten, and the sea's wood. */

@@ -25,6 +25,8 @@ export const FIRST = bundle('first', firstQuests as Quest[]);
 export const ROCKY = bundle('rocky', rockyQuests as Quest[], [], rockyLoca);
 
 export const BUNDLES: readonly Bundle[] = [FIRST, ROCKY];
+/** The scene each story is played on (content/scenes/<name>.json, made in the scene editor): its markers are what the quests' `at` may name. */
+export const SCENE_OF: Readonly<Record<string, string>> = { first: 'island', rocky: 'rocky-island' };
 export const isStory = (id: unknown): id is string => BUNDLES.some((b) => b.id === id);
 /** The bundle for a story id; the first island's for one nobody knows (a save from before there were bundles). */
 export const bundleOf = (id: unknown): Bundle => BUNDLES.find((b) => b.id === id) ?? FIRST;

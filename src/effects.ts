@@ -24,8 +24,9 @@ export type Handler = (typeof HANDLERS)[number];
  * - `room`: stop here, saying so, if the bag is full.
  * - `weather`: the weather that lasts from now.
  * - `washUp`: things the sea leaves on the beach: a list, or `{ items, near }` for those within `near` metres of the survivor
- *   (on an island too big to leave them anywhere).
- * - `stones`: stones laid on the beach, a number or `{ n, near }` likewise; from then on there is always one to find.
+ *   (on an island too big to leave them anywhere), or `{ items, at }` at a marker of the island's scene (set in the scene
+ *   editor), the first on it and the rest close round it, the same every game.
+ * - `stones`: stones laid on the beach, a number or `{ n, near }` or `{ n, at }` likewise; from then on there is always one to find.
  * - `strike`: lightning waits to strike a palm.
  */
 export type Effect =
@@ -36,8 +37,8 @@ export type Effect =
   | { call: Handler }
   | { room: true }
   | { weather: Kind }
-  | { washUp: string[] | { items: string[]; near?: number } }
-  | { stones: number | { n: number; near?: number } }
+  | { washUp: string[] | { items: string[]; near?: number; at?: string } }
+  | { stones: number | { n: number; near?: number; at?: string } }
   | { strike: true };
 
 /** What an effect does to the game. */
@@ -50,9 +51,9 @@ export interface Doer {
   full(): boolean;
   call(handler: Handler): void;
   weather(kind: Kind): void;
-  /** `near`: within so many metres of the survivor. */
-  washUp(items: readonly string[], near?: number): void;
-  stones(n: number, near?: number): void;
+  /** `near`: within so many metres of the survivor; `at`: at the marker of that name, the first on it and the rest round it. */
+  washUp(items: readonly string[], near?: number, at?: string): void;
+  stones(n: number, near?: number, at?: string): void;
   strike(): void;
 }
 
@@ -70,8 +71,8 @@ export function run(effects: readonly Effect[], d: Doer): void {
     else if ('take' in e) d.take(e.take);
     else if ('call' in e) d.call(e.call);
     else if ('weather' in e) d.weather(e.weather);
-    else if ('washUp' in e) (Array.isArray(e.washUp) ? d.washUp(e.washUp) : d.washUp(e.washUp.items, e.washUp.near));
-    else if ('stones' in e) (typeof e.stones === 'number' ? d.stones(e.stones) : d.stones(e.stones.n, e.stones.near));
+    else if ('washUp' in e) (Array.isArray(e.washUp) ? d.washUp(e.washUp) : d.washUp(e.washUp.items, e.washUp.near, e.washUp.at));
+    else if ('stones' in e) (typeof e.stones === 'number' ? d.stones(e.stones) : d.stones(e.stones.n, e.stones.near, e.stones.at));
     else if ('strike' in e) d.strike();
     else if (d.full()) return d.think('think.full');
   }
@@ -91,12 +92,21 @@ const NAMES: Record<Where, string> = { rule: 'an interaction', start: "a quest's
 
 /** The farthest `near` may say, in metres. */
 const MAX_NEAR = 40;
-/** Whether an effect's object form has no key but its own and a sensible `near` (or none). */
+/** Whether an effect's object form has no key but its own, a sensible `near` (or none), and not both `near` and `at`. */
 const nearOk = (v: any): boolean =>
-  !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every((k) => ['items', 'n', 'near'].includes(k)) && (v.near === undefined || (typeof v.near === 'number' && v.near >= 1 && v.near <= MAX_NEAR));
+  !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every((k) => ['items', 'n', 'near', 'at'].includes(k)) && (v.near === undefined || (typeof v.near === 'number' && v.near >= 1 && v.near <= MAX_NEAR)) && !(v.near !== undefined && v.at !== undefined);
 
-/** What a list's effects may name: the texts, the goals that exist, and the items the sea may wash up. */
-export interface Known { loca: object; goals: readonly string[]; items: readonly string[] }
+/**
+ * What a list's effects may name: the texts, the goals that exist, the items the sea may wash up, and the markers of the
+ * island's scene (`at`); without `markers` an `at` is only checked to be a name.
+ */
+export interface Known { loca: object; goals: readonly string[]; items: readonly string[]; markers?: readonly string[] }
+/** Why an `at` cannot be used, or null. */
+const atWrong = (v: any, known: Known): string | null => {
+  if (!v || typeof v !== 'object' || v.at === undefined) return null;
+  if (typeof v.at !== 'string' || !/^[A-Za-z][\w-]{0,31}$/.test(v.at)) return `"${v.at}" is not a marker name`;
+  return known.markers && !known.markers.includes(v.at) ? `no marker "${v.at}" in the island's scene` : null;
+};
 
 /** What is wrong with a list of effects, as lines starting with `label`; empty when it is fine. */
 export function checkEffects(effects: unknown, where: Where, label: string, known: Known): string[] {
@@ -120,11 +130,15 @@ export function checkEffects(effects: unknown, where: Where, label: string, know
     else if (key === 'washUp') {
       const items = Array.isArray(v) ? v : v?.items;
       if (!Array.isArray(items) || !items.length || items.some((it: unknown) => typeof it !== 'string' || !known.items.includes(it))) out.push(`${x}: unknown wash-up in ${JSON.stringify(items)}`);
-      if (!Array.isArray(v) && !nearOk(v)) out.push(`${x}: wash-up is a list, or items and near (1–${MAX_NEAR} metres)`);
+      if (!Array.isArray(v) && !nearOk(v)) out.push(`${x}: wash-up is a list, or items and near (1–${MAX_NEAR} metres) or at (a marker)`);
+      const at = Array.isArray(v) ? null : atWrong(v, known);
+      if (at) out.push(`${x}: ${at}`);
     } else if (key === 'stones') {
       const n = typeof v === 'object' && v ? v.n : v;
       if (!(Number.isInteger(n) && n >= 1 && n <= 10)) out.push(`${x}: stones must be 1–10`);
-      if (typeof v === 'object' && !nearOk(v)) out.push(`${x}: stones is a number, or n and near (1–${MAX_NEAR} metres)`);
+      if (typeof v === 'object' && !nearOk(v)) out.push(`${x}: stones is a number, or n and near (1–${MAX_NEAR} metres) or at (a marker)`);
+      const at = typeof v === 'object' ? atWrong(v, known) : null;
+      if (at) out.push(`${x}: ${at}`);
     }
     else if (key === 'strike' && v !== true) out.push(`${x}: strike is written as true`);
   });

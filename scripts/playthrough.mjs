@@ -7,6 +7,16 @@
 //
 // It runs on a fake clock (Playwright's `page.clock`) that the script advances itself, with drawing turned off, so the game's
 // rules run as fast as the machine can step them instead of in real time: the whole tutorial takes well under a minute.
+//
+// It is deterministic: the game plays with a fixed seed (`?seed=`; what is left to chance in play), the page's own
+// Math.random is seeded too (looks only: sparks, idle fidgets), and the clock is stopped before the page loads, so not
+// a frame runs on real time. The same code plays the same game every run, step for step (each step logs a fingerprint
+// of the game's state to compare), so one run after a change is enough.
+//
+//   SEED=7 npm run playthrough        another fixed seed (the default is 1); a failure says which seed to play again
+//   SEED=random npm run playthrough   a new seed (printed); `npm run playthrough:hunt` plays many at once, to find bugs
+//   TRACE=file, TRACE_WAITS=file      the state after each step, or a fingerprint at every clock step and hook call: to
+//                                     find where two runs of one seed part, if they ever do again
 // A few things are done by hand instead of by walking, because they will not wait: a fish and a crab are reached by
 // standing next to them (`place`), and hunger and energy are topped up now and then (`fill`), as the FULL cheat does.
 // Everything else is a tap, a bag action, sleeping or building, as the player does it.
@@ -18,6 +28,8 @@ const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { console.error('The playthrough needs Playwright (npm i -D playwright, or NODE_PATH to a global one).'); process.exit(2); }
 const { createServer } = await import('vite');
+const SEED = process.env.SEED === 'random' ? Math.floor(Math.random() * 1e9) : Number(process.env.SEED ?? 1);
+if (!Number.isInteger(SEED) || SEED < 0 || SEED > 999999999) { console.error(`SEED must be a whole number up to 999999999, or "random" (got ${process.env.SEED}).`); process.exit(2); }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = await createServer({ root, logLevel: 'error', server: { port: 8351, strictPort: false } });
@@ -25,17 +37,40 @@ await server.listen();
 const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
+// The page's Math.random from the seed too (mulberry32), before any of its scripts run.
+await page.addInitScript((seed) => {
+  let a = seed >>> 0;
+  Math.random = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), a | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}, SEED ^ 0x1b873593);
 const errors = [];
 page.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
 
 /** A call into the page that fails, rather than waits for ever, if the game has frozen. */
 const within = (promise, ms, what) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what}: the page stopped answering (the game froze?)`)), ms))]);
-const T = (fn, ...args) => within(page.evaluate(([f, a]) => window.__test[f](...a), [fn, args]), 15000, fn);
+const T = async (fn, ...args) => {
+  const out = await within(page.evaluate(([f, a]) => window.__test[f](...a), [fn, args]), 15000, fn);
+  if (fn !== 'state') await traceWait(`${fn} ${JSON.stringify(args)}`);
+  return out;
+};
 const S = () => T('state');
 const realWait = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Lets `ms` of the game's time go by (the fake clock runs the game's timers and frames up to then). */
-const wait = (ms) => within(page.clock.runFor(ms), 60000, 'the clock');
+/** TRACE_WAITS=file: every clock step and hook call with the frame count and a fingerprint of the state, to find the very moment two runs part. */
+const traceWait = async (line) => {
+  if (!process.env.TRACE_WAITS) return;
+  const s = await page.evaluate(() => window.__test?.state() ?? null);
+  (await import('node:fs')).appendFileSync(process.env.TRACE_WAITS, `${line} frames ${s?.frames} state ${s ? fingerprint(s) : '-'}\n`);
+};
+const wait = async (ms) => {
+  await traceWait(`wait ${ms}`);
+  return within(page.clock.runFor(ms), 60000, 'the clock');
+};
 const t0 = Date.now();
 const log = (msg) => console.log(`[${String(Math.round((Date.now() - t0) / 1000)).padStart(3)}s] ${msg}`);
 
@@ -48,7 +83,7 @@ async function fail(msg) {
     await wait(200);
     await page.screenshot({ path: path.join(root, 'playthrough-failure.png') });
   } catch { /* the page is gone */ }
-  console.error(`\nFAILED: ${msg}\n${state}\n${errors.length ? `\nBrowser errors:\n${errors.join('\n')}` : ''}\n(screenshot: playthrough-failure.png)`);
+  console.error(`\nFAILED (seed ${SEED}): ${msg}\n${state}\n${errors.length ? `\nBrowser errors:\n${errors.join('\n')}` : ''}\n(screenshot: playthrough-failure.png; play it again with SEED=${SEED} npm run playthrough)`);
   await Promise.race([Promise.allSettled([browser.close(), server.close()]), realWait(5000)]);
   process.exit(1);
 }
@@ -200,6 +235,12 @@ async function sleepThrough(what) {
   await until(`${what}: waking`, (x) => !x.sleeping, 40000);
   await settle();
 }
+/** A short hash of the game's state, to compare two runs step by step (FNV-1a over its JSON). */
+function fingerprint(s) {
+  let h = 2166136261;
+  for (const ch of JSON.stringify(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
 const STOP_AFTER = Number(process.env.STOP_AFTER) || Infinity;
 let steps = 0;
 const step = async (name, f) => {
@@ -208,25 +249,35 @@ const step = async (name, f) => {
   log(`… ${name}`);
   await f();
   const s = await S();
-  log(`✓ ${name} (quest ${s.quest.n + 1} "${s.quest.id}"${s.quest.done ? ', done' : ''}, day ${s.day})`);
+  log(`✓ ${name} (quest ${s.quest.n + 1} "${s.quest.id}"${s.quest.done ? ', done' : ''}, day ${s.day}; state ${fingerprint(s)})`);
+  // TRACE=file: the whole state after each step, one line each, to tell where two runs part.
+  if (process.env.TRACE) (await import('node:fs')).appendFileSync(process.env.TRACE, `${name}\t${JSON.stringify(s)}\n`);
 };
 const questIs = (id) => async (what) => { const s = await S(); if (s.quest.id !== id) await fail(`${what}: expected quest "${id}", found "${s.quest.id}"`); return s; };
 
 // ---------------------------------------------------------------------------------------------------- the start
 process.on('unhandledRejection', (e) => fail(String(e?.message ?? e)));
 process.on('uncaughtException', (e) => fail(String(e?.message ?? e)));
-await page.clock.install();
-await page.goto(url, { waitUntil: 'load' });
-// From here the game's time is ours: it passes only as the script lets it, and nothing is drawn.
-// (A moment ahead of the page's clock, which still runs in real time until then: on a busy machine 100 ms may already be gone.)
-for (let tries = 0; ; tries++) {
-  try { await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000); break; } catch (e) { if (tries >= 3) throw e; }
-}
+// The game's time is ours from before the page loads: it passes only as the script lets it (a fixed date, the clock
+// stopped), so not one frame runs on real time; and from the first step on nothing is drawn.
+const T0 = Date.UTC(2026, 0, 1, 8);
+await page.clock.install({ time: T0 });
+await page.clock.pauseAt(T0 + 1000);
+log(`seed ${SEED}`);
+await page.goto(`${url}?seed=${SEED}`, { waitUntil: 'load' });
+await within(page.waitForFunction(() => window.__test, null, { polling: 50 }), 30000, 'the test hook');
 await T('draw', false);
+// Frames come on a grid of 16 ms that the page's load time shifts a little each run: on until a frame has just run, so
+// every wait from here starts at the same point of the grid, and covers the same frames.
+const framesNow = async () => (await S()).frames;
+for (let f = await framesNow(), n = 0; n < 40 && (await framesNow()) === f; n++) await page.clock.runFor(1);
 await wait(1500);
-await page.click('button[aria-label="Create character"]', { force: true });
+// Clicked from inside the page: Playwright's own click waits for animation frames to see the button stand still, and
+// those would let the game run on real time, a few frames more or less each run.
+const press = (label) => within(page.evaluate((l) => { const b = document.querySelector(`button[aria-label="${l}"]`); if (!b) throw new Error(`no ${l} button`); b.click(); }, label), 15000, label);
+await press('Create character');
 await wait(1200);
-await page.click('button[aria-label="Start"]', { force: true });
+await press('Start');
 await until('the survivor to wake on the beach', (s) => s.present && !s.sleeping && s.telling, 30000);
 await settle();
 

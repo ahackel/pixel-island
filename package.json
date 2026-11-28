@@ -10,7 +10,8 @@
     "check:engine": "node engine/scripts/check-boundary.mjs",
     "preview": "vite preview --host",
     "test": "node --import ./scripts/pixel-alias.mjs --test src/*.test.ts engine/tests/*.test.ts",
-    "playthrough": "node scripts/playthrough.mjs"
+    "playthrough": "node scripts/playthrough.mjs",
+    "playthrough:hunt": "node scripts/playthrough-hunt.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

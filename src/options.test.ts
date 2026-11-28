@@ -4,7 +4,7 @@ import { optionsOf, withoutQuest } from './options.ts';
 
 test('no options: a real game at normal speed from the first quest', () => {
   assert.deepEqual(optionsOf('', 10), {
-    speed: 1, tryout: false, startQuest: 0, cave: false, island2: false, scene: null, fresh: false, cheats: false,
+    speed: 1, tryout: false, startQuest: 0, cave: false, island2: false, scene: null, fresh: false, cheats: false, seed: null,
   });
 });
 
@@ -35,4 +35,10 @@ test('ending a tryout drops the quest from the address and keeps the rest, flags
   assert.equal(withoutQuest('?quest=5'), '');
   assert.equal(withoutQuest('?quest=5&cheats&speed=3'), '?cheats&speed=3');
   assert.equal(withoutQuest('?cheats&quest=2'), '?cheats');
+});
+
+test('a seed is a whole number; anything else is none (a new one each load)', () => {
+  assert.equal(optionsOf('?seed=42', 10).seed, 42);
+  assert.equal(optionsOf('?seed=0', 10).seed, 0);
+  for (const bad of ['?seed', '?seed=', '?seed=-3', '?seed=1.5', '?seed=abc', '?seed=12345678901']) assert.equal(optionsOf(bad, 10).seed, null, bad);
 });

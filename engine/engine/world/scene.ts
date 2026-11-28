@@ -2,6 +2,7 @@
 // plants and decorations placed on it and where the character starts. Scenes live in this browser's storage and
 // can be written to and read from files. Everything read back is checked, since storage and
 // files may hold anything.
+import { cleanMarkers, type Marker } from './markers.ts';
 import { newId } from '../../shared/files.ts';
 import { TURNS } from '../flora/flora.ts';
 import type { Facing } from '../core/puppet.ts';
@@ -95,6 +96,11 @@ export interface Scene {
   /** The painted props and locked pixels it uses, so it draws the same in a game or on another device (see prop.ts). */
   carried?: Carried;
   spawn: { i: number; j: number };
+  /**
+   * Named spots a game can point at (a quest laying a crate at `crateSpot`, say), set with the scene editor's Marker
+   * tool. They are not drawn in a game; what a name means is the game's.
+   */
+  markers?: Marker[];
   /** How far resizing at the north or west border has moved the ground since the scene was made, in tiles: what is drawn by position (rock, rubble, speckle) is seeded from the position without it, so it keeps its look. */
   shift?: { i: number; j: number };
   /** The size the scene had when it was first resized: the ground's speckle is seeded as for that size, so it keeps its look. */
@@ -106,6 +112,8 @@ export interface Scene {
   /** Where the scene lies on the scene editor's desk, beside the other scenes open there: its north corner, in tiles. Only the editor uses it. */
   desk?: { i: number; j: number };
 }
+
+export { MARKER_NAME, markerOf, type Marker } from './markers.ts';
 
 /** A thin wall on a cell edge: `H` runs from (i, j) to (i + 1, j), `V` from (i, j) to (i, j + 1); `kind` a wall kind's id. */
 export interface SceneWall { edge: Edge; kind: string }
@@ -274,6 +282,7 @@ export function resized(scene: Scene, w: number, h: number, dx = 0, dy = 0): Sce
     ...(scene.ladders && { ladders: cleanLadders(scene.ladders.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
     ...(scene.doors && { doors: cleanDoors(scene.doors.map((x) => ({ ...x, edge: { ...x.edge, i: x.edge.i + dx, j: x.edge.j + dy } })), w, h) }),
     spawn: spot(scene.spawn),
+    ...(scene.markers && { markers: scene.markers.map((m) => ({ ...m, ...spot(m) })) }),
     ...((scene.origin || w !== scene.w || h !== scene.h) && { origin: scene.origin ?? { w: scene.w, h: scene.h } }),
     ...((scene.shift || dx || dy) && { shift: { i: (scene.shift?.i ?? 0) + dx, j: (scene.shift?.j ?? 0) + dy } }),
     ...(scene.cave && { cave: { ...scene.cave, exits: kept(scene.cave.exits) } }),
@@ -366,6 +375,7 @@ export function cleanScene(input: unknown): Scene {
   useCarried(s.carried);
   const props = (Array.isArray(s.props) ? s.props : []).map((p) => cleanPlacedProp(p, w, h)).filter((p): p is PlacedProp => !!p);
   const walls = cleanWalls(s.walls, w, h);
+  const markers = cleanMarkers(s.markers, w, h);
   const ladders = cleanLadders(s.ladders, w, h);
   const doors = cleanDoors(s.doors, w, h);
   const scene: Scene = {
@@ -377,6 +387,7 @@ export function cleanScene(input: unknown): Scene {
     ...(ladders.length && { ladders }),
     ...(doors.length && { doors }),
     spawn: { i: num(s.spawn?.i, 0, w, w / 2), j: num(s.spawn?.j, 0, h, h / 2) },
+    ...(markers.length && { markers }),
     ...(s.origin && typeof s.origin === 'object' && Number.isInteger(s.origin.w) && Number.isInteger(s.origin.h) && { origin: { w: clamp(s.origin.w, MIN_SIZE, MAX_SIZE), h: clamp(s.origin.h, MIN_SIZE, MAX_SIZE) } }),
     ...(s.shift && typeof s.shift === 'object' && (Number(s.shift.i) || Number(s.shift.j)) && { shift: { i: Math.round(num(s.shift.i, -MAX_SIZE * 8, MAX_SIZE * 8, 0)), j: Math.round(num(s.shift.j, -MAX_SIZE * 8, MAX_SIZE * 8, 0)) } }),
     ...(s.desk && typeof s.desk === 'object' && { desk: { i: Math.round(num(s.desk.i, -DESK_REACH, DESK_REACH, 0)), j: Math.round(num(s.desk.j, -DESK_REACH, DESK_REACH, 0)) } }),

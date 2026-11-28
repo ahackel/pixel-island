@@ -18,6 +18,11 @@ export interface Options {
   fresh: boolean;
   /** `?cheats`: the orange cheat buttons. */
   cheats: boolean;
+  /**
+   * `?seed=42`: what is left to chance in play (where the sea leaves things without a marker, the fish, the crabs, a
+   * grab's luck) the same every time; null, a new seed each load. The playthrough plays with a fixed one.
+   */
+  seed: number | null;
 }
 
 export function optionsOf(search: string, quests: number): Options {
@@ -32,6 +37,7 @@ export function optionsOf(search: string, quests: number): Options {
     scene: params.get('scene') || null,
     fresh: params.has('new'),
     cheats: params.has('cheats'),
+    seed: /^\d{1,9}$/.test(params.get('seed') ?? '') ? Number(params.get('seed')) : null,
   };
 }
 

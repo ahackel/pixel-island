@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import loca from './content/loca.json' with { type: 'json' };
-import { bundle, BUNDLES, bundleOf, FIRST, isStory, questsOf, ROCKY } from './islands.ts';
+import { readFileSync } from 'node:fs';
+import { bundle, BUNDLES, bundleOf, FIRST, isStory, questsOf, ROCKY, SCENE_OF } from './islands.ts';
 import { checkRules, RULES, type Rule } from './interactions.ts';
 import { checkContent, knownGoals, reportedGoals } from './quests.ts';
 import { LOOSE } from './crafts.ts';
@@ -9,9 +10,11 @@ import { LOOSE } from './crafts.ts';
 /** Every text a bundle's content may name: the game's, and its own. */
 const textsOf = (b: (typeof BUNDLES)[number]) => ({ ...loca, ...b.loca });
 const ALL_QUESTS = BUNDLES.flatMap((b) => b.quests);
+/** The names of the markers of the scene a story is played on, as the scene editor saved it. */
+const markersOf = (id: string): string[] => (JSON.parse(readFileSync(new URL(`./content/scenes/${SCENE_OF[id]}.json`, import.meta.url), 'utf8')).scene.markers ?? []).map((m: { name: string }) => m.name);
 
 test('every island\'s quests are valid, and every goal they wait for is reported by the game or by a rule that island has', () => {
-  for (const b of BUNDLES) assert.deepEqual(checkContent(b.quests, textsOf(b), ['crate', ...LOOSE], reportedGoals(b.rules)), [], b.id);
+  for (const b of BUNDLES) assert.deepEqual(checkContent(b.quests, textsOf(b), ['crate', ...LOOSE], reportedGoals(b.rules), markersOf(b.id)), [], b.id);
 });
 
 test('every island\'s rules are valid', () => {
@@ -48,4 +51,10 @@ test('the rocky island begins with the pot washing up, then the first meal, and 
   assert.equal(ROCKY.quests[1].goal, 'made:fishSoup');
   assert.equal(ROCKY.quests[1].now, true);
   assert.ok(!FIRST.quests.some((q) => ROCKY.quests.some((r) => r.id === q.id)));
+});
+
+test('every story has a scene, and a marker a quest lays things at must be in it', () => {
+  for (const b of BUNDLES) assert.ok(SCENE_OF[b.id], b.id);
+  const lines = checkContent([{ id: 'a', goal: 'eat', icon: 'coconut', thought: 'quest.eat', start: [{ washUp: { items: ['crate'], at: 'nowhere' } }, { stones: { n: 2, at: 'stonesSpot' } }] }], loca, ['crate'], reportedGoals(RULES), ['stonesSpot']);
+  assert.deepEqual(lines, ['quest 1, effect 1: no marker "nowhere" in the island\'s scene']);
 });

@@ -87,8 +87,12 @@ export const knownGoals = (quests: readonly Quest[]): string[] => [...CODE_GOALS
 /** A text in every language, by id. A missing language falls back to English. */
 export type Loca = Record<string, { en: string; de?: string }>;
 
-/** What is wrong with the quests and texts, as lines; empty when they are fine. `items` are the known wash-up ids, `reported` the goals something reports (`reportedGoals`). */
-export function checkContent(quests: unknown, loca: unknown, items: readonly string[], reported: readonly string[]): string[] {
+/**
+ * What is wrong with the quests and texts, as lines; empty when they are fine. `items` are the known wash-up ids,
+ * `reported` the goals something reports (`reportedGoals`), `markers` the names of the island scene's markers (an `at`
+ * naming another is wrong; without them an `at` is only checked to be a name).
+ */
+export function checkContent(quests: unknown, loca: unknown, items: readonly string[], reported: readonly string[], markers?: readonly string[]): string[] {
   const out: string[] = [];
   if (!loca || typeof loca !== 'object' || Array.isArray(loca)) return ['texts: not an object'];
   for (const [id, e] of Object.entries(loca as Record<string, any>)) {
@@ -104,7 +108,7 @@ export function checkContent(quests: unknown, loca: unknown, items: readonly str
     ids.add(q.id);
     if (!reported.includes(q.goal)) out.push(`${w}: nothing reports the goal "${q.goal}"`);
     if (q.count !== undefined && !(Number.isInteger(q.count) && q.count >= 1 && q.count <= 20)) out.push(`${w}: count must be 1–20`);
-    if (q.start !== undefined) out.push(...checkEffects(q.start, 'start', w, { loca: loca as object, goals: reported, items }));
+    if (q.start !== undefined) out.push(...checkEffects(q.start, 'start', w, { loca: loca as object, goals: reported, items, markers }));
     if (!isQuestIcon(q.icon)) out.push(`${w}: unknown icon "${q.icon}"`);
     if (typeof q.thought !== 'string' || !(q.thought in (loca as object))) out.push(`${w}: unknown text "${q.thought}"`);
   });
