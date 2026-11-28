@@ -150,10 +150,19 @@ export function lacking(kind: BuildKind, stage: number, bag: readonly BagItem[])
   return [...used, ...tools.filter((n) => !bag.includes(n))];
 }
 
-/** The middle of the hut's 2×2 cells, where the blanket lies, so the hut is built round it. */
-// shortcut: one fixed place on the first island's hilltop (the island sits four tiles in from the map's edge,
-// see island.ts); let the player choose once there are more islands.
+/**
+ * The middle of the hut's 2×2 cells, where the blanket lies, so the hut is built round it. It is set from the island
+ * scene's `hut` marker (`placeHut`) before anything reads it; {10, 11} on an island without one.
+ */
 export const HUT_AT = { i: 10, j: 11 };
+/**
+ * Puts the hut at a `hut` marker: the marker's cell is its first, and it takes the cells beside it toward +i and +j, so
+ * the blanket lies at the corner of the marker's cell they share. Set in place: the camp rules hold on to `HUT_AT`.
+ */
+export function placeHut(marker: { i: number; j: number }): void {
+  HUT_AT.i = Math.floor(marker.i) + 1;
+  HUT_AT.j = Math.floor(marker.j) + 1;
+}
 /** A wall on a cell edge, relative to the hut's first cell (see engine/world/building). */
 export interface HutWall { axis: 'H' | 'V'; i: number; j: number }
 /** A leaf of the roof over one of the hut's cells, relative to its first cell. */

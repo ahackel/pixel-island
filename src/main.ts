@@ -46,7 +46,7 @@ import { advance, KINDS, next, startProgress, waiting, type Goal, type Kind, typ
 import { ROCKY, TUTORIAL } from './islands.ts';
 import { cheatDrawer, statsOverlay } from '@pixel/shared/cheats.ts';
 import { frameDone, part } from '@pixel/shared/stats.ts';
-import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
+import { bagWords, FISH_ITEMS, FOOD, BUILD_KINDS, BUILDS, holds, HUT_AT, isLoose, placeHut, recipeFor, takeFrom, takeOne, type BagItem, type BuildKind } from './crafts.ts';
 import { AXE, blanketThing, heldOf, HAMMER_HELD, hatThing, hutBuilding, mouthThing, PIECE_KINDS, raftThing } from './things.ts';
 import { buildSpot, dropCoconuts, headSide, lay, layStones, morningGifts, spotNear, spotsNear, topUpStones, washedUp, washUp, washWood, type Around, type Shore } from './shore.ts';
 import { BLANKET, burning, burnPalm, byHut, canSail, fireNear, hutOf, isTall, onBlanket, sheltered, sleepRefused, stormWakes, wantsFire } from './camp.ts';
@@ -117,6 +117,9 @@ const inCave = () => !!world.scene.cave;
 const inDark = () => settingsOf(world.scene).light === 'dark';
 /** Whether the survivor is on the island's open ground, where the island's own things (hut, fires, crabs, palms, bag drops) are. */
 const onIsland = () => world === island && !inCave();
+// The hut and its blanket stand at the island scene's `hut` marker (before the save is read: a hut in it stands there).
+const hutMarker = markerOf(islandScene, 'hut');
+if (hutMarker) placeHut(hutMarker);
 /** Every palm, by the index the save uses; the scene keeps only the ones still standing. */
 const palms = [...islandScene.plants];
 /** The island's fingerprint, kept in the save, so a save of another island (one edited since) is not loaded onto this one. */

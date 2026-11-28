@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BLANKET, burning, burnPalm, byFire, canSail, fireNear, FIRE_FEAR, onBlanket, sheltered, sleepRefused, stormWakes, TORCH_FEAR } from './camp.ts';
-import { BUILDS, HUT_AT, type Build } from './crafts.ts';
+import { BUILDS, HUT_AT, placeHut, type Build } from './crafts.ts';
 import { TUTORIAL } from './islands.ts';
 import { startProgress } from './quests.ts';
 
@@ -93,4 +93,18 @@ test('lightning burns the nearest tall palm still standing, never a sapling, and
   assert.ok(burnPalm(shore, felled, { i: 5, j: 5 }));
   assert.equal(felled.struck, 2);
   assert.ok(!burnPalm(shore, game({ felled: [1, 2] }), { i: 5, j: 5 }));
+});
+
+test('the hut goes at a hut marker: its cell and the ones beside it toward +i and +j, the blanket at their shared corner', () => {
+  const was = { ...HUT_AT };
+  try {
+    placeHut({ i: 14.5, j: 6.5 });
+    assert.deepEqual(HUT_AT, { i: 15, j: 7 });
+    // The blanket is the same spot, and the rules that read it follow.
+    assert.deepEqual(BLANKET, { i: 15, j: 7 });
+    placeHut({ i: 14.9, j: 6.1 });
+    assert.deepEqual(HUT_AT, { i: 15, j: 7 });
+  } finally {
+    Object.assign(HUT_AT, was);
+  }
 });

@@ -68,3 +68,6 @@ test('every island\'s scene has markers for the morning\'s gifts, as many as can
   }
 });
 
+test("an island whose story builds the hut has a hut marker in its scene, where it stands", () => {
+  for (const b of BUNDLES) if (b.quests.some((q) => q.goal === 'hut')) assert.ok(markersOf(b.id).includes('hut'), b.id);
+});
